@@ -86,7 +86,6 @@ export function ContributionsFilters({
             options={members}
             selected={memberIds}
             label={memberLabel}
-            allLabel="All members"
             onChange={(next) => {
               setMemberIds(next)
               push({ members: next })
@@ -102,7 +101,6 @@ export function ContributionsFilters({
             options={TYPE_OPTIONS}
             selected={types}
             label={typeLabel}
-            allLabel="All types"
             onChange={(next) => {
               setTypes(next as TypeKey[])
               push({ types: next as TypeKey[] })
@@ -158,13 +156,11 @@ function MultiSelect({
   options,
   selected,
   label,
-  allLabel,
   onChange,
 }: {
   options: Option[]
   selected: string[]
   label: string
-  allLabel: string
   onChange: (next: string[]) => void
 }) {
   const [open, setOpen] = useState(false)

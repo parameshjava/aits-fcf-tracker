@@ -67,11 +67,6 @@ export function SearchableSelect({
     return () => document.removeEventListener('mousedown', onClick)
   }, [open])
 
-  // Reset highlight whenever filter changes or dropdown opens.
-  useEffect(() => {
-    if (open) setHighlight(0)
-  }, [query, open])
-
   // Focus the search input when opening.
   useEffect(() => {
     if (open) searchRef.current?.focus()
@@ -119,7 +114,11 @@ export function SearchableSelect({
 
       <button
         type="button"
-        onClick={() => !disabled && setOpen((v) => !v)}
+        onClick={() => {
+          if (disabled) return
+          if (!open) setHighlight(0)
+          setOpen((v) => !v)
+        }}
         disabled={disabled}
         aria-haspopup="listbox"
         aria-expanded={open}
@@ -141,7 +140,10 @@ export function SearchableSelect({
               ref={searchRef}
               type="text"
               value={query}
-              onChange={(e) => setQuery(e.target.value)}
+              onChange={(e) => {
+                setQuery(e.target.value)
+                setHighlight(0)
+              }}
               onKeyDown={onKeyDown}
               placeholder="Type to search…"
               className="block w-full rounded-md border border-gray-200 bg-gray-50 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"

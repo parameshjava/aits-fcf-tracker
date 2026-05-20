@@ -1,6 +1,7 @@
 'use client'
 
 import { useActionState, useEffect, useState } from 'react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { updateTransaction } from '@/lib/actions/transactions'
 import { CONTRIBUTION_TYPES, type ContributionType } from '@/lib/constants'
@@ -225,12 +226,12 @@ export function EditTransactionForm({
       )}
 
       <div className="flex justify-end gap-3">
-        <a
+        <Link
           href="/admin/transactions"
           className="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
         >
           Cancel
-        </a>
+        </Link>
         <button
           type="submit"
           disabled={pending}

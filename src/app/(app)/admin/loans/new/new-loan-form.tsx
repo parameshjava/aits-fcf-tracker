@@ -1,6 +1,7 @@
 'use client'
 
 import { useActionState, useEffect } from 'react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { createLoan } from '@/lib/actions/loans'
 import { todayISO } from '@/lib/format'
@@ -126,12 +127,12 @@ export function NewLoanForm({
       )}
 
       <div className="flex justify-end gap-3">
-        <a
+        <Link
           href="/dashboard/loans"
           className="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
         >
           Cancel
-        </a>
+        </Link>
         <button
           type="submit"
           disabled={pending}
