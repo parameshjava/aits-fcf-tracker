@@ -2,7 +2,7 @@ name: PR — CI + Vercel Preview
 
 on:
   pull_request:
-    branches: [main]
+    branches: [main1]
 
 # Cancel older in-flight runs on the same PR.
 concurrency:
