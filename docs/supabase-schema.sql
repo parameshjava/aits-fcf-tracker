@@ -71,6 +71,27 @@ create table if not exists public.members (
   created_at  timestamptz default now()
 );
 
+-- 1b3. Member contacts — multiple phone numbers and contact emails per member.
+--      `members.email` stays as the Google login identity (used by the auth
+--      attribution helper); this table is for additional contact info shown
+--      on the member directory.
+create table if not exists public.member_contacts (
+  id          uuid primary key default gen_random_uuid(),
+  member_id   uuid not null references public.members(id) on delete cascade,
+  kind        text not null check (kind in ('phone', 'email')),
+  value       text not null check (length(btrim(value)) > 0),
+  label       text,
+  is_primary  boolean not null default false,
+  created_at  timestamptz not null default now()
+);
+
+create index if not exists member_contacts_member_idx
+  on public.member_contacts (member_id);
+
+create unique index if not exists member_contacts_primary_per_kind_idx
+  on public.member_contacts (member_id, kind)
+  where is_primary = true;
+
 -- 1c. Transactions (verified contributions).
 --     interest_source distinguishes between loan interest and bank interest;
 --     it's required when contribution_type = 'interest' and null otherwise
@@ -100,10 +121,21 @@ alter table public.transactions
 alter table public.transactions
   add column if not exists member_id uuid references public.members(id);
 
+-- Principal portion of a payment. NULL for non-repayment rows. Lets a single
+-- transaction split principal + interest in one row and supports recording
+-- partial-principal repayments without coercing the amount field.
+alter table public.transactions
+  add column if not exists principal_paid numeric(12, 2);
+
 update public.transactions
    set interest_source = 'loans'
  where contribution_type = 'interest'
    and interest_source is null;
+
+update public.transactions
+   set principal_paid = amount
+ where contribution_type = 'loan_repayment'
+   and principal_paid is null;
 
 -- 1d. Pending payments (user-submitted, awaiting admin verification).
 create table if not exists public.pending_payments (
@@ -133,10 +165,18 @@ alter table public.pending_payments
 alter table public.pending_payments
   add column if not exists member_id uuid references public.members(id);
 
+alter table public.pending_payments
+  add column if not exists principal_paid numeric(12, 2);
+
 update public.pending_payments
    set interest_source = 'loans'
  where contribution_type = 'interest'
    and interest_source is null;
+
+update public.pending_payments
+   set principal_paid = amount
+ where contribution_type = 'loan_repayment'
+   and principal_paid is null;
 
 -- 1e. Bank accounts.
 create table if not exists public.bank_accounts (
@@ -363,8 +403,11 @@ create table public.reference (
 
 -- Seeded rows (created here so a fresh-install Supabase ends up usable):
 insert into public.reference (key, name, description, value) values
-  ('interest_per_lakh', 'Loan Interest (per ₹1 lakh / month)', 'Monthly interest charged per ₹1 lakh of loan principal', 650),
-  ('bank_balance',      'FCF Bank Balance',                    'Current available balance in the FCF bank account',     0);
+  ('interest_per_lakh',         'Loan Interest (per ₹1 lakh / month)',  'Monthly interest charged per ₹1 lakh of loan principal',                                                  650),
+  ('bank_balance',              'FCF Bank Balance',                     'Current available balance in the FCF bank account',                                                       0),
+  ('corpus_threshold',          'Donation eligibility — corpus threshold', 'Cumulative active contributions the fund must reach before donations become eligible.',          500000),
+  ('donation_eligibility_pct',  'Donation eligibility — annual %',      'Percentage of each year''s contributions that accrues as donation-eligibility. Unspent carries forward.',  25)
+on conflict (key) do nothing;
 
 -- Atomic balance delta used by transaction forms' auto-update path.
 create or replace function public.apply_balance_delta(delta numeric)

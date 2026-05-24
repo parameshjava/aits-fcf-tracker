@@ -1,11 +1,11 @@
 import seedData from '@/data/seed'
-import type { ContributionType } from './constants'
+import type { TransactionType } from './constants'
 
 type Synth = {
   id: string
   transaction_id: string
   amount: number
-  contribution_type: ContributionType
+  transaction_type: TransactionType
   interest_source: 'loans' | 'bank' | null
   transaction_date: string
   description: string | null
@@ -44,7 +44,7 @@ export function seedToTransactions(): Synth[] {
           id: `seed-c-${year}-${m}-${memberSlug}`,
           transaction_id: `SEED-${year}-${pad2(m + 1)}-${memberSlug}`,
           amount,
-          contribution_type: 'contribution',
+          transaction_type: 'contribution',
           interest_source: null,
           transaction_date: isoDate(year, m + 1, 15),
           description: null,
@@ -62,7 +62,7 @@ export function seedToTransactions(): Synth[] {
         id: `seed-bi-${year}-${m}`,
         transaction_id: `SEED-BANKINT-${year}-${pad2(m + 1)}`,
         amount,
-        contribution_type: 'interest',
+        transaction_type: 'interest',
         interest_source: 'bank',
         transaction_date: isoDate(year, m + 1, 28),
         description: `Bank interest credited`,
@@ -80,7 +80,7 @@ export function seedToTransactions(): Synth[] {
         id: `seed-li-${year}-${m}`,
         transaction_id: `SEED-LOANINT-${year}-${pad2(m + 1)}`,
         amount,
-        contribution_type: 'interest',
+        transaction_type: 'interest',
         interest_source: 'loans',
         transaction_date: isoDate(year, m + 1, 28),
         description: `Loan interest collected`,
@@ -101,7 +101,7 @@ export function seedToTransactions(): Synth[] {
         id: `seed-lr-${loan.sno}`,
         transaction_id: `SEED-LOANREPAY-${loan.sno}`,
         amount: principalRepaid,
-        contribution_type: 'loan_repayment',
+        transaction_type: 'loan_repayment',
         interest_source: null,
         transaction_date: date,
         description: `Loan principal repaid`,
@@ -121,7 +121,7 @@ export function seedToTransactions(): Synth[] {
       id: `seed-d-${donation.sno}`,
       transaction_id: `SEED-DONATION-${donation.sno}`,
       amount,
-      contribution_type: 'donation',
+      transaction_type: 'donation',
       interest_source: null,
       transaction_date: date,
       description: donation.remarks || null,

@@ -1,4 +1,4 @@
-import type { ContributionType } from './constants'
+import type { TransactionType } from './constants'
 
 export type BalanceDirection = 'add' | 'subtract'
 
@@ -10,7 +10,7 @@ export type BalanceDirection = 'add' | 'subtract'
  * Cash OUT → subtract (donation for medical aid)
  * Ambiguous → subtract (other; admin should review)
  */
-export function defaultDirectionForContribution(type: ContributionType): BalanceDirection {
+export function defaultDirectionForContribution(type: TransactionType): BalanceDirection {
   switch (type) {
     case 'contribution':
     case 'interest':

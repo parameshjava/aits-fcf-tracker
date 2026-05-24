@@ -8,7 +8,7 @@ type Props = {
   loanId: string
   principal: number
   startDate: string
-  historicalInterestPaid: number
+  interestWaiverMonths: number
   notes: string | null
 }
 
@@ -16,7 +16,7 @@ export function EditLoanForm({
   loanId,
   principal,
   startDate,
-  historicalInterestPaid,
+  interestWaiverMonths,
   notes,
 }: Props) {
   const [open, setOpen] = useState(false)
@@ -34,7 +34,8 @@ export function EditLoanForm({
       <div className="rounded-2xl border border-gray-200/80 bg-white p-5">
         <div className="flex items-center justify-between">
           <p className="text-sm text-gray-600">
-            Edit the principal, start date, or record historical interest paid (pre-tracking).
+            Edit the principal, start date, interest waiver, or notes. Pre-tracking interest
+            payments should be recorded as ordinary transactions tagged to this loan.
           </p>
           <button
             type="button"
@@ -94,18 +95,21 @@ export function EditLoanForm({
         </div>
 
         <div>
-          <label htmlFor="historical_interest_paid" className="block text-xs font-medium text-gray-700">
-            Historical interest paid (₹)
+          <label htmlFor="interest_waiver_months" className="block text-xs font-medium text-gray-700">
+            Interest waiver (months)
           </label>
           <input
-            id="historical_interest_paid"
-            name="historical_interest_paid"
+            id="interest_waiver_months"
+            name="interest_waiver_months"
             type="number"
-            step="0.01"
             min="0"
-            defaultValue={historicalInterestPaid}
+            step="1"
+            defaultValue={interestWaiverMonths}
             className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
           />
+          <p className="mt-1 text-[11px] text-gray-400">
+            No interest accrues for this many months from start date.
+          </p>
         </div>
 
         <div className="sm:col-span-3">

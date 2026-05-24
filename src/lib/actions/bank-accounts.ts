@@ -129,14 +129,37 @@ export async function saveBankAccount(formData: FormData) {
 
   revalidatePath('/admin/bank-accounts')
   revalidatePath('/dashboard')
+  revalidatePath('/dashboard/members')
   return { success: 'Bank account saved' }
 }
 
 export async function deleteBankAccount(accountId: string) {
   const supabase = await createClient()
   const user = await getCurrentUser()
-  if (!user || user.profile?.role !== 'admin') {
-    return { error: 'Unauthorized' }
+  if (!user) return { error: 'Not authenticated' }
+
+  // Admin can delete anyone's row. A non-admin can delete only an account
+  // that belongs to their own member row (email-matched, same rule as
+  // saveBankAccount above).
+  if (user.profile?.role !== 'admin') {
+    if (!user.email) return { error: 'Unauthorized' }
+    const { data: account, error: lookupErr } = await supabase
+      .from('bank_accounts')
+      .select('member_id')
+      .eq('id', accountId)
+      .maybeSingle()
+    if (lookupErr) return { error: lookupErr.message }
+    if (!account || !account.member_id) return { error: 'Bank account not found' }
+
+    const { data: ownMember, error: ownErr } = await supabase
+      .from('members')
+      .select('id')
+      .ilike('email', user.email)
+      .maybeSingle()
+    if (ownErr) return { error: ownErr.message }
+    if (!ownMember || ownMember.id !== account.member_id) {
+      return { error: 'You can only remove your own bank accounts' }
+    }
   }
 
   const { error } = await supabase
@@ -146,5 +169,6 @@ export async function deleteBankAccount(accountId: string) {
 
   if (error) return { error: error.message }
   revalidatePath('/admin/bank-accounts')
+  revalidatePath('/dashboard/members')
   return { success: 'Bank account deleted' }
 }

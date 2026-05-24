@@ -5,7 +5,7 @@ import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { getCurrentUser } from './auth'
 import { seedToTransactions } from '../seed-to-transactions'
-import type { ContributionType } from '../constants'
+import type { TransactionType } from '../constants'
 import { applyBalanceDelta } from './reference'
 
 export async function createTransaction(formData: FormData) {
@@ -18,11 +18,11 @@ export async function createTransaction(formData: FormData) {
 
   const transactionDate = formData.get('transaction_date') as string
   const amount = parseFloat(formData.get('amount') as string)
-  const contributionType = formData.get('contribution_type') as ContributionType
+  const transactionType = formData.get('transaction_type') as TransactionType
   const description = formData.get('description') as string
   const interestSourceRaw = formData.get('interest_source')
   const interestSource =
-    contributionType === 'interest' && (interestSourceRaw === 'loans' || interestSourceRaw === 'bank')
+    transactionType === 'interest' && (interestSourceRaw === 'loans' || interestSourceRaw === 'bank')
       ? interestSourceRaw
       : null
   const memberIdRaw = formData.get('member_id') as string | null
@@ -30,9 +30,9 @@ export async function createTransaction(formData: FormData) {
   const loanIdRaw = formData.get('loan_id') as string | null
   // Loan is only meaningful for loan-side transactions; ignore otherwise.
   const needsLoan =
-    contributionType === 'loan_repayment' ||
-    contributionType === 'penalty' ||
-    (contributionType === 'interest' && interestSource === 'loans')
+    transactionType === 'loan_repayment' ||
+    transactionType === 'penalty' ||
+    (transactionType === 'interest' && interestSource === 'loans')
   const loanId = needsLoan && loanIdRaw && loanIdRaw.length > 0 ? loanIdRaw : null
 
   // transaction_id is auto-filled by a Postgres BEFORE INSERT trigger
@@ -40,7 +40,7 @@ export async function createTransaction(formData: FormData) {
   const { error } = await supabase.from('transactions').insert({
     transaction_date: transactionDate,
     amount,
-    contribution_type: contributionType,
+    transaction_type: transactionType,
     interest_source: interestSource,
     member_id: memberId,
     loan_id: loanId,
@@ -85,7 +85,7 @@ export async function getTransactions() {
     transaction_id: string
     transaction_date: string
     amount: number | string
-    contribution_type: string
+    transaction_type: string
     interest_source?: 'loans' | 'bank' | null
     description?: string | null
     member?: MemberRef
@@ -114,7 +114,7 @@ export async function getTransactionStats() {
   const totalAmount = rows.reduce((sum, t) => sum + Number(t.amount), 0)
 
   const typeBreakdown = rows.reduce<Record<string, number>>((acc, t) => {
-    acc[t.contribution_type] = (acc[t.contribution_type] || 0) + Number(t.amount)
+    acc[t.transaction_type] = (acc[t.transaction_type] || 0) + Number(t.amount)
     return acc
   }, {})
 
@@ -168,7 +168,7 @@ export async function updateTransaction(formData: FormData) {
 
   const transactionDate = (formData.get('transaction_date') as string | null)?.trim()
   const amountRaw = (formData.get('amount') as string | null)?.trim()
-  const contributionType = formData.get('contribution_type') as ContributionType
+  const transactionType = formData.get('transaction_type') as TransactionType
   const description = formData.get('description') as string | null
   const interestSourceRaw = formData.get('interest_source')
   const memberIdRaw = formData.get('member_id') as string | null
@@ -179,13 +179,13 @@ export async function updateTransaction(formData: FormData) {
   if (!Number.isFinite(amount) || amount <= 0) return { error: 'Amount must be positive' }
 
   const interestSource =
-    contributionType === 'interest' && (interestSourceRaw === 'loans' || interestSourceRaw === 'bank')
+    transactionType === 'interest' && (interestSourceRaw === 'loans' || interestSourceRaw === 'bank')
       ? interestSourceRaw
       : null
   const needsLoan =
-    contributionType === 'loan_repayment' ||
-    contributionType === 'penalty' ||
-    (contributionType === 'interest' && interestSource === 'loans')
+    transactionType === 'loan_repayment' ||
+    transactionType === 'penalty' ||
+    (transactionType === 'interest' && interestSource === 'loans')
   const memberId = memberIdRaw && memberIdRaw.length > 0 ? memberIdRaw : null
   const loanId = needsLoan && loanIdRaw && loanIdRaw.length > 0 ? loanIdRaw : null
 
@@ -194,7 +194,7 @@ export async function updateTransaction(formData: FormData) {
     .update({
       transaction_date: transactionDate,
       amount,
-      contribution_type: contributionType,
+      transaction_type: transactionType,
       interest_source: interestSource,
       member_id: memberId,
       loan_id: loanId,

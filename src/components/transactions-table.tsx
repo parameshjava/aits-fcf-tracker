@@ -13,7 +13,7 @@ export type TxnRow = {
   id: string
   transaction_id: string
   amount: number | string
-  contribution_type: string
+  transaction_type: string
   interest_source?: 'loans' | 'bank' | null
   transaction_date: string
   description?: string | null
@@ -36,9 +36,9 @@ const TYPE_META: Record<string, { label: string; bg: string; emoji: string }> = 
 }
 
 function typeLabel(t: TxnRow): string {
-  const meta = TYPE_META[t.contribution_type]
-  const base = meta?.label ?? t.contribution_type.replace(/_/g, ' ')
-  if (t.contribution_type === 'interest' && t.interest_source) {
+  const meta = TYPE_META[t.transaction_type]
+  const base = meta?.label ?? t.transaction_type.replace(/_/g, ' ')
+  if (t.transaction_type === 'interest' && t.interest_source) {
     return `${base} · ${t.interest_source}`
   }
   return base
@@ -86,7 +86,7 @@ export function TransactionsTable({
   )
 
   return (
-    <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white">
+    <div className="overflow-clip rounded-2xl border border-gray-200 bg-white">
       {enableSearch && rows.length > 0 && (
         <div className="border-b border-gray-200 bg-gray-50/30 px-4 py-2.5">
           <TableSearch
@@ -99,8 +99,13 @@ export function TransactionsTable({
         </div>
       )}
 
-      <div className="overflow-x-auto">
-        <table className="min-w-full text-sm">
+      {/* lg:overflow-x-visible drops the local scroll context at desktop
+          widths so the .sticky-thead rule pins headers against the
+          viewport (under the TopBar) instead of against this wrapper.
+          At <lg the wrapper keeps overflow-x:auto so wide tables can
+          still scroll horizontally on narrow viewports. */}
+      <div className="overflow-x-auto lg:overflow-x-visible">
+        <table className="sticky-thead min-w-full text-sm">
           <thead>
             <tr className="border-b border-gray-200 bg-gray-50/60">
               <th scope="col" className="w-[52px] px-4 py-3"></th>
@@ -151,7 +156,7 @@ export function TransactionsTable({
               </tr>
             ) : (
               sorted.map((t) => {
-                const meta = TYPE_META[t.contribution_type] ?? TYPE_META.other
+                const meta = TYPE_META[t.transaction_type] ?? TYPE_META.other
                 return (
                   <tr key={t.id} className="transition-colors hover:bg-gray-50">
                     <td className="w-[52px] py-3 pl-4 pr-0">

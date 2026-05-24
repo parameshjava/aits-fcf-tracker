@@ -1,8 +1,11 @@
 'use client'
 
-import { useCallback } from 'react'
+import { Fragment, useCallback, useRef, useState } from 'react'
 import Link from 'next/link'
 import { formatRupees } from '@/lib/format'
+import { getLoanDetail, type LoanDetailData } from '@/lib/actions/loans'
+import { LoanDetailPanel } from '@/components/loan-detail-panel'
+import { ExpandToggle } from '@/components/ui/expand-toggle'
 import {
   SortableHeader,
   TableSearch,
@@ -55,16 +58,22 @@ function formatDate(iso: string | null): string {
   return `${String(d.getUTCDate()).padStart(2, '0')}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${d.getUTCFullYear()}`
 }
 
+const COLSPAN = 9
+
 export function LoansListTable({
   loans,
   linkLabel = 'View →',
   emptyMessage,
+  expandable = false,
 }: {
   loans: LoansListRow[]
   /** Action link text per row — "View →" (read-only) or "Manage →" (admin). */
   linkLabel?: string
   /** Custom empty-state message (JSX allowed). */
   emptyMessage?: React.ReactNode
+  /** When true, replaces the per-row link with an inline accordion that
+   *  fetches loan detail once and caches it for instant re-expansion. */
+  expandable?: boolean
 }) {
   const stringify = useCallback(
     (l: LoansListRow) =>
@@ -100,8 +109,74 @@ export function LoansListTable({
 
   const totalOutstanding = sorted.reduce((s, l) => s + l.balance, 0)
 
+  // --- Accordion state -----------------------------------------------------
+  // Detail is fetched once per loan and stored in `cache`. Re-expanding the
+  // same row reads from cache instantly. `loading` and `errors` drive the
+  // expanded-row placeholders. `inflightRef` is the synchronous dedup guard
+  // for the fetch — state setters in React 18 run their updaters during the
+  // next render, so they can't be used as an immediate "have I started?" lock.
+  const [expanded, setExpanded] = useState<Set<string>>(() => new Set())
+  const [cache, setCache] = useState<Map<string, LoanDetailData>>(() => new Map())
+  const [loading, setLoading] = useState<Set<string>>(() => new Set())
+  const [errors, setErrors] = useState<Map<string, string>>(() => new Map())
+  const inflightRef = useRef<Set<string>>(new Set())
+
+  const fetchDetail = useCallback(
+    async (id: string) => {
+      if (cache.has(id) || inflightRef.current.has(id)) return
+      inflightRef.current.add(id)
+      setLoading((prev) => {
+        if (prev.has(id)) return prev
+        const next = new Set(prev)
+        next.add(id)
+        return next
+      })
+      setErrors((prev) => {
+        if (!prev.has(id)) return prev
+        const next = new Map(prev)
+        next.delete(id)
+        return next
+      })
+      try {
+        const data = await getLoanDetail(id)
+        if (data) setCache((prev) => new Map(prev).set(id, data))
+        else setErrors((prev) => new Map(prev).set(id, 'Loan not found.'))
+      } catch (e) {
+        setErrors((prev) =>
+          new Map(prev).set(
+            id,
+            e instanceof Error ? e.message : 'Failed to load loan details.',
+          ),
+        )
+      } finally {
+        inflightRef.current.delete(id)
+        setLoading((prev) => {
+          if (!prev.has(id)) return prev
+          const next = new Set(prev)
+          next.delete(id)
+          return next
+        })
+      }
+    },
+    [cache],
+  )
+
+  const toggleExpand = useCallback(
+    (id: string) => {
+      setExpanded((prev) => {
+        const next = new Set(prev)
+        if (next.has(id)) next.delete(id)
+        else next.add(id)
+        return next
+      })
+      // Cached → returns immediately. In flight → de-duplicated. Else fetches.
+      void fetchDetail(id)
+    },
+    [fetchDetail],
+  )
+
   return (
-    <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white">
+    <div className="overflow-clip rounded-2xl border border-gray-200 bg-white">
       {loans.length > 0 && (
         <div className="border-b border-gray-200 bg-gray-50/30 px-4 py-2.5">
           <TableSearch
@@ -113,8 +188,8 @@ export function LoansListTable({
           />
         </div>
       )}
-      <div className="overflow-x-auto">
-        <table className="min-w-full text-sm">
+      <div className="overflow-x-auto lg:overflow-x-visible">
+        <table className="sticky-thead min-w-full text-sm">
           <thead>
             <tr className="border-b border-gray-200 bg-gray-50/60">
               <SortableHeader col="loan_number"   label="Loan #"        sort={sort} onToggle={toggleSort} />
@@ -124,66 +199,112 @@ export function LoansListTable({
               <SortableHeader col="status"        label="Status"        sort={sort} onToggle={toggleSort} />
               <SortableHeader col="paid_interest" label="Interest paid" align="right" sort={sort} onToggle={toggleSort} />
               <SortableHeader col="interest_due"  label="Interest due"  align="right" sort={sort} onToggle={toggleSort} />
-              <SortableHeader col="balance"       label="Balance"       align="right" sort={sort} onToggle={toggleSort} />
+              <SortableHeader col="balance"       label="Pending"       align="right" sort={sort} onToggle={toggleSort} />
               <th scope="col" className="px-4 py-3" />
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
             {sorted.length === 0 ? (
               <tr>
-                <td colSpan={9} className="px-4 py-12 text-center text-sm text-gray-400">
+                <td colSpan={COLSPAN} className="px-4 py-12 text-center text-sm text-gray-400">
                   {query ? `No matches for "${query}"` : (emptyMessage ?? 'No loans yet.')}
                 </td>
               </tr>
             ) : (
-              sorted.map((l) => (
-                <tr key={l.id} className="transition-colors hover:bg-gray-50">
-                  <td className="whitespace-nowrap px-4 py-3 font-mono text-xs text-gray-700">
-                    {l.loan_number}
-                  </td>
-                  <td className="px-4 py-3 font-medium text-gray-900">
-                    {l.member_name ?? <span className="text-gray-400">—</span>}
-                  </td>
-                  <td className="whitespace-nowrap px-4 py-3 text-right tabular-nums text-gray-700">
-                    {formatRupees(l.principal_amount)}
-                  </td>
-                  <td className="whitespace-nowrap px-4 py-3 text-gray-600">
-                    {formatDate(l.start_date)}
-                  </td>
-                  <td className="px-4 py-3">
-                    <span
-                      className={
-                        'rounded-full px-2 py-0.5 text-xs font-medium ring-1 ' +
-                        (STATUS_PILL[l.status] ?? STATUS_PILL.active)
-                      }
-                    >
-                      {STATUS_LABEL[l.status] ?? l.status}
-                    </span>
-                  </td>
-                  <td className="whitespace-nowrap px-4 py-3 text-right tabular-nums text-gray-700">
-                    {formatRupees(l.paid_interest)}
-                  </td>
-                  <td
-                    className={
-                      'whitespace-nowrap px-4 py-3 text-right tabular-nums ' +
-                      (l.interest_due > 0 ? 'font-medium text-amber-700' : 'text-gray-500')
-                    }
-                  >
-                    {formatRupees(l.interest_due)}
-                  </td>
-                  <td className="whitespace-nowrap px-4 py-3 text-right font-semibold tabular-nums text-gray-900">
-                    {formatRupees(l.balance)}
-                  </td>
-                  <td className="whitespace-nowrap px-4 py-3 text-right">
-                    <Link
-                      href={l.detail_href}
-                      className="text-xs font-medium text-blue-600 hover:text-blue-800"
-                    >
-                      {linkLabel}
-                    </Link>
-                  </td>
-                </tr>
-              ))
+              sorted.map((l) => {
+                const isOpen = expandable && expanded.has(l.id)
+                const isClosedLoan = l.status === 'paid' || l.status === 'write_off'
+                const cached = cache.get(l.id)
+                const isLoading = loading.has(l.id) && !cached
+                const errMsg = errors.get(l.id)
+                const rowBaseClasses = 'transition-colors'
+                const rowOpenClasses = isOpen
+                  ? 'bg-blue-50/40 ring-1 ring-inset ring-blue-100'
+                  : 'hover:bg-gray-50'
+                return (
+                  <Fragment key={l.id}>
+                    <tr className={`${rowBaseClasses} ${rowOpenClasses}`}>
+                      <td className="whitespace-nowrap px-4 py-3 font-mono text-xs text-gray-700">
+                        {l.loan_number}
+                      </td>
+                      <td className="px-4 py-3 font-medium text-gray-900">
+                        {l.member_name ?? <span className="text-gray-400">—</span>}
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-3 text-right tabular-nums text-gray-700">
+                        {formatRupees(l.principal_amount)}
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-3 text-gray-600">
+                        {formatDate(l.start_date)}
+                      </td>
+                      <td className="px-4 py-3">
+                        <span
+                          className={
+                            'rounded-full px-2 py-0.5 text-xs font-medium ring-1 ' +
+                            (STATUS_PILL[l.status] ?? STATUS_PILL.active)
+                          }
+                        >
+                          {STATUS_LABEL[l.status] ?? l.status}
+                        </span>
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-3 text-right tabular-nums text-gray-700">
+                        {formatRupees(l.paid_interest)}
+                      </td>
+                      <td
+                        className={
+                          'whitespace-nowrap px-4 py-3 text-right tabular-nums ' +
+                          (isClosedLoan
+                            ? 'text-gray-400'
+                            : l.interest_due > 0
+                            ? 'font-medium text-amber-700'
+                            : 'text-gray-500')
+                        }
+                      >
+                        {isClosedLoan ? '—' : formatRupees(l.interest_due)}
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-3 text-right font-semibold tabular-nums text-gray-900">
+                        {formatRupees(l.balance)}
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-3 text-right">
+                        {expandable ? (
+                          <ExpandToggle
+                            isOpen={isOpen}
+                            onClick={() => toggleExpand(l.id)}
+                            controlsId={`loan-detail-${l.id}`}
+                            labelOpen={`Hide details for loan ${l.loan_number}`}
+                            labelClosed={`Show details for loan ${l.loan_number}`}
+                          />
+                        ) : (
+                          <Link
+                            href={l.detail_href}
+                            className="text-xs font-medium text-blue-600 hover:text-blue-800"
+                          >
+                            {linkLabel}
+                          </Link>
+                        )}
+                      </td>
+                    </tr>
+                    {isOpen && (
+                      <tr
+                        id={`loan-detail-${l.id}`}
+                        className="border-l-2 border-l-blue-500 bg-gradient-to-b from-blue-50/50 to-white"
+                      >
+                        <td colSpan={COLSPAN} className="p-0">
+                          {isLoading ? (
+                            <div className="flex items-center gap-2 p-6 text-sm text-gray-500">
+                              <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-gray-300 border-t-blue-600" />
+                              Loading loan details…
+                            </div>
+                          ) : errMsg && !cached ? (
+                            <div className="p-6 text-sm text-rose-600">{errMsg}</div>
+                          ) : cached ? (
+                            <LoanDetailPanel data={cached} />
+                          ) : null}
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
+                )
+              })
             )}
           </tbody>
         </table>

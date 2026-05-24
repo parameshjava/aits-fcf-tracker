@@ -20,6 +20,10 @@ const ROUTES: Record<string, RouteMeta> = {
     title: 'Donations',
     crumbs: [{ label: 'Transactions' }, { label: 'Donations' }],
   },
+  '/dashboard/members': {
+    title: 'Members directory',
+    crumbs: [{ label: 'Members' }],
+  },
   '/rules': {
     title: 'Rules & Guidelines',
     crumbs: [{ label: 'Rules' }, { label: 'Overview' }],

@@ -1,4 +1,4 @@
-import type { ContributionType } from './constants'
+import type { TransactionType } from './constants'
 
 export const SECTION_KEYS = ['contributions', 'loans', 'donations'] as const
 export type SectionKey = (typeof SECTION_KEYS)[number]
@@ -15,7 +15,7 @@ export const SECTION_DESCRIPTIONS: Record<SectionKey, string> = {
   donations:     'Charitable disbursements from the fund.',
 }
 
-export const SECTION_TYPES: Record<SectionKey, ContributionType[]> = {
+export const SECTION_TYPES: Record<SectionKey, TransactionType[]> = {
   contributions: ['contribution', 'interest'],
   loans:         ['loan_repayment', 'penalty'],
   donations:     ['donation'],
@@ -29,6 +29,7 @@ export const DASHBOARD_BAR_COLORS = {
   contributions: '#2563eb', // Tailwind blue-600
   loanInterest:  '#E69F00', // Okabe-Ito orange
   bankInterest:  '#009E73', // Okabe-Ito bluish-green
+  donations:     '#CC79A7', // Okabe-Ito reddish-purple (outflows / disbursements)
 }
 
 export const SECTION_BAR_COLOR: Record<SectionKey, string> = {

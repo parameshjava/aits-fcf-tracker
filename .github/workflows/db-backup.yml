@@ -1,0 +1,139 @@
+name: DB Backup — weekly pg_dump → private repo
+
+# Weekly logical backup of the Supabase `public` schema.
+# The dump (gzipped, timestamped) is pushed to a SEPARATE PRIVATE repo
+# referenced by ${{ secrets.BACKUP_REPO }}. The main repo is public, so
+# we never store dumps here. See docs/backup-setup.md for one-time setup.
+
+on:
+  schedule:
+    # Every Sunday at 03:00 UTC (08:30 IST Sunday morning).
+    - cron: '0 3 * * 0'
+  workflow_dispatch:
+    # Lets you trigger an on-demand backup from the Actions UI.
+    inputs:
+      note:
+        description: 'Optional note appended to the commit message (e.g., "pre-migration")'
+        required: false
+        default: ''
+
+concurrency:
+  group: db-backup
+  cancel-in-progress: false
+
+jobs:
+  dump:
+    name: pg_dump → private repo
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Install PostgreSQL 17 client
+        run: |
+          set -euo pipefail
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl -fsSL -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc \
+            https://www.postgresql.org/media/keys/ACCC4CF8.asc
+          . /etc/os-release
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt ${VERSION_CODENAME}-pgdg main" \
+            | sudo tee /etc/apt/sources.list.d/pgdg.list >/dev/null
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-client-17
+          pg_dump --version
+
+      - name: Run pg_dump
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          set -euo pipefail
+          if [ -z "${SUPABASE_DB_URL:-}" ]; then
+            echo "::error::SUPABASE_DB_URL secret is missing"
+            exit 1
+          fi
+          mkdir -p out
+          STAMP=$(date -u +"%Y-%m-%dT%H-%M-%SZ")
+          FILE="out/fcf-${STAMP}.sql.gz"
+          echo "Dumping public schema to ${FILE}"
+          pg_dump \
+            --schema=public \
+            --no-owner \
+            --no-privileges \
+            --no-comments \
+            --clean \
+            --if-exists \
+            --quote-all-identifiers \
+            "${SUPABASE_DB_URL}" \
+            | gzip -9 > "${FILE}"
+          echo "STAMP=${STAMP}" >> "$GITHUB_ENV"
+          echo "FILE=${FILE}" >> "$GITHUB_ENV"
+          ls -lh "${FILE}"
+          # Sanity check: dump must be non-trivial. A 200-byte file = empty schema.
+          SIZE=$(stat -c%s "${FILE}")
+          if [ "${SIZE}" -lt 1024 ]; then
+            echo "::error::Backup file is suspiciously small (${SIZE} bytes). Aborting."
+            exit 1
+          fi
+
+      - name: Push to private backup repo
+        env:
+          BACKUP_REPO: ${{ secrets.BACKUP_REPO }}
+          BACKUP_REPO_TOKEN: ${{ secrets.BACKUP_REPO_TOKEN }}
+          NOTE: ${{ github.event.inputs.note }}
+        run: |
+          set -euo pipefail
+          if [ -z "${BACKUP_REPO:-}" ] || [ -z "${BACKUP_REPO_TOKEN:-}" ]; then
+            echo "::error::BACKUP_REPO and BACKUP_REPO_TOKEN secrets are required"
+            exit 1
+          fi
+
+          git config --global user.name  "fcf-backup-bot"
+          git config --global user.email "fcf-backup-bot@users.noreply.github.com"
+
+          # Use a short-lived token URL; do not echo.
+          REMOTE="https://x-access-token:${BACKUP_REPO_TOKEN}@github.com/${BACKUP_REPO}.git"
+
+          # Clone with depth=1 so we don't drag prior dump history into the
+          # runner. We rewrite history on each push anyway (retention prune).
+          git clone --depth 1 "${REMOTE}" backup-repo 2>/dev/null \
+            || { echo "First-time push detected; initializing empty repo."
+                 mkdir backup-repo && cd backup-repo \
+                 && git init -b main && git remote add origin "${REMOTE}" \
+                 && cd ..; }
+
+          mkdir -p backup-repo/dumps
+          cp "${FILE}" "backup-repo/dumps/"
+
+          # Retention: keep the latest 12 weekly dumps (~3 months).
+          (
+            cd backup-repo/dumps
+            ls -1 fcf-*.sql.gz 2>/dev/null \
+              | sort -r \
+              | tail -n +13 \
+              | xargs -r rm -v
+          )
+
+          cd backup-repo
+          git add dumps/
+
+          if git diff --cached --quiet; then
+            echo "No changes (dump file already present?). Skipping commit."
+            exit 0
+          fi
+
+          COMMIT_MSG="backup: ${STAMP}"
+          if [ -n "${NOTE:-}" ]; then
+            COMMIT_MSG="${COMMIT_MSG} (${NOTE})"
+          fi
+          git commit -m "${COMMIT_MSG}"
+          git push origin HEAD:main
+
+      - name: Summary
+        if: success()
+        run: |
+          {
+            echo "### Backup complete"
+            echo ""
+            echo "- File: \`${FILE##*/}\`"
+            echo "- Pushed to: \`${{ secrets.BACKUP_REPO }}\`"
+            echo "- Retention: 12 most-recent dumps"
+          } >> "$GITHUB_STEP_SUMMARY"

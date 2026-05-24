@@ -2,27 +2,39 @@
 
 import { useActionState, useState } from 'react'
 import { closeLoan, reopenLoan } from '@/lib/actions/loans'
-import { todayISO } from '@/lib/format'
-import { BankBalanceUpdater } from '@/components/bank-balance-updater'
-import { LOAN_WRITE_OFF_DEFAULT } from '@/lib/balance-direction'
+import { formatRupees, todayISO } from '@/lib/format'
 
 type Props = {
   loanId: string
   status: 'active' | 'paid' | 'write_off'
+  /** Current pending principal as computed server-side. */
+  pendingPrincipal: number
+  /** Current pending interest as computed server-side. */
+  pendingInterest: number
 }
 
-export function CloseLoanForm({ loanId, status }: Props) {
+export function CloseLoanForm({
+  loanId,
+  status,
+  pendingPrincipal,
+  pendingInterest,
+}: Props) {
   const [open, setOpen] = useState(false)
-  const [finalStatus, setFinalStatus] = useState<'paid' | 'write_off'>('paid')
+  // Default to Write off when anything is unsettled so the admin sees the
+  // waive inputs immediately. Otherwise default to Paid (the happy path).
+  const hasDues = pendingPrincipal > 0 || pendingInterest > 0
+  const [finalStatus, setFinalStatus] = useState<'paid' | 'write_off'>(
+    hasDues ? 'write_off' : 'paid',
+  )
 
   const [state, action, pending] = useActionState(
     async (_prev: unknown, formData: FormData) => closeLoan(formData),
-    null
+    null,
   )
 
   const [reopenState, reopenAction, reopening] = useActionState(
     async () => reopenLoan(loanId),
-    null
+    null,
   )
 
   if (status !== 'active') {
@@ -57,7 +69,9 @@ export function CloseLoanForm({ loanId, status }: Props) {
       <div className="rounded-2xl border border-gray-200/80 bg-white p-5">
         <div className="flex items-center justify-between">
           <p className="text-sm text-gray-600">
-            Marking the loan as paid (or write-off) closes it and records the end date.
+            {hasDues
+              ? `This loan still has ₹${pendingPrincipal.toFixed(0)} principal and ₹${pendingInterest.toFixed(0)} interest pending — a Paid close is blocked. Use Write off to waive the dues.`
+              : 'No dues outstanding. Closing as Paid records the end date.'}
           </p>
           <button
             type="button"
@@ -72,6 +86,7 @@ export function CloseLoanForm({ loanId, status }: Props) {
   }
 
   const today = todayISO()
+  const paidBlocked = finalStatus === 'paid' && hasDues
 
   return (
     <form action={action} className="space-y-4 rounded-2xl border border-gray-200/80 bg-white p-5">
@@ -88,7 +103,23 @@ export function CloseLoanForm({ loanId, status }: Props) {
 
       <input type="hidden" name="loan_id" value={loanId} />
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+      {/* Pending snapshot — same numbers the server validates against. */}
+      <div className="grid grid-cols-2 gap-3 rounded-md bg-gray-50/70 px-3 py-2 text-xs sm:grid-cols-4">
+        <div>
+          <p className="text-[10px] uppercase tracking-wider text-gray-400">Pending principal</p>
+          <p className="mt-0.5 font-semibold tabular-nums text-gray-900">
+            {formatRupees(pendingPrincipal)}
+          </p>
+        </div>
+        <div>
+          <p className="text-[10px] uppercase tracking-wider text-gray-400">Pending interest</p>
+          <p className="mt-0.5 font-semibold tabular-nums text-gray-900">
+            {formatRupees(pendingInterest)}
+          </p>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <div>
           <label htmlFor="status" className="block text-xs font-medium text-gray-700">
             Final status
@@ -100,8 +131,10 @@ export function CloseLoanForm({ loanId, status }: Props) {
             onChange={(e) => setFinalStatus(e.target.value as 'paid' | 'write_off')}
             className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
           >
-            <option value="paid">Paid</option>
-            <option value="write_off">Write off</option>
+            <option value="paid" disabled={hasDues}>
+              Paid {hasDues ? '— blocked, dues pending' : ''}
+            </option>
+            <option value="write_off">Write off / waive</option>
           </select>
         </div>
 
@@ -120,30 +153,62 @@ export function CloseLoanForm({ loanId, status }: Props) {
           />
         </div>
 
-        <div>
-          <label htmlFor="bad_debt" className="block text-xs font-medium text-gray-700">
-            Bad debt (₹)
-            {finalStatus === 'write_off' && (
-              <span className="ml-1 text-xs font-normal text-gray-400">(required for write-off)</span>
-            )}
-          </label>
-          <input
-            id="bad_debt"
-            name="bad_debt"
-            type="number"
-            step="0.01"
-            min="0"
-            defaultValue={0}
-            className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-          />
-        </div>
+        {finalStatus === 'write_off' && (
+          <>
+            <div>
+              <label htmlFor="bad_debt" className="block text-xs font-medium text-gray-700">
+                Principal write-off (₹)
+              </label>
+              <input
+                id="bad_debt"
+                name="bad_debt"
+                type="number"
+                step="0.01"
+                min="0"
+                max={pendingPrincipal}
+                key={`bad_debt-${pendingPrincipal}`}
+                defaultValue={pendingPrincipal}
+                className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              />
+              <p className="mt-1 text-[11px] text-gray-400">
+                Cannot exceed pending principal ({formatRupees(pendingPrincipal)}).
+              </p>
+            </div>
+            <div>
+              <label htmlFor="interest_waived" className="block text-xs font-medium text-gray-700">
+                Interest waived (₹)
+              </label>
+              <input
+                id="interest_waived"
+                name="interest_waived"
+                type="number"
+                step="0.01"
+                min="0"
+                max={pendingInterest}
+                key={`interest_waived-${pendingInterest}`}
+                defaultValue={pendingInterest}
+                className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              />
+              <p className="mt-1 text-[11px] text-gray-400">
+                Cannot exceed pending interest ({formatRupees(pendingInterest)}).
+              </p>
+            </div>
+          </>
+        )}
       </div>
 
       {finalStatus === 'write_off' && (
-        <BankBalanceUpdater
-          defaultDirection={LOAN_WRITE_OFF_DEFAULT}
-          label="Update FCF bank balance with this write-off"
-        />
+        <p className="rounded-md bg-gray-50 px-3 py-2 text-[11px] text-gray-500 ring-1 ring-gray-200">
+          Bank balance is not adjusted on write-off — the principal already left the bank when
+          the loan was disbursed, and the waived interest was never received.
+        </p>
+      )}
+
+      {paidBlocked && (
+        <p className="rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800 ring-1 ring-amber-200">
+          A Paid close is blocked while dues remain. Switch to Write off to record what is being
+          waived, then close.
+        </p>
       )}
 
       {state?.error && <p className="text-sm text-red-600">{state.error}</p>}
@@ -152,7 +217,7 @@ export function CloseLoanForm({ loanId, status }: Props) {
       <div className="flex justify-end">
         <button
           type="submit"
-          disabled={pending}
+          disabled={pending || paidBlocked}
           className="rounded-md bg-blue-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
         >
           {pending ? 'Closing…' : 'Confirm close'}

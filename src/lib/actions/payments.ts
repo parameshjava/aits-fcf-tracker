@@ -5,7 +5,7 @@ import { createClient } from '@/lib/supabase/server'
 import { getCurrentUser } from './auth'
 import { applyBalanceDelta } from './reference'
 import { defaultDirectionForContribution } from '@/lib/balance-direction'
-import type { ContributionType } from '../constants'
+import type { TransactionType } from '../constants'
 
 export async function submitPayment(formData: FormData) {
   const supabase = await createClient()
@@ -18,8 +18,13 @@ export async function submitPayment(formData: FormData) {
   const transactionDate = formData.get('transaction_date') as string
   const transactionId = formData.get('transaction_id') as string
   const amount = parseFloat(formData.get('amount') as string)
-  const contributionType = formData.get('contribution_type') as ContributionType
+  const transactionType = formData.get('transaction_type') as TransactionType
   const description = formData.get('description') as string
+  const loanIdRaw = (formData.get('loan_id') as string | null)?.trim() || null
+
+  if (transactionType === 'loan_repayment' && !loanIdRaw) {
+    return { error: 'Pick the loan this repayment is for' }
+  }
 
   // Auto-attribute to the submitter's canonical member row (matched by email).
   // Without this, the approved transaction ends up with member_id = null and
@@ -39,10 +44,11 @@ export async function submitPayment(formData: FormData) {
     transaction_date: transactionDate,
     transaction_id: transactionId,
     amount,
-    contribution_type: contributionType,
+    transaction_type: transactionType,
     description,
     submitted_by: user.id,
     member_id: memberId,
+    loan_id: loanIdRaw,
     status: 'pending',
   })
 
@@ -183,7 +189,7 @@ export async function approvePayment(formData: FormData) {
     transaction_date: finalDate,
     transaction_id: finalTxnId,
     amount: finalAmount,
-    contribution_type: payment.contribution_type,
+    transaction_type: payment.transaction_type,
     interest_source: payment.interest_source,
     member_id: finalMemberId,
     loan_id: payment.loan_id,
@@ -223,7 +229,7 @@ export async function approvePayment(formData: FormData) {
     const direction =
       balanceDirectionRaw === 'add' || balanceDirectionRaw === 'subtract'
         ? balanceDirectionRaw
-        : defaultDirectionForContribution(payment.contribution_type as import('@/lib/constants').ContributionType)
+        : defaultDirectionForContribution(payment.transaction_type as import('@/lib/constants').TransactionType)
     const delta = direction === 'add' ? finalAmount : -finalAmount
     const result = await applyBalanceDelta(delta)
     if (result.error) {

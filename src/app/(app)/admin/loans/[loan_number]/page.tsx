@@ -2,7 +2,7 @@ import Link from 'next/link'
 import { notFound, redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { formatRupees } from '@/lib/format'
-import { getLoanByNumber } from '@/lib/actions/loans'
+import { getLoanByNumber, getLoanDetail } from '@/lib/actions/loans'
 import { EditLoanForm } from './edit-loan-form'
 import { CloseLoanForm } from './close-loan-form'
 
@@ -42,6 +42,9 @@ export default async function AdminLoanManagePage({
   const { loan_number } = await params
   const loan = await getLoanByNumber(decodeURIComponent(loan_number))
   if (!loan) notFound()
+  const detail = await getLoanDetail(loan.id)
+  const pendingPrincipal = detail?.financials.balance ?? 0
+  const pendingInterest = detail?.financials.interestDue ?? 0
 
   return (
     <div className="space-y-6">
@@ -106,11 +109,16 @@ export default async function AdminLoanManagePage({
         loanId={loan.id}
         principal={Number(loan.principal_amount)}
         startDate={loan.start_date}
-        historicalInterestPaid={Number(loan.historical_interest_paid || 0)}
+        interestWaiverMonths={Number(loan.interest_waiver_months || 0)}
         notes={loan.notes}
       />
 
-      <CloseLoanForm loanId={loan.id} status={loan.status} />
+      <CloseLoanForm
+        loanId={loan.id}
+        status={loan.status}
+        pendingPrincipal={pendingPrincipal}
+        pendingInterest={pendingInterest}
+      />
     </div>
   )
 }

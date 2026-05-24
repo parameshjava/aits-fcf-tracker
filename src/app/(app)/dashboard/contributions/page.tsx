@@ -16,9 +16,9 @@ type Row = RawTxn & {
 }
 
 function rowMatchesType(row: Row, t: TypeKey): boolean {
-  if (t === 'contribution') return row.contribution_type === 'contribution'
-  if (t === 'interest_loans') return row.contribution_type === 'interest' && row.interest_source === 'loans'
-  if (t === 'interest_bank')  return row.contribution_type === 'interest' && row.interest_source === 'bank'
+  if (t === 'contribution') return row.transaction_type === 'contribution'
+  if (t === 'interest_loans') return row.transaction_type === 'interest' && row.interest_source === 'loans'
+  if (t === 'interest_bank')  return row.transaction_type === 'interest' && row.interest_source === 'bank'
   return false
 }
 
@@ -61,7 +61,7 @@ export default async function ContributionsPage({
   const all = (await getTransactions()) as Row[]
   const allowed = new Set(SECTION_TYPES.contributions)
   const rows = all
-    .filter((t) => allowed.has(t.contribution_type))
+    .filter((t) => allowed.has(t.transaction_type))
     .filter((t) => {
       // Date range (inclusive)
       if (t.transaction_date < from) return false

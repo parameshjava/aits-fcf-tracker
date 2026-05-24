@@ -10,12 +10,18 @@ You are an expert full-stack engineer specializing in the *FCF Tracker* applicat
 
 Load only the file matching the task; do not preload all of these.
 
-| Task                    | File                     |
-| :---------------------- | :----------------------- |
-| Supabase schema         | docs/supabase-schema.sql |
-| Supabase setup guide    | docs/supabase-setup.md   |
-| Vercel deployment guide | docs/vercel-setup.md     |
-| Design tokens & system  | DESIGN.md                |
+| Task                       | File                            |
+| :------------------------- | :------------------------------ |
+| Supabase schema (current)  | scripts/prod/01-schema.sql      |
+| Supabase views (current)   | scripts/prod/02-views.sql       |
+| Canonical member seed      | scripts/prod/03-seed-members.sql |
+| Historical transaction seed| scripts/prod/transactions/{YYYY}.sql |
+| Supabase setup guide       | docs/supabase-setup.md          |
+| Vercel deployment guide    | docs/vercel-setup.md            |
+| Anti-pause cron setup      | docs/cron-setup.md              |
+| Weekly DB backup setup     | docs/backup-setup.md            |
+| Design tokens & system     | DESIGN.md                       |
+| Architecture & risk report | docs/technical-report.md        |
 
 ## Golden rules
 
@@ -26,8 +32,9 @@ Load only the file matching the task; do not preload all of these.
 - **Form actions are server actions in `@/lib/actions/`.** They never use `redirect()` for success — return `{ success: string }` instead, and let the client component navigate via `useRouter`. `redirect()` is OK for hard auth flows (e.g., `signInWithGoogle`, `signOut`, unauth fallback in layouts).
 - **💰 Currency:** all rupee values render via `formatRupees(n)` from `@/lib/format`. Locale is pinned to `en-IN` (e.g. `₹1,00,000`, not `₹100,000`). **Never use `$`** and never call `.toLocaleString()` without a locale — it causes hydration mismatches.
 - **🤝 Members are the canonical "person".** Bank accounts, transactions, and loans reference `public.members(id)`. `public.profiles` is the auth-linked row; not all members have a profile.
-- **Loan numbers and transaction IDs are auto-generated.** Postgres triggers fill `loan_number` (`YYYYMMDD-NNN`, running serial) and `transaction_id` (`YYYYMMDD-NNN`, per-date serial) on insert when the column is left empty.
-- **Interest rate is a global setting** stored at `public.app_settings.value` where `key = 'interest_per_lakh'`. Read with `getInterestPerLakh()`. Never hardcode the rate.
+- **Loan numbers and transaction IDs are auto-generated.** Postgres triggers fill `loan_number` as `YYYYMM-NNN` (per-year counter via `public.loan_year_counter`, month taken from `start_date`) and `transaction_id` as `YYYYMMDD-NNN` (date prefix + a **global** running sequence `public.transactions_seq` — *not* per-date). Leave both columns empty on insert.
+- **Global config lives in `public.reference`** (key/value rows: `interest_per_lakh`, `bank_balance`, `corpus_threshold`, `donation_eligibility_pct`). Read via helpers in `@/lib/actions/reference.ts` (e.g. `getInterestPerLakh()`). Admin updates to `reference.value` must also append a row to `public.reference_history` so the historical timeline stays intact. Never hardcode any reference value.
+- **`transaction_type` is the discriminator** on both `transactions` and `pending_payments`. Allowed values: `interest`, `contribution`, `loan_repayment`, `penalty`, `donation`, `other`. Interest rows additionally carry `interest_source` ∈ {`loans`, `bank`}.
 
 ## Stack
 
@@ -127,19 +134,32 @@ docs/
 
 ## Database tables (Supabase)
 
-| Table              | Purpose                                                                 |
-| :----------------- | :---------------------------------------------------------------------- |
-| `auth.users`       | Supabase-managed; we never write directly.                              |
-| `profiles`         | 1:1 with auth.users. Holds `role` ('admin'/'user') and `full_name`.     |
-| `allowed_emails`   | Allowlist gating Google sign-in (via `enforce_email_allowlist` hook).   |
-| `members`          | 22 canonical contributors. Independent of auth — backfilled from Excel. |
-| `loans`            | First-class loans. `loan_number` auto-generated. Per-loan history.      |
-| `transactions`     | All money movements. References `member_id` and (optionally) `loan_id`. |
-| `pending_payments` | User-submitted, awaiting admin verification → approves into transactions.|
-| `bank_accounts`    | Per-member bank account details (admin-managed).                        |
-| `app_settings`     | Global key/value config (e.g., `interest_per_lakh = 650`).              |
+Authoritative DDL: `scripts/prod/01-schema.sql`. RLS is **disabled** project-wide — write protection is enforced at the server-action layer (always re-check `getCurrentUser()` + role).
 
-RLS is **disabled** project-wide — this is a small trusted group; write protection is enforced at the server-action layer.
+| Table                | Purpose                                                                                                |
+| :------------------- | :----------------------------------------------------------------------------------------------------- |
+| `auth.users`         | Supabase-managed; we never write directly.                                                             |
+| `allowed_emails`     | Allowlist gating Google sign-in (via `enforce_email_allowlist` Before-User-Created hook). Holds `role`.|
+| `profiles`           | 1:1 with `auth.users`. `role` is mirrored from `allowed_emails` by `sync_profile_role_from_allowlist`. |
+| `members`            | 22 canonical contributors (slug + email unique). Independent of auth — backfilled from Excel.          |
+| `member_contacts`    | Multi-phone / multi-email per member. `is_primary` partial-unique per `(member_id, kind)`.             |
+| `loans`              | First-class loans. `loan_number` auto-generated `YYYYMM-NNN`. Includes `interest_waiver_months`, `interest_waived`, `bad_debt`. |
+| `transactions`       | All money movements. `transaction_id` auto `YYYYMMDD-NNN` (global seq). `transaction_type` enum (see Golden rules). References `member_id` and optionally `loan_id`. |
+| `pending_payments`   | User-submitted, awaiting admin verification → approves into `transactions`. Mirrors the txn columns plus `submitted_by`, `reviewed_by`, `admin_notes`. |
+| `bank_accounts`      | Per-member bank account details. `account_type` ∈ {savings, current, fixed_deposit, recurring, other}. |
+| `reference`          | Global key/value config (current value). Drives `interest_per_lakh`, `bank_balance`, `corpus_threshold`, `donation_eligibility_pct`. |
+| `reference_history`  | Versioned timeline of `reference` values (`effective_from` / `effective_to`) for historical math.      |
+| `loan_year_counter`  | Per-year loan counter (year PK, counter int). Bumped by `set_loan_number` trigger.                     |
+
+**Triggers / hooks**
+- `set_transaction_id` (BEFORE INSERT on `transactions`) — fills `transaction_id` from `transaction_date` + `transactions_seq` when null.
+- `set_loan_number` (BEFORE INSERT on `loans`) — fills `loan_number` from `start_date` + `loan_year_counter` when null.
+- `handle_new_user` (AFTER INSERT on `auth.users`) — creates the matching `profiles` row, pulling role from `allowed_emails`.
+- `sync_profile_role_from_allowlist` (AFTER UPDATE on `allowed_emails`) — keeps `profiles.role` aligned with the allowlist.
+- `enforce_email_allowlist` (Auth → Before-User-Created hook) — rejects sign-ups not in `allowed_emails`.
+
+**Views** (read-only; consumed via Supabase from server actions / RSCs — see `scripts/prod/02-views.sql`):
+`member_directory`, `dashboard_transactions`, `dashboard_monthly`, `dashboard_yearly`, `dashboard_overall`, `dashboard_member_totals`, `dashboard_member_month_matrix`, `loans_balances`.
 
 ## Boundaries
 
