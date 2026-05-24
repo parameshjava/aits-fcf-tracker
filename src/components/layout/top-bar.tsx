@@ -34,57 +34,41 @@ export function TopBar({ fullName, email, avatarUrl }: Props) {
 
   return (
     <div className="sticky top-0 z-20 border-b border-gray-200/80 bg-white/90 backdrop-blur">
-      <div className="relative mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-3 lg:px-8">
-        {/* Centered logo — sits behind the row so left/right content doesn't shift */}
-        <Image
-          src="/logo.png"
-          alt="Friends Cooperative Fund"
-          width={75}
-          height={75}
-          priority
-          className="pointer-events-none absolute left-1/2 top-1/2 hidden h-[75px] w-[75px] -translate-x-1/2 -translate-y-1/2 rounded-full sm:block"
-        />
-        <div className="flex min-w-0 items-center gap-3">
-          <button
-            type="button"
-            onClick={() => window.dispatchEvent(new CustomEvent('sidebar:open'))}
-            aria-label="Open menu"
-            className="-ml-1 rounded-md p-1.5 text-gray-700 hover:bg-gray-100 lg:hidden"
-          >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-5 w-5">
-              <path d="M4 6h16M4 12h16M4 18h16" strokeLinecap="round" />
-            </svg>
-          </button>
-          <div className="min-w-0">
-          <h1 className="truncate text-lg font-semibold text-gray-900 lg:text-xl">
-            {title}
-          </h1>
-          {crumbs.length > 1 && (
-            <nav className="mt-0.5 flex items-center gap-1 text-xs text-gray-500" aria-label="Breadcrumb">
-              {crumbs.map((c, i) => {
-                const last = i === crumbs.length - 1
-                const content = c.href && !last ? (
-                  <Link href={c.href} className="hover:text-gray-900">{c.label}</Link>
-                ) : (
-                  <span className={last ? 'text-gray-700' : ''}>{c.label}</span>
-                )
-                return (
-                  <span key={i} className="flex items-center gap-1">
-                    {content}
-                    {!last && (
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-3 w-3 text-gray-300">
-                        <path d="M9 6l6 6-6 6" strokeLinecap="round" strokeLinejoin="round" />
-                      </svg>
-                    )}
-                  </span>
-                )
-              })}
-            </nav>
-          )}
-          </div>
+      {/* Row 1 — banner row: edge-to-edge logo + nav controls.
+          Title + breadcrumb now live in Row 2 below, so the logo can
+          occupy the full middle slot without anything competing for
+          horizontal space. */}
+      <div className="mx-auto flex h-24 max-w-7xl items-center gap-4 px-4 lg:px-8">
+        <button
+          type="button"
+          onClick={() => window.dispatchEvent(new CustomEvent('sidebar:open'))}
+          aria-label="Open menu"
+          className="-ml-1 shrink-0 rounded-md p-1.5 text-gray-700 hover:bg-gray-100 lg:hidden"
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-5 w-5">
+            <path d="M4 6h16M4 12h16M4 18h16" strokeLinecap="round" />
+          </svg>
+        </button>
+
+        {/* Centered logo — the source PNG is re-exported at 6:1 (3000×500)
+            with white side-padding around the original 4:1 artwork. That
+            means the slot can use `object-cover` to fill the full width
+            without cropping the artwork (the cover crop only ever eats
+            into the white padding bars, which blend with the bg-white
+            TopBar). */}
+        <div className="hidden min-w-0 flex-1 self-stretch overflow-hidden sm:block">
+          <Image
+            src="/fcf-banner-3000x500.png"
+            alt="Friends Cooperative Fund"
+            width={3000}
+            height={500}
+            priority
+            className="h-full w-full rounded-md object-cover object-center"
+          />
         </div>
 
-        <div className="relative flex-shrink-0" ref={menuRef}>
+        <div className="flex flex-shrink-0 items-center gap-2">
+          <div className="relative" ref={menuRef}>
           <button
             type="button"
             onClick={() => setMenuOpen((v) => !v)}
@@ -131,8 +115,46 @@ export function TopBar({ fullName, email, avatarUrl }: Props) {
               </form>
             </div>
           )}
+          </div>
+        </div>
+      </div>
+
+      {/* Row 2 — page title + breadcrumb. Inside the sticky wrapper so it
+          pins with the banner. min-h-12 keeps the row a consistent height
+          whether or not a breadcrumb sub-row is present (Dashboard has no
+          breadcrumb; Loans, Donations, etc. do). */}
+      <div className="border-t border-gray-100/80">
+        <div className="mx-auto flex min-h-12 max-w-7xl items-center px-4 py-2 lg:px-8">
+          <div className="min-w-0 leading-tight">
+            <h1 className="truncate text-base font-semibold text-gray-900 lg:text-lg">
+              {title}
+            </h1>
+            {crumbs.length > 1 && (
+              <nav className="mt-0.5 flex items-center gap-1 text-xs text-gray-500" aria-label="Breadcrumb">
+                {crumbs.map((c, i) => {
+                  const last = i === crumbs.length - 1
+                  const content = c.href && !last ? (
+                    <Link href={c.href} className="hover:text-gray-900">{c.label}</Link>
+                  ) : (
+                    <span className={last ? 'text-gray-700' : ''}>{c.label}</span>
+                  )
+                  return (
+                    <span key={i} className="flex items-center gap-1">
+                      {content}
+                      {!last && (
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-3 w-3 text-gray-300">
+                          <path d="M9 6l6 6-6 6" strokeLinecap="round" strokeLinejoin="round" />
+                        </svg>
+                      )}
+                    </span>
+                  )
+                })}
+              </nav>
+            )}
+          </div>
         </div>
       </div>
     </div>
   )
 }
+

@@ -1,9 +1,10 @@
 'use client'
 
-import { useActionState } from 'react'
-import { CONTRIBUTION_TYPES } from '@/lib/constants'
+import { useActionState, useState } from 'react'
+import { TRANSACTION_TYPES } from '@/lib/constants'
 import { submitPayment } from '@/lib/actions/payments'
-import { todayISO } from '@/lib/format'
+import { getActiveLoansWithBalance, type ActiveLoanOption } from '@/lib/actions/loans'
+import { formatRupees, todayISO } from '@/lib/format'
 
 export function SubmitPaymentForm() {
   const [state, action, pending] = useActionState(
@@ -12,6 +13,43 @@ export function SubmitPaymentForm() {
     },
     null
   )
+
+  const [transactionType, setTransactionType] = useState<string>('')
+  const [loanId, setLoanId] = useState<string>('')
+  const [amount, setAmount] = useState<string>('')
+  const [loans, setLoans] = useState<ActiveLoanOption[]>([])
+  const [loansLoading, setLoansLoading] = useState(false)
+
+  const isLoanRepayment = transactionType === 'loan_repayment'
+  const selectedLoan = loans.find((l) => l.id === loanId) ?? null
+
+  function handleTransactionTypeChange(value: string) {
+    setTransactionType(value)
+    if (value === 'loan_repayment') {
+      // Lazy-load active loans the first time the picker is needed.
+      if (loans.length === 0 && !loansLoading) {
+        setLoansLoading(true)
+        getActiveLoansWithBalance()
+          .then((rows) => setLoans(rows))
+          .catch((e) => {
+            console.error('Failed to load active loans:', e)
+          })
+          .finally(() => setLoansLoading(false))
+      }
+    } else {
+      setLoanId('')
+    }
+  }
+
+  function handleLoanChange(id: string) {
+    setLoanId(id)
+    const picked = loans.find((l) => l.id === id)
+    if (picked) {
+      // Prefill the full pending principal. The member can lower it for a
+      // partial payment — that's the whole reason we surfaced this number.
+      setAmount(picked.balance > 0 ? String(picked.balance) : '')
+    }
+  }
 
   return (
     <section className="rounded-lg border bg-white p-6">
@@ -57,6 +95,30 @@ export function SubmitPaymentForm() {
 
           <div>
             <label
+              htmlFor="transaction_type"
+              className="block text-sm font-medium text-gray-700"
+            >
+              Contribution type
+            </label>
+            <select
+              id="transaction_type"
+              name="transaction_type"
+              required
+              value={transactionType}
+              onChange={(e) => handleTransactionTypeChange(e.target.value)}
+              className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            >
+              <option value="">Select type</option>
+              {TRANSACTION_TYPES.map((type) => (
+                <option key={type} value={type}>
+                  {type.replace(/_/g, ' ')}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label
               htmlFor="amount"
               className="block text-sm font-medium text-gray-700"
             >
@@ -69,32 +131,53 @@ export function SubmitPaymentForm() {
               step="0.01"
               min="0"
               required
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
               className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
               placeholder="0.00"
             />
+            {isLoanRepayment && selectedLoan && (
+              <p className="mt-1 text-xs text-gray-500">
+                Pending principal: <span className="font-medium text-gray-700">{formatRupees(selectedLoan.balance)}</span>
+                {' '}— edit to pay a partial amount.
+              </p>
+            )}
           </div>
 
-          <div>
-            <label
-              htmlFor="contribution_type"
-              className="block text-sm font-medium text-gray-700"
-            >
-              Contribution type
-            </label>
-            <select
-              id="contribution_type"
-              name="contribution_type"
-              required
-              className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-            >
-              <option value="">Select type</option>
-              {CONTRIBUTION_TYPES.map((type) => (
-                <option key={type} value={type}>
-                  {type.replace(/_/g, ' ')}
+          {isLoanRepayment && (
+            <div className="sm:col-span-2">
+              <label
+                htmlFor="loan_id"
+                className="block text-sm font-medium text-gray-700"
+              >
+                Loan
+              </label>
+              <select
+                id="loan_id"
+                name="loan_id"
+                required
+                value={loanId}
+                onChange={(e) => handleLoanChange(e.target.value)}
+                className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              >
+                <option value="">
+                  {loansLoading ? 'Loading loans…' : 'Select a loan'}
                 </option>
-              ))}
-            </select>
-          </div>
+                {loans.map((l) => (
+                  <option key={l.id} value={l.id}>
+                    {l.loan_number}
+                    {l.member_name ? ` · ${l.member_name}` : ''}
+                    {' '}— pending {formatRupees(l.balance)}
+                  </option>
+                ))}
+              </select>
+              {!loansLoading && loans.length === 0 && (
+                <p className="mt-1 text-xs text-gray-500">
+                  No active loans found.
+                </p>
+              )}
+            </div>
+          )}
 
           <div className="sm:col-span-2">
             <label

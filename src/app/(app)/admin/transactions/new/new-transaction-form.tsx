@@ -3,8 +3,8 @@
 import { useActionState, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createTransaction } from '@/lib/actions/transactions'
-import { CONTRIBUTION_TYPES } from '@/lib/constants'
-import type { ContributionType } from '@/lib/constants'
+import { TRANSACTION_TYPES } from '@/lib/constants'
+import type { TransactionType } from '@/lib/constants'
 import { todayISO } from '@/lib/format'
 import { SearchableSelect } from '@/components/searchable-select'
 import { BankBalanceUpdater } from '@/components/bank-balance-updater'
@@ -61,7 +61,7 @@ export function NewTransactionForm({
     : loans
 
   const balanceDefault = type
-    ? defaultDirectionForContribution(type as ContributionType)
+    ? defaultDirectionForContribution(type as TransactionType)
     : 'add'
 
   return (
@@ -98,19 +98,19 @@ export function NewTransactionForm({
         </div>
 
         <div>
-          <label htmlFor="contribution_type" className="block text-sm font-medium text-gray-700">
+          <label htmlFor="transaction_type" className="block text-sm font-medium text-gray-700">
             Contribution type
           </label>
           <select
-            id="contribution_type"
-            name="contribution_type"
+            id="transaction_type"
+            name="transaction_type"
             required
             value={type}
             onChange={(e) => setType(e.target.value)}
             className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
           >
             <option value="">Select type</option>
-            {CONTRIBUTION_TYPES.map((t) => (
+            {TRANSACTION_TYPES.map((t) => (
               <option key={t} value={t}>
                 {t.replace(/_/g, ' ')}
               </option>

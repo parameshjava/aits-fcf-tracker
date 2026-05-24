@@ -57,7 +57,8 @@ const Emoji = ({ char, label }: { char: string; label: string }) => (
 
 const mainGroup: NavGroup = {
   items: [
-    { label: 'Dashboard', href: '/dashboard', icon: <Emoji char="📊" label="Dashboard" /> },
+    { label: 'Dashboard', href: '/dashboard',         icon: <Emoji char="📊" label="Dashboard" /> },
+    { label: 'Members',   href: '/dashboard/members', icon: <Emoji char="👥" label="Members" /> },
   ],
 }
 

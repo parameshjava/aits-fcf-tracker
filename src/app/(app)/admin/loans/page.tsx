@@ -3,14 +3,7 @@ import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { getLoans, getInterestPerLakh } from '@/lib/actions/loans'
 import { LoansListTable, type LoansListRow } from '@/components/loans-list-table'
-
-function monthsBetween(start: string, endOrNow: Date): number {
-  const s = new Date(start)
-  const diff =
-    (endOrNow.getUTCFullYear() - s.getUTCFullYear()) * 12 +
-    (endOrNow.getUTCMonth() - s.getUTCMonth())
-  return Math.max(diff, 0)
-}
+import { computeLoanFinancials, type LoanTxnInput } from '@/lib/loan-math'
 
 export default async function AdminLoansListPage() {
   const supabase = await createClient()
@@ -33,49 +26,33 @@ export default async function AdminLoansListPage() {
   const { data: txnsRaw } = loanIds.length
     ? await supabase
         .from('transactions')
-        .select('loan_id, amount, contribution_type, interest_source')
+        .select('loan_id, amount, transaction_type, interest_source, transaction_date')
         .in('loan_id', loanIds)
     : { data: [] as unknown[] }
 
-  type TxnAgg = { loan_id: string; amount: number; contribution_type: string; interest_source: 'loans' | 'bank' | null }
+  type TxnAgg = LoanTxnInput & { loan_id: string }
   const txns = (txnsRaw ?? []) as TxnAgg[]
 
-  const paidPrincipalByLoan = new Map<string, number>()
-  const paidInterestByLoan = new Map<string, number>()
+  const txnsByLoan = new Map<string, LoanTxnInput[]>()
   for (const t of txns) {
     if (!t.loan_id) continue
-    const amt = Number(t.amount) || 0
-    if (t.contribution_type === 'loan_repayment') {
-      paidPrincipalByLoan.set(t.loan_id, (paidPrincipalByLoan.get(t.loan_id) ?? 0) + amt)
-    } else if (t.contribution_type === 'interest' && t.interest_source === 'loans') {
-      paidInterestByLoan.set(t.loan_id, (paidInterestByLoan.get(t.loan_id) ?? 0) + amt)
-    }
+    const list = txnsByLoan.get(t.loan_id) ?? []
+    list.push(t)
+    txnsByLoan.set(t.loan_id, list)
   }
 
   const tableRows: LoansListRow[] = loans.map((l) => {
-    const paidPrincipal = paidPrincipalByLoan.get(l.id) ?? 0
-    const paidInterest =
-      (paidInterestByLoan.get(l.id) ?? 0) + Number(l.historical_interest_paid || 0)
-    const balance = Math.max(
-      Number(l.principal_amount) - paidPrincipal - Number(l.bad_debt || 0),
-      0,
-    )
-    const endOrNow = l.end_date ? new Date(l.end_date) : new Date()
-    const months = monthsBetween(l.start_date, endOrNow)
-    const expectedInterest =
-      (Number(l.principal_amount) / 100000) * interestPerLakh * months
-    const interestDue = Math.max(expectedInterest - paidInterest, 0)
-
+    const f = computeLoanFinancials(l, txnsByLoan.get(l.id) ?? [], interestPerLakh)
     return {
       id: l.id,
       loan_number: l.loan_number,
       member_name: l.member?.name ?? null,
-      principal_amount: Number(l.principal_amount),
+      principal_amount: f.principal,
       start_date: l.start_date,
       status: l.status,
-      paid_interest: paidInterest,
-      interest_due: interestDue,
-      balance,
+      paid_interest: f.paidInterestTotal,
+      interest_due: f.interestDue,
+      balance: f.balance,
       detail_href: `/admin/loans/${encodeURIComponent(l.loan_number)}`,
     }
   })

@@ -7,6 +7,7 @@ import {
   getLoanTransactions,
   getInterestPerLakh,
 } from '@/lib/actions/loans'
+import { computeLoanFinancials } from '@/lib/loan-math'
 
 const STATUS_PILL: Record<string, string> = {
   active:    'bg-blue-50 text-blue-700 ring-blue-200',
@@ -34,14 +35,6 @@ function formatDate(iso: string | null): string {
   return `${String(d.getUTCDate()).padStart(2, '0')}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${d.getUTCFullYear()}`
 }
 
-function monthsBetween(start: string, endOrNow: Date): number {
-  const s = new Date(start)
-  const diff =
-    (endOrNow.getUTCFullYear() - s.getUTCFullYear()) * 12 +
-    (endOrNow.getUTCMonth() - s.getUTCMonth())
-  return Math.max(diff, 0)
-}
-
 export default async function LoanDetailPage({
   params,
 }: {
@@ -58,21 +51,17 @@ export default async function LoanDetailPage({
     getInterestPerLakh(),
   ])
 
-  const endOrNow = loan.end_date ? new Date(loan.end_date) : new Date()
-  const months = monthsBetween(loan.start_date, endOrNow)
-  const principal = Number(loan.principal_amount)
-  const expectedInterest = (principal / 100000) * interestPerLakh * months
-
-  const paidInterestFromTxns = txns
-    .filter((t) => t.contribution_type === 'interest' && t.interest_source === 'loans')
-    .reduce((s, t) => s + Number(t.amount || 0), 0)
-  const paidInterestTotal = paidInterestFromTxns + Number(loan.historical_interest_paid || 0)
-  const pendingInterest = Math.max(expectedInterest - paidInterestTotal, 0)
-
-  const paidPrincipal = txns
-    .filter((t) => t.contribution_type === 'loan_repayment')
-    .reduce((s, t) => s + Number(t.amount || 0), 0)
-  const balance = Math.max(principal - paidPrincipal - Number(loan.bad_debt || 0), 0)
+  const f = computeLoanFinancials(loan, txns, interestPerLakh)
+  const {
+    principal,
+    months,
+    expectedInterest,
+    paidInterestTotal,
+    interestDue: pendingInterest,
+    paidPrincipal,
+    balance,
+    isClosed,
+  } = f
 
   return (
     <div className="space-y-8">
@@ -120,11 +109,12 @@ export default async function LoanDetailPage({
           </div>
           <div className="sm:col-span-2">
             <p className="text-xs uppercase tracking-wider text-gray-400">
-              Monthly interest expected
+              Interest rate
             </p>
             <p className="mt-1 text-sm text-gray-700">
-              {formatRupees((principal / 100000) * interestPerLakh)} = ₹
-              {interestPerLakh.toLocaleString('en-IN')}/L × {(principal / 100000).toFixed(2)} L
+              ₹{interestPerLakh.toLocaleString('en-IN')} per ₹1L per month, accrued on{' '}
+              <span className="font-medium">pending principal</span>
+              {isClosed ? ' (loan closed — no further interest)' : ''}
             </p>
           </div>
           {loan.notes && (
@@ -138,36 +128,38 @@ export default async function LoanDetailPage({
 
       <section className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <KpiTile
+          label="Pending principal"
+          value={formatRupees(balance)}
+          hint={
+            Number(loan.bad_debt || 0) > 0
+              ? `bad debt ${formatRupees(loan.bad_debt)}`
+              : balance === 0
+              ? 'fully repaid'
+              : 'amount you can pay (full or partial)'
+          }
+          accent="blue"
+        />
+        <KpiTile
           label="Paid principal"
           value={formatRupees(paidPrincipal)}
           hint={`of ${formatRupees(principal)}`}
-          accent="blue"
+          accent="gray"
         />
         <KpiTile
           label="Paid interest"
           value={formatRupees(paidInterestTotal)}
-          hint={
-            loan.historical_interest_paid && Number(loan.historical_interest_paid) > 0
-              ? `incl. ${formatRupees(loan.historical_interest_paid)} historical`
-              : 'tracked transactions'
-          }
+          hint="tracked transactions"
           accent="indigo"
         />
         <KpiTile
           label="Pending interest"
           value={formatRupees(pendingInterest)}
-          hint={`expected ${formatRupees(expectedInterest)}`}
-          accent="emerald"
-        />
-        <KpiTile
-          label="Outstanding balance"
-          value={formatRupees(balance)}
           hint={
-            Number(loan.bad_debt || 0) > 0
-              ? `bad debt ${formatRupees(loan.bad_debt)}`
-              : 'after repayments'
+            isClosed
+              ? 'loan closed — settled'
+              : `expected ${formatRupees(expectedInterest)} on balance`
           }
-          accent="gray"
+          accent="emerald"
         />
       </section>
 
@@ -197,9 +189,9 @@ export default async function LoanDetailPage({
                   </tr>
                 ) : (
                   txns.map((t) => {
-                    const base = TYPE_LABELS[t.contribution_type] ?? t.contribution_type
+                    const base = TYPE_LABELS[t.transaction_type] ?? t.transaction_type
                     const label =
-                      t.contribution_type === 'interest' && t.interest_source
+                      t.transaction_type === 'interest' && t.interest_source
                         ? `${base} · ${t.interest_source}`
                         : base
                     return (

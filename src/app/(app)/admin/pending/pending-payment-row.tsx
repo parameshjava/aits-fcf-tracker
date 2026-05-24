@@ -5,14 +5,14 @@ import { approvePayment, rejectPayment } from '@/lib/actions/payments'
 import { formatRupees, todayISO } from '@/lib/format'
 import { BankBalanceUpdater } from '@/components/bank-balance-updater'
 import { defaultDirectionForContribution } from '@/lib/balance-direction'
-import type { ContributionType } from '@/lib/constants'
+import type { TransactionType } from '@/lib/constants'
 
 interface PendingPayment {
   id: string
   transaction_date: string
   transaction_id: string
   amount: number
-  contribution_type: string
+  transaction_type: string
   description: string | null
   member_id: string | null
   submitter: { full_name: string | null } | null
@@ -40,7 +40,7 @@ export function PendingPaymentRow({
   const approved = approveState && 'success' in approveState && approveState.success
 
   const balanceDefault = defaultDirectionForContribution(
-    payment.contribution_type as ContributionType,
+    payment.transaction_type as TransactionType,
   )
 
   return (
@@ -71,7 +71,7 @@ export function PendingPaymentRow({
                   {formatRupees(payment.amount)}
                 </span>
                 <span className="capitalize">
-                  {payment.contribution_type.replace(/_/g, ' ')}
+                  {payment.transaction_type.replace(/_/g, ' ')}
                 </span>
               </div>
               <div className="text-xs text-gray-500">
@@ -173,7 +173,7 @@ export function PendingPaymentRow({
                 </select>
               </div>
               <p className="text-xs text-gray-500 sm:col-span-2">
-                Type ({payment.contribution_type.replace(/_/g, ' ')}) is not
+                Type ({payment.transaction_type.replace(/_/g, ' ')}) is not
                 editable here. For deeper changes, reject this submission and
                 use <strong>Admin → Add transaction</strong>.
               </p>

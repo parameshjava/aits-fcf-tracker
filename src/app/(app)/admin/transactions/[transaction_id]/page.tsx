@@ -71,7 +71,7 @@ export default async function AdminTransactionManagePage({
           transaction_id: txn.transaction_id,
           transaction_date: txn.transaction_date,
           amount: Number(txn.amount),
-          contribution_type: txn.contribution_type,
+          transaction_type: txn.transaction_type,
           interest_source: txn.interest_source ?? null,
           member_id: txn.member_id ?? null,
           loan_id: txn.loan_id ?? null,

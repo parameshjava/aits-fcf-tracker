@@ -132,6 +132,142 @@ export async function upsertReference(formData: FormData) {
   return { success: isNew ? 'Reference added' : 'Reference updated' }
 }
 
+// =============================================================================
+// reference_history — time-windowed values, used for historical lookups.
+// =============================================================================
+
+export type ReferenceHistoryRow = {
+  id: string
+  key: string
+  value: number
+  effective_from: string  // ISO date
+  effective_to: string | null
+  notes: string | null
+  created_at: string
+  created_by: string | null
+}
+
+export async function listReferenceHistory(key: string): Promise<ReferenceHistoryRow[]> {
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .from('reference_history')
+    .select('*')
+    .eq('key', key)
+    .order('effective_from', { ascending: false })
+  if (error) throw new Error(error.message)
+  return (data ?? []).map((r) => ({
+    ...(r as ReferenceHistoryRow),
+    value: toNumber((r as { value: unknown }).value),
+  }))
+}
+
+/**
+ * Resolve the reference value in effect at a given date.
+ *   - Looks for the latest history row whose window covers `date`
+ *   - Falls back to public.reference.value if no history exists
+ *   - Returns 0 if neither exists
+ */
+export async function getReferenceAt(key: string, date: string | Date): Promise<number> {
+  const supabase = await createClient()
+  const iso = date instanceof Date ? date.toISOString().slice(0, 10) : String(date)
+  const { data, error } = await supabase
+    .from('reference_history')
+    .select('value, effective_from, effective_to')
+    .eq('key', key)
+    .lte('effective_from', iso)
+    .order('effective_from', { ascending: false })
+    .limit(20)  // small bound; we filter by upper bound in JS
+  if (error) throw new Error(error.message)
+  const hit = (data ?? []).find(
+    (r) => r.effective_to == null || String(r.effective_to) >= iso,
+  ) as { value: unknown } | undefined
+  if (hit) return toNumber(hit.value)
+  try { return await getReference(key) } catch { return 0 }
+}
+
+/** Returns Map<year → value> for every year in [fromYear, toYear]. */
+export async function getReferenceYearMap(
+  key: string,
+  fromYear: number,
+  toYear: number,
+): Promise<Map<number, number>> {
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .from('reference_history')
+    .select('value, effective_from, effective_to')
+    .eq('key', key)
+    .order('effective_from', { ascending: true })
+  if (error) throw new Error(error.message)
+  type Row = { value: unknown; effective_from: string; effective_to: string | null }
+  const rows = (data ?? []) as Row[]
+  const fallback = await getReference(key).catch(() => 0)
+  const map = new Map<number, number>()
+  for (let y = fromYear; y <= toYear; y++) {
+    const probe = `${y}-12-31`
+    const hit = [...rows].reverse().find(
+      (r) => String(r.effective_from) <= probe && (r.effective_to == null || String(r.effective_to) >= `${y}-01-01`),
+    )
+    map.set(y, hit ? toNumber(hit.value) : fallback)
+  }
+  return map
+}
+
+export async function addReferenceHistory(formData: FormData) {
+  const user = await getCurrentUser()
+  if (!user || user.profile?.role !== 'admin') {
+    return { error: 'Unauthorized' }
+  }
+  const key = ((formData.get('key') as string) || '').trim()
+  const valueRaw = (formData.get('value') as string) || ''
+  const from = ((formData.get('effective_from') as string) || '').trim()
+  const toRaw = ((formData.get('effective_to') as string) || '').trim()
+  const notes = ((formData.get('notes') as string) || '').trim() || null
+
+  if (!key) return { error: 'Key is required' }
+  const value = parseFloat(valueRaw)
+  if (!Number.isFinite(value)) return { error: 'Value must be a number' }
+  if (!from) return { error: 'Effective-from date is required' }
+  const effectiveTo = toRaw || null
+  if (effectiveTo && effectiveTo < from) {
+    return { error: 'Effective-to must be on or after effective-from' }
+  }
+
+  const supabase = await createClient()
+  const { error } = await supabase.from('reference_history').insert({
+    key,
+    value,
+    effective_from: from,
+    effective_to: effectiveTo,
+    notes,
+    created_by: user.id,
+  })
+  if (error) {
+    if (error.code === '23505') return { error: 'A row already starts on that date — pick a different effective-from' }
+    return { error: error.message }
+  }
+
+  revalidatePath('/admin/reference')
+  revalidatePath(`/admin/reference/${key}`)
+  revalidatePath('/dashboard')
+  revalidatePath('/dashboard/donations')
+  return { success: 'History entry added' }
+}
+
+export async function deleteReferenceHistory(id: string) {
+  const user = await getCurrentUser()
+  if (!user || user.profile?.role !== 'admin') {
+    return { error: 'Unauthorized' }
+  }
+  if (!id) return { error: 'Row id is required' }
+  const supabase = await createClient()
+  const { error } = await supabase.from('reference_history').delete().eq('id', id)
+  if (error) return { error: error.message }
+  revalidatePath('/admin/reference')
+  revalidatePath('/dashboard')
+  revalidatePath('/dashboard/donations')
+  return { success: 'History entry deleted' }
+}
+
 export async function deleteReference(key: string) {
   const user = await getCurrentUser()
   if (!user || user.profile?.role !== 'admin') {

@@ -98,6 +98,24 @@ export function NewLoanForm({
         </div>
 
         <div className="sm:col-span-2">
+          <label htmlFor="interest_waiver_months" className="block text-sm font-medium text-gray-700">
+            Interest waiver
+            <span className="ml-1 text-xs font-normal text-gray-400">
+              (months from start with no interest — e.g. medical-benefit loans)
+            </span>
+          </label>
+          <input
+            id="interest_waiver_months"
+            name="interest_waiver_months"
+            type="number"
+            min="0"
+            step="1"
+            defaultValue={0}
+            className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+          />
+        </div>
+
+        <div className="sm:col-span-2">
           <label htmlFor="notes" className="block text-sm font-medium text-gray-700">
             Notes (optional)
           </label>
@@ -116,7 +134,7 @@ export function NewLoanForm({
       />
 
       <p className="text-xs text-gray-400">
-        Loan number is auto-generated as <code className="font-mono">YYYYMMDD-NNN</code> from the start date and a running serial.
+        Loan number is auto-generated as <code className="font-mono">YYYYMM-NNN</code> from the start date — the 3-digit serial resets every calendar year.
       </p>
 
       {state && 'error' in state && state.error && (

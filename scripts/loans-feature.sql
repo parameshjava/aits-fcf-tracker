@@ -42,9 +42,28 @@ create table if not exists public.loans (
                              check (status in ('active', 'paid', 'write_off')),
   bad_debt                 numeric(12, 2) default 0,
   historical_interest_paid numeric(12, 2) default 0,
+  -- Number of months from start_date during which interest does NOT accrue
+  -- (e.g. medical-benefit assistance loans). Repayments in this window still
+  -- reduce the balance interest later accrues on. 0 = no waiver.
+  interest_waiver_months   integer not null default 0
+                             check (interest_waiver_months >= 0),
+  -- Interest forgiven at closure. Parallels `bad_debt` for the principal.
+  -- Required when an admin closes a loan with pending interest using the
+  -- write_off path; stays 0 for normally paid-in-full loans.
+  interest_waived          numeric(12, 2) not null default 0
+                             check (interest_waived >= 0),
   notes                    text,
   created_at               timestamptz default now()
 );
+
+-- Idempotent column adds for installs that pre-date these columns.
+alter table public.loans
+  add column if not exists interest_waiver_months integer not null default 0
+    check (interest_waiver_months >= 0);
+
+alter table public.loans
+  add column if not exists interest_waived numeric(12, 2) not null default 0
+    check (interest_waived >= 0);
 
 create sequence if not exists public.loans_seq;
 

@@ -4,7 +4,7 @@ import { useActionState, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { updateTransaction } from '@/lib/actions/transactions'
-import { CONTRIBUTION_TYPES, type ContributionType } from '@/lib/constants'
+import { TRANSACTION_TYPES, type TransactionType } from '@/lib/constants'
 import { todayISO } from '@/lib/format'
 import { SearchableSelect } from '@/components/searchable-select'
 
@@ -22,7 +22,7 @@ type Txn = {
   transaction_id: string
   transaction_date: string
   amount: number
-  contribution_type: string
+  transaction_type: string
   interest_source: 'loans' | 'bank' | null
   member_id: string | null
   loan_id: string | null
@@ -46,7 +46,7 @@ export function EditTransactionForm({
     null,
   )
 
-  const [type, setType] = useState<string>(txn.contribution_type)
+  const [type, setType] = useState<string>(txn.transaction_type)
   const [interestSource, setInterestSource] = useState<'loans' | 'bank'>(
     txn.interest_source === 'bank' ? 'bank' : 'loans',
   )
@@ -112,18 +112,18 @@ export function EditTransactionForm({
         </div>
 
         <div>
-          <label htmlFor="contribution_type" className="block text-xs font-medium text-gray-700">
+          <label htmlFor="transaction_type" className="block text-xs font-medium text-gray-700">
             Type
           </label>
           <select
-            id="contribution_type"
-            name="contribution_type"
+            id="transaction_type"
+            name="transaction_type"
             required
             value={type}
-            onChange={(e) => setType(e.target.value as ContributionType)}
+            onChange={(e) => setType(e.target.value as TransactionType)}
             className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
           >
-            {CONTRIBUTION_TYPES.map((t) => (
+            {TRANSACTION_TYPES.map((t) => (
               <option key={t} value={t}>
                 {t.replace(/_/g, ' ')}
               </option>

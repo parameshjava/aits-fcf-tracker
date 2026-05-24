@@ -1,4 +1,4 @@
-export const CONTRIBUTION_TYPES = [
+export const TRANSACTION_TYPES = [
   'interest',
   'contribution',
   'loan_repayment',
@@ -7,7 +7,7 @@ export const CONTRIBUTION_TYPES = [
   'other',
 ] as const
 
-export type ContributionType = (typeof CONTRIBUTION_TYPES)[number]
+export type TransactionType = (typeof TRANSACTION_TYPES)[number]
 
 export const PAYMENT_STATUS = ['pending', 'approved', 'rejected'] as const
 export type PaymentStatus = (typeof PAYMENT_STATUS)[number]

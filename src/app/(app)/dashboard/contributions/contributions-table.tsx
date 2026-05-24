@@ -13,7 +13,7 @@ export type ContributionRow = {
   id: string
   transaction_id: string
   amount: number | string
-  contribution_type: string
+  transaction_type: string
   interest_source?: 'loans' | 'bank' | null
   transaction_date: string
   description?: string | null
@@ -36,8 +36,8 @@ function formatDate(iso: string): string {
 }
 
 function typeLabel(row: ContributionRow): string {
-  const base = TYPE_LABELS[row.contribution_type] ?? row.contribution_type.replace(/_/g, ' ')
-  if (row.contribution_type === 'interest' && row.interest_source) {
+  const base = TYPE_LABELS[row.transaction_type] ?? row.transaction_type.replace(/_/g, ' ')
+  if (row.transaction_type === 'interest' && row.interest_source) {
     return `${base} · ${row.interest_source}`
   }
   return base
@@ -76,7 +76,7 @@ export function ContributionsTable({ rows }: { rows: ContributionRow[] }) {
   const total = sorted.reduce((s, r) => s + Number(r.amount || 0), 0)
 
   return (
-    <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white">
+    <div className="overflow-clip rounded-2xl border border-gray-200 bg-white">
       {rows.length > 0 && (
         <div className="border-b border-gray-200 bg-gray-50/30 px-4 py-2.5">
           <TableSearch
@@ -88,8 +88,8 @@ export function ContributionsTable({ rows }: { rows: ContributionRow[] }) {
           />
         </div>
       )}
-      <div className="overflow-x-auto">
-        <table className="min-w-full text-sm">
+      <div className="overflow-x-auto lg:overflow-x-visible">
+        <table className="sticky-thead min-w-full text-sm">
           <thead>
             <tr className="border-b border-gray-200 bg-gray-50/60">
               <SortableHeader col="date"      label="Date"             sort={sort} onToggle={toggleSort} />

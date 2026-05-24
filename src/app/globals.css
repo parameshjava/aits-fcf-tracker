@@ -7,3 +7,23 @@
   outline: none;
 }
 
+/* Sticky table headers — pin the <thead> below the sticky TopBar so the
+   column labels stay visible while scrolling long tables.
+
+   Why on <th> and not <thead>: with `border-collapse: collapse` (Tailwind's
+   default) backgrounds on <thead>/<tr> don't always paint reliably above
+   the body rows underneath. Putting the background on each <th> makes
+   the strip opaque so tbody content can't bleed through.
+
+   Top offset matches the sticky TopBar height: row 1 (h-24 = 96px) + 1px
+   border + row 2 (min-h-12 = 48px) = 145px. Tables inside an
+   overflow-x-auto wrapper need lg:overflow-x-visible (or similar) on the
+   wrapper for this to pin against the viewport instead of the local
+   scroll port — see usage in transactions-table.tsx etc. */
+.sticky-thead thead th {
+  position: sticky;
+  top: 145px;
+  z-index: 10;
+  background-color: rgb(249 250 251); /* gray-50 */
+}
+
