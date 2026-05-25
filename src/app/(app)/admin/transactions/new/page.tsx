@@ -49,6 +49,7 @@ export default async function NewTransactionPage() {
 
   return (
     <div className="mx-auto max-w-2xl space-y-6">
+      <h1 className="text-lg font-semibold text-gray-900">Add transaction</h1>
       <p className="text-sm text-gray-500">
         Record a verified financial transaction
       </p>

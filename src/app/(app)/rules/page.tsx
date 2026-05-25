@@ -1,6 +1,7 @@
 export default function RulesOverviewPage() {
   return (
     <div className="space-y-6">
+      <h1 className="text-lg font-semibold text-gray-900">Rules &amp; Guidelines</h1>
       <p className="text-sm text-gray-500">
         Governing principles and resolutions of the AITS FCF (Friends
         Contribution Fund)

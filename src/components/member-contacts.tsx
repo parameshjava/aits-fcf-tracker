@@ -1,4 +1,5 @@
 import type { MemberContact } from '@/lib/actions/members'
+import { getCountryForPhone } from '@/lib/phone-countries'
 
 /**
  * Display-only chips for a member's phones / emails. Each chip is a
@@ -32,9 +33,13 @@ export function MemberContactsList({
 export function ContactChip({
   contact,
   size = 'md',
+  hidePrimaryBadge = false,
 }: {
   contact: MemberContact
   size?: 'sm' | 'md'
+  /** Suppress the "PRIMARY" pill — use when the surrounding context (a
+   *  "Primary phone" column header, etc.) already conveys that fact. */
+  hidePrimaryBadge?: boolean
 }) {
   const href =
     contact.kind === 'phone'
@@ -42,6 +47,7 @@ export function ContactChip({
       : `mailto:${contact.value}`
 
   const isPhone = contact.kind === 'phone'
+  const country = isPhone ? getCountryForPhone(contact.value) : null
 
   const sizeClasses =
     size === 'sm'
@@ -64,13 +70,22 @@ export function ContactChip({
       title={contact.label ? `${contact.label} · ${contact.value}` : contact.value}
     >
       <ContactIcon kind={contact.kind} />
+      {country && (
+        <span
+          className="text-base leading-none"
+          aria-label={country.name}
+          title={country.name}
+        >
+          {country.flag}
+        </span>
+      )}
       <span className="font-medium tabular-nums">{contact.value}</span>
-      {contact.label && (
+      {contact.label && contact.label.toLowerCase() !== 'primary' && (
         <span className="text-[10px] uppercase tracking-wider text-gray-500">
           · {contact.label}
         </span>
       )}
-      {contact.is_primary && (
+      {contact.is_primary && !hidePrimaryBadge && (
         <span
           aria-label="primary"
           className="ml-0.5 rounded-full bg-white/70 px-1 text-[9px] font-semibold uppercase tracking-wider"

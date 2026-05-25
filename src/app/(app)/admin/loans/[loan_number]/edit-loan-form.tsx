@@ -23,7 +23,7 @@ export function EditLoanForm({
   const [state, action, pending] = useActionState(
     async (_prev: unknown, formData: FormData) => {
       const result = await updateLoan(formData)
-      if (result.success) setOpen(false)
+      if (result.ok) setOpen(false)
       return result
     },
     null,
@@ -130,8 +130,8 @@ export function EditLoanForm({
         For a partial repayment, add a <strong>Loan repayment</strong> transaction tied to this loan. To mark the loan fully paid, use the <strong>Close loan</strong> button below.
       </p>
 
-      {state?.error && <p className="text-sm text-red-600">{state.error}</p>}
-      {state?.success && <p className="text-sm text-green-600">{state.success}</p>}
+      {state && !state.ok && <p className="text-sm text-red-600">{state.error}</p>}
+      {state?.ok && state.message && <p className="text-sm text-green-600">{state.message}</p>}
 
       <div className="flex justify-end">
         <button

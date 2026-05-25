@@ -1,5 +1,10 @@
 import type { Metadata } from 'next'
+import { Suspense } from 'react'
 import './globals.css'
+import { Geist } from "next/font/google";
+import { cn } from "@/lib/utils";
+
+const geist = Geist({subsets:['latin'],variable:'--font-sans'});
 
 export const metadata: Metadata = {
   title: 'FCF Tracker · Friends Cooperative Fund',
@@ -11,9 +16,23 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode
 }>) {
+  // Cache Components is enabled (see next.config.ts:cacheComponents). The
+  // empty-fallback Suspense INSIDE <body> opts the whole app out of the
+  // static shell — every request still defers to render time. We deliberately
+  // do NOT wrap <body> with Suspense (the documented pattern) because in
+  // React 19 + React DevTools combinations that placement triggers a noisy
+  // "The children should not have changed if we pass in the same set" warning
+  // in the DevTools Fiber walker. Wrapping the body's CONTENTS instead gives
+  // the same defer behavior without confusing the extension.
+  //
+  // `tabular-nums` is global: financial figures (rupee amounts, counts, row
+  // IDs) need fixed-width digits across the app so column widths don't jitter
+  // on hover/sort. Geist's tabular numerals are good.
   return (
-    <html lang="en" className="h-full antialiased">
-      <body className="min-h-full bg-gray-50 text-gray-900">{children}</body>
+    <html lang="en" className={cn("h-full antialiased", "font-sans", geist.variable)}>
+      <body className="min-h-full bg-gray-50 text-gray-900 tabular-nums">
+        <Suspense fallback={null}>{children}</Suspense>
+      </body>
     </html>
   )
 }

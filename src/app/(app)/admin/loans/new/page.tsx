@@ -24,6 +24,7 @@ export default async function NewLoanPage() {
 
   return (
     <div className="mx-auto max-w-2xl space-y-6">
+      <h1 className="text-lg font-semibold text-gray-900">New loan</h1>
       <p className="text-sm text-gray-500">
         Create a new loan. The loan number is auto-generated.
       </p>

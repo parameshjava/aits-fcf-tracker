@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { COUNTRIES } from '@/lib/phone-countries'
 
 /**
  * Flowbite-style phone input: an attached country-code select on the left,
@@ -14,20 +15,10 @@ import { useState } from 'react'
  * whose `name` matches the form field — this is the value persisted into
  * `member_contacts.value`. The two visible controls are intentionally NOT
  * named so they don't end up in FormData on their own.
+ *
+ * Country list + flag emojis live in @/lib/phone-countries so the read-side
+ * ContactChip can reuse the exact same mapping.
  */
-
-type Country = { code: string; dial: string; flag: string }
-
-const COUNTRIES: Country[] = [
-  { code: 'IN', dial: '+91',  flag: '🇮🇳' },
-  { code: 'US', dial: '+1',   flag: '🇺🇸' },
-  { code: 'GB', dial: '+44',  flag: '🇬🇧' },
-  { code: 'AE', dial: '+971', flag: '🇦🇪' },
-  { code: 'SG', dial: '+65',  flag: '🇸🇬' },
-  { code: 'AU', dial: '+61',  flag: '🇦🇺' },
-  { code: 'CA', dial: '+1',   flag: '🇨🇦' },
-  { code: 'DE', dial: '+49',  flag: '🇩🇪' },
-]
 
 export function PhoneInput({
   name,

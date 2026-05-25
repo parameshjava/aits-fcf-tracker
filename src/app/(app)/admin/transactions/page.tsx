@@ -24,6 +24,7 @@ export default async function AdminTransactionsListPage() {
 
   return (
     <div className="space-y-6">
+      <h1 className="text-lg font-semibold text-gray-900">Manage transactions</h1>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm text-gray-500">
           Admin view — edit or delete any recorded transaction. Historical Excel

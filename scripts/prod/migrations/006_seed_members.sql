@@ -1,16 +1,17 @@
 -- =============================================================================
--- FCF Tracker — Members seed
--- File 3 of 3.  Run after 01-schema.sql + 02-views.sql.
+-- 006 — Seed the 23 canonical members.
 --
--- Source: FCF Latest one upto 6_07_2020.xlsx → Members sheet
---         (Member Name | Email Id | Phone Number)
+-- Source: FCF Latest one upto 6_07_2020.xlsx → Members sheet, plus
+--         Ranga Reddy (one ₹3,000 contribution in 2023-06, kept on the roster).
 --
--- This file inserts ONLY the 22 canonical members. Phones, bank accounts,
--- loans, and transactions are NOT touched here — they'll land in follow-up
--- seed scripts on request.
+-- Phones, bank accounts, loans, and transactions are NOT touched here. The
+-- per-year transaction seed files live in scripts/prod/transactions/ and
+-- run after this migration.
 --
 -- Idempotent: `on conflict (slug) do nothing` skips members already inserted.
 -- =============================================================================
+
+begin;
 
 insert into public.members (name, slug, email, status) values
   ('Kothacheruvu Anil Kumar Reddy',         'kothacheruvu-anil-kumar-reddy',          'anil.kothacheruvu@gmail.com',  'active'),
@@ -34,9 +35,11 @@ insert into public.members (name, slug, email, status) values
   ('Thummalapalli Guru Prasanna Lakshmi',   'thummalapalli-guru-prasanna-lakshmi',    'lakshmi.talk6@gmail.com',      'active'),
   ('Prakash Policherla',                    'prakash-policherla',                     'prakash.mca42@gmail.com',      'active'),
   ('Panditi Trinath Gupta',                 'panditi-trinath-gupta',                  'trinathgupta.p@gmail.com',     'active'),
-  ('Koppavarapu Sudhakar',                  'koppavarapu-sudhakar',                   'sudhakar487248@gmail.com',     'active')
+  ('Koppavarapu Sudhakar',                  'koppavarapu-sudhakar',                   'sudhakar487248@gmail.com',     'active'),
+  ('Ranga Reddy',                           'ranga-reddy',                            'rangareddy.murram@gmail.com',  'active')
 on conflict (slug) do nothing;
 
--- Sanity check (left as an inline SELECT so the SQL Editor shows the result):
+commit;
+
+-- Inline verification (visible in the SQL Editor results pane):
 select count(*) as members_total from public.members;
-select name, slug, email, status from public.members order by name;

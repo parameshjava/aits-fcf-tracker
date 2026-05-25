@@ -12,6 +12,15 @@ type Tab = 'inflow' | 'matrix' | 'members' | 'eligibility'
  * updated via `window.history.replaceState` so the tab is shareable /
  * survives a hard refresh, but we deliberately skip `router.replace` to
  * avoid triggering a server round-trip.
+ *
+ * Why not shadcn `<Tabs>`: we tried it. Two issues. (1) `<TabsContent>`
+ * re-mounts its children on every switch, which destroys the Recharts
+ * instances and re-triggers the 0×0 ResponsiveContainer bug — so we'd have
+ * to opt out of TabsContent anyway. (2) Overriding the default pill styling
+ * to recover the simple underline strip below required fighting shadcn's
+ * baseline classes (border-color overrides, overflow clipping the active
+ * underline) for visual results that weren't any more accessible than this
+ * `<button aria-current="page">` pattern. Simpler wins.
  */
 export function DashboardTabs({
   initialTab,

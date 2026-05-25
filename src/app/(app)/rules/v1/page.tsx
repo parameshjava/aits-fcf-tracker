@@ -2,7 +2,8 @@ export default function V1RulesPage() {
   return (
     <div className="space-y-6">
       <div>
-        <p className="text-xs font-medium text-blue-600 uppercase tracking-wide">
+        <h1 className="text-lg font-semibold text-gray-900">Original resolutions</h1>
+        <p className="mt-1 text-xs font-medium text-blue-600 uppercase tracking-wide">
           Version 1 &middot; July 2020
         </p>
         <p className="mt-1 text-sm text-gray-500">

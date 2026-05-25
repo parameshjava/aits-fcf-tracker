@@ -3,6 +3,7 @@
 import { useActionState, useEffect } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
+import { toast } from 'sonner'
 import { createLoan } from '@/lib/actions/loans'
 import { todayISO } from '@/lib/format'
 import { BankBalanceUpdater } from '@/components/bank-balance-updater'
@@ -24,7 +25,8 @@ export function NewLoanForm({
   )
 
   useEffect(() => {
-    if (state && 'success' in state && state.success) {
+    if (state?.ok) {
+      toast.success(state.message ?? 'Loan created')
       router.push('/dashboard/loans')
       router.refresh()
     }
@@ -137,11 +139,9 @@ export function NewLoanForm({
         Loan number is auto-generated as <code className="font-mono">YYYYMM-NNN</code> from the start date — the 3-digit serial resets every calendar year.
       </p>
 
-      {state && 'error' in state && state.error && (
+      {/* Success → toast (see useEffect); error stays inline. */}
+      {state && !state.ok && (
         <p className="text-sm text-red-600">{state.error}</p>
-      )}
-      {state && 'success' in state && state.success && (
-        <p className="text-sm text-green-600">{state.success} — redirecting…</p>
       )}
 
       <div className="flex justify-end gap-3">

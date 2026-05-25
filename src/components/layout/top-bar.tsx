@@ -1,11 +1,8 @@
 'use client'
 
 import Image from 'next/image'
-import Link from 'next/link'
-import { usePathname } from 'next/navigation'
 import { useEffect, useRef, useState } from 'react'
 import { signOut } from '@/lib/actions/auth'
-import { resolveBreadcrumb } from '@/lib/breadcrumbs'
 
 type Props = {
   fullName: string | null
@@ -14,8 +11,6 @@ type Props = {
 }
 
 export function TopBar({ fullName, email, avatarUrl }: Props) {
-  const pathname = usePathname()
-  const { title, crumbs } = resolveBreadcrumb(pathname)
   const displayName = fullName || email.split('@')[0]
   const initials = displayName.slice(0, 2).toUpperCase()
   const [menuOpen, setMenuOpen] = useState(false)
@@ -119,41 +114,6 @@ export function TopBar({ fullName, email, avatarUrl }: Props) {
         </div>
       </div>
 
-      {/* Row 2 — page title + breadcrumb. Inside the sticky wrapper so it
-          pins with the banner. min-h-12 keeps the row a consistent height
-          whether or not a breadcrumb sub-row is present (Dashboard has no
-          breadcrumb; Loans, Donations, etc. do). */}
-      <div className="border-t border-gray-100/80">
-        <div className="mx-auto flex min-h-12 max-w-7xl items-center px-4 py-2 lg:px-8">
-          <div className="min-w-0 leading-tight">
-            <h1 className="truncate text-base font-semibold text-gray-900 lg:text-lg">
-              {title}
-            </h1>
-            {crumbs.length > 1 && (
-              <nav className="mt-0.5 flex items-center gap-1 text-xs text-gray-500" aria-label="Breadcrumb">
-                {crumbs.map((c, i) => {
-                  const last = i === crumbs.length - 1
-                  const content = c.href && !last ? (
-                    <Link href={c.href} className="hover:text-gray-900">{c.label}</Link>
-                  ) : (
-                    <span className={last ? 'text-gray-700' : ''}>{c.label}</span>
-                  )
-                  return (
-                    <span key={i} className="flex items-center gap-1">
-                      {content}
-                      {!last && (
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-3 w-3 text-gray-300">
-                          <path d="M9 6l6 6-6 6" strokeLinecap="round" strokeLinejoin="round" />
-                        </svg>
-                      )}
-                    </span>
-                  )
-                })}
-              </nav>
-            )}
-          </div>
-        </div>
-      </div>
     </div>
   )
 }

@@ -134,7 +134,7 @@ function DeleteButton({ accountId }: { accountId: string }) {
       <DeleteIconButton
         type="submit"
         disabled={pending}
-        label={state?.success ? 'Deleted' : 'Delete bank account'}
+        label={state?.ok ? 'Deleted' : 'Delete bank account'}
       />
     </form>
   )

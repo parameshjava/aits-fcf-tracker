@@ -5,32 +5,59 @@ You are an expert full-stack engineer specializing in the *FCF Tracker* applicat
 - `npm run dev` — start dev server (default port 3000)
 - `npm run build` — production build; must pass before any PR
 - `npm run lint` — ESLint; auto-fixable issues should be fixed
+- `npm test` — Vitest unit tests (runs once). Tests live alongside their modules as `*.test.ts`. CI enforces this on every PR.
+- `npm run test:watch` — Vitest in watch mode for local iteration
+- `npm run test:coverage` — Vitest with v8 coverage report (writes to `coverage/`)
 
 ## Progressive context
 
 Load only the file matching the task; do not preload all of these.
 
-| Task                       | File                            |
-| :------------------------- | :------------------------------ |
-| Supabase schema (current)  | scripts/prod/01-schema.sql      |
-| Supabase views (current)   | scripts/prod/02-views.sql       |
-| Canonical member seed      | scripts/prod/03-seed-members.sql |
-| Historical transaction seed| scripts/prod/transactions/{YYYY}.sql |
+| Task                            | File                                            |
+| :------------------------------ | :---------------------------------------------- |
+| Schema (tables + indexes)       | scripts/prod/migrations/001_init_schema.sql     |
+| Triggers + auth hook            | scripts/prod/migrations/002_triggers_and_hooks.sql |
+| Read-side views                 | scripts/prod/migrations/003_views.sql           |
+| RLS policies (enabled)          | scripts/prod/migrations/004_rls_policies.sql    |
+| Reference value seed            | scripts/prod/migrations/005_seed_reference.sql  |
+| Canonical member seed           | scripts/prod/migrations/006_seed_members.sql    |
+| Allowed-emails roster           | scripts/prod/migrations/007_seed_allowed_emails.sql |
+| Donations seed + beneficiary    | scripts/prod/migrations/008_seed_donations.sql  |
+| Historical transaction seed     | scripts/prod/transactions/{YYYY}.sql            |
 | Supabase setup guide       | docs/supabase-setup.md          |
 | Vercel deployment guide    | docs/vercel-setup.md            |
 | Anti-pause cron setup      | docs/cron-setup.md              |
 | Weekly DB backup setup     | docs/backup-setup.md            |
+| Sentry / observability     | docs/sentry-setup.md            |
+| Staging Supabase project   | docs/staging-setup.md           |
 | Design tokens & system     | DESIGN.md                       |
 | Architecture & risk report | docs/technical-report.md        |
 
 ## Golden rules
 
 - **Authorization on every server action.** Never trust the client; re-check `getCurrentUser()` and role before any mutation.
-- **Supabase server client** (`@/lib/supabase/server`) in Server Components and actions; **browser client** (`@/lib/supabase/client`) only in client components that need it.
+- **Supabase server client** (`@/lib/supabase/server`) in Server Components and actions; **browser client** (`@/lib/supabase/client`) only in client components that need it. **Admin client** (`@/lib/supabase/admin`) is server-only and bypasses RLS — restrict to scheduled jobs / cron routes / one-off maintenance scripts. Never import the admin client from anything under `(app)/`.
+- **Key naming.** `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` (formerly "anon", `sb_publishable_*`) is browser-safe; `SUPABASE_SECRET_KEY` (formerly "service_role", `sb_secret_*`) is server-only. The legacy `SUPABASE_SERVICE_ROLE_KEY` env var is still honoured by `@/lib/supabase/admin` as a fallback during rotation.
 - **Server Components by default.** Add `'use client'` only when interactivity is required (state, effects, event handlers).
+- **Cache Components is enabled** (`cacheComponents: true` in `next.config.ts`). The root layout wraps `<body>` in `<Suspense fallback={null}>` so the app defaults to dynamic-at-request-time. Read functions that should be cached opt in explicitly with the directive triplet at the top of the function body:
+  ```ts
+  export async function getDashboardOverall() {
+    'use cache'
+    cacheLife('hours')
+    cacheTag('dashboard')
+    // …
+  }
+  ```
+  After a mutation that invalidates dashboard data, the corresponding write action calls `updateTag('dashboard')` (alongside the existing `revalidatePath` calls — they invalidate different layers). Never use `'use cache'` in a file that also has `'use server'` — they're mutually exclusive (`dashboard.ts` drops `'use server'` for that reason; it's a pure read module).
+- **Route Handler segment config** (`export const dynamic = '…'`, `export const revalidate = …`) is **not compatible with cacheComponents**. Anything dynamic (e.g. `/api/ping` reading `request.headers`) is already treated as dynamic without the export.
 - **`useActionState` for form handling** in client components.
-- **Form actions are server actions in `@/lib/actions/`.** They never use `redirect()` for success — return `{ success: string }` instead, and let the client component navigate via `useRouter`. `redirect()` is OK for hard auth flows (e.g., `signInWithGoogle`, `signOut`, unauth fallback in layouts).
-- **💰 Currency:** all rupee values render via `formatRupees(n)` from `@/lib/format`. Locale is pinned to `en-IN` (e.g. `₹1,00,000`, not `₹100,000`). **Never use `$`** and never call `.toLocaleString()` without a locale — it causes hydration mismatches.
+- **Form actions are server actions in `@/lib/actions/`** and return `ActionResult<T>` (discriminated union from `@/lib/actions/action-result`). Wrap the body in `runAction('actionName', async () => { … })` so it gets a Sentry span + automatic throw-to-`{ok:false}` conversion. Use `actionOk(data?, message?)` / `actionError(message, field?)` to build results — never hand-roll the object. They never use `redirect()` for success — the client checks `result.ok` and navigates via `useRouter`. `redirect()` is OK for hard auth flows (`signInWithGoogle`, `signOut`, unauth fallback in layouts) and the post-delete navigation in `deleteTransaction` (the current URL stops resolving, so client-side `push` would 404 before it fired).
+- **Read-only server actions** (every `getX(...)` in `@/lib/actions/`) skip the wrapper and keep their existing "throw on failure, return data on success" signature. They're consumed by Server Components and benefit from Next's error boundary handling.
+- **💰 Currency:** all rupee values render via `formatRupees(n)` from `@/lib/format`. Locale is pinned to `en-IN` (e.g. `₹1,00,000`, not `₹100,000`). **Never use `$`** and never call `.toLocaleString()` without a locale — it causes hydration mismatches. `tabular-nums` is applied globally on `<body>` (root layout) — numbers in the app already have fixed-width digits; you don't need to add `tabular-nums` per element.
+- **📊 Charts** use the shadcn `<ChartContainer>` wrapper (`@/components/ui/chart.tsx`) — NOT Recharts' `ResponsiveContainer` or `<Tooltip>`/`<Legend>` directly. Define a `ChartConfig` with `{ <dataKey>: { label, color } }` and pass it to `<ChartContainer config={…}>`; the wrapper injects per-series CSS variables (`--color-<dataKey>`) that you reference in `<Bar fill="var(--color-foo)" />`. Color palette stays in `src/lib/transaction-groups.ts` (Okabe-Ito, color-blind-safe) — the wrapper just plumbs them through CSS. See `src/components/charts/dashboard-bars.tsx` for the canonical pattern.
+- **Toasts.** Success confirmations go through `toast.success(message)` from `sonner` (the `<Toaster>` is mounted once in `(app)/layout.tsx`). Errors STAY INLINE next to the offending field — toasts disappear, and a form validation message that vanishes after 4 seconds is worse than no message at all. Use the pattern: `useEffect(() => { if (state?.ok) toast.success(state.message ?? '…') }, [state])` + inline `{state && !state.ok && <p>{state.error}</p>}`.
+- **Modals and drawers** use shadcn primitives: `<Dialog>` for confirm flows (delete, close-loan, destructive actions); `<Sheet>` for off-canvas panels (the mobile sidebar drawer in `components/layout/sidebar.tsx`). Both ship focus-trap + escape-to-close + inert-content-behind for free — don't roll a custom `fixed inset-0` overlay.
+- **Tab strips** use shadcn `<Tabs><TabsList><TabsTrigger>` — they handle ARIA roles and keyboard nav (Arrow/Home/End). `<TabsContent>` re-mounts its children every switch, which kills charts; if you have heavy children, render the `Tabs` row WITHOUT `TabsContent` and manage `hidden={…}` panels yourself (see `(app)/dashboard/dashboard-tabs.tsx`).
 - **🤝 Members are the canonical "person".** Bank accounts, transactions, and loans reference `public.members(id)`. `public.profiles` is the auth-linked row; not all members have a profile.
 - **Loan numbers and transaction IDs are auto-generated.** Postgres triggers fill `loan_number` as `YYYYMM-NNN` (per-year counter via `public.loan_year_counter`, month taken from `start_date`) and `transaction_id` as `YYYYMMDD-NNN` (date prefix + a **global** running sequence `public.transactions_seq` — *not* per-date). Leave both columns empty on insert.
 - **Global config lives in `public.reference`** (key/value rows: `interest_per_lakh`, `bank_balance`, `corpus_threshold`, `donation_eligibility_pct`). Read via helpers in `@/lib/actions/reference.ts` (e.g. `getInterestPerLakh()`). Admin updates to `reference.value` must also append a row to `public.reference_history` so the historical timeline stays intact. Never hardcode any reference value.
@@ -46,7 +73,8 @@ Load only the file matching the task; do not preload all of these.
 | Tailwind CSS | v4                  |
 | Database     | Supabase (Postgres) |
 | Auth         | Supabase Auth — Google OAuth + Before-User-Created allowlist hook |
-| Charts       | Recharts            |
+| Charts       | Recharts + shadcn `<Chart>` wrapper (`@/components/ui/chart.tsx`) |
+| UI primitives| shadcn/ui (Tailwind v4, OKLCH tokens; see `components.json`)      |
 | Validation   | Zod (when needed)   |
 
 ## File structure
@@ -102,8 +130,9 @@ src/
     breadcrumbs.ts                      # Pathname → page title + crumbs
     transaction-groups.ts               # Section → type mapping + chart palette
     seed-to-transactions.ts             # Synthesize Excel rows into transactions
-    supabase/client.ts                  # Browser Supabase client
-    supabase/server.ts                  # Server Supabase client (cookies)
+    supabase/client.ts                  # Browser Supabase client (publishable key)
+    supabase/server.ts                  # Server Supabase client (publishable key + cookies)
+    supabase/admin.ts                   # Server-ONLY client (secret key, RLS bypass) — cron, scheduled jobs only
     supabase/proxy.ts                   # Proxy / session refresh client
     actions/auth.ts                     # signInWithGoogle, signOut, getCurrentUser
     actions/transactions.ts             # createTransaction, getTransactions, stats
@@ -134,7 +163,7 @@ docs/
 
 ## Database tables (Supabase)
 
-Authoritative DDL: `scripts/prod/01-schema.sql`. RLS is **disabled** project-wide — write protection is enforced at the server-action layer (always re-check `getCurrentUser()` + role).
+Authoritative DDL: `scripts/prod/migrations/`. RLS is **enabled** on every `public.*` table (since 2026-05-24, migration 004). The app authenticates as the Postgres `authenticated` role (publishable key + cookie session, not service_role) — so write policies are gated by `public.is_admin()`, and server actions must STILL re-check `getCurrentUser()` + role first as defense-in-depth. The lone exception is `pending_payments`, which lets a non-admin authenticated user insert their own row (`submitted_by = auth.uid()`).
 
 | Table                | Purpose                                                                                                |
 | :------------------- | :----------------------------------------------------------------------------------------------------- |

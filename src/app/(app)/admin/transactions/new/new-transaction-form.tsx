@@ -2,6 +2,7 @@
 
 import { useActionState, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { toast } from 'sonner'
 import { createTransaction } from '@/lib/actions/transactions'
 import { TRANSACTION_TYPES } from '@/lib/constants'
 import type { TransactionType } from '@/lib/constants'
@@ -40,11 +41,10 @@ export function NewTransactionForm({
   const [interestSource, setInterestSource] = useState<'loans' | 'bank'>('loans')
   const [memberId, setMemberId] = useState<string>('')
 
-  // On success, bounce back to the admin landing — same UX as the previous
-  // server-side redirect, just driven from the client now (golden-rule
-  // requires server actions to return { success } instead of redirect()).
+  // On success, fire a toast and bounce back to the admin landing.
   useEffect(() => {
-    if (state && 'success' in state && state.success) {
+    if (state?.ok) {
+      toast.success(state.message ?? 'Transaction saved')
       router.push('/admin')
       router.refresh()
     }
@@ -217,11 +217,10 @@ export function NewTransactionForm({
         Transaction ID is auto-generated as <code className="font-mono">YYYYMMDD-NNN</code>.
       </p>
 
-      {state && 'error' in state && state.error && (
+      {/* Inline error: stays put with the form fields so the user can see
+          which field to fix. Success uses the toast above. */}
+      {state && !state.ok && (
         <p className="text-sm text-red-600">{state.error}</p>
-      )}
-      {state && 'success' in state && state.success && (
-        <p className="text-sm text-green-600">{state.success} — redirecting…</p>
       )}
 
       <div className="flex justify-end gap-3">

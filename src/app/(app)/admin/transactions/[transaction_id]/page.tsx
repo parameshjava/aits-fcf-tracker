@@ -60,9 +60,9 @@ export default async function AdminTransactionManagePage({
         <Link href="/admin/transactions" className="text-xs font-medium text-blue-600 hover:underline">
           ← All transactions
         </Link>
-        <h2 className="mt-1 text-lg font-semibold text-gray-900">
+        <h1 className="mt-1 text-lg font-semibold text-gray-900">
           <span className="font-mono">{txn.transaction_id}</span>
-        </h2>
+        </h1>
       </div>
 
       <EditTransactionForm

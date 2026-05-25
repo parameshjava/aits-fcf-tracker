@@ -70,12 +70,12 @@ export default async function LoanDetailPage({
           <Link href="/dashboard/loans" className="text-xs font-medium text-blue-600 hover:underline">
             ← Back to loans
           </Link>
-          <h2 className="mt-1 text-lg font-semibold text-gray-900">
+          <h1 className="mt-1 text-lg font-semibold text-gray-900">
             <span className="font-mono">{loan.loan_number}</span>{' '}
             <span className="ml-2 text-base text-gray-500">
               · {loan.member?.name ?? 'No member'}
             </span>
-          </h2>
+          </h1>
         </div>
         <span
           className={

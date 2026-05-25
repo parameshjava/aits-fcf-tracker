@@ -1,8 +1,14 @@
 'use server'
 
-import { revalidatePath } from 'next/cache'
+import { revalidatePath, updateTag } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { getCurrentUser } from './auth'
+import {
+  actionError,
+  actionOk,
+  runAction,
+  type ActionResult,
+} from './action-result'
 
 export type MemberOption = {
   id: string
@@ -79,96 +85,102 @@ export async function getAllBankAccounts() {
   return data
 }
 
-export async function saveBankAccount(formData: FormData) {
-  const supabase = await createClient()
-  const user = await getCurrentUser()
-  if (!user || !user.email) return { error: 'Not authenticated' }
+export async function saveBankAccount(formData: FormData): Promise<ActionResult> {
+  return runAction('saveBankAccount', async () => {
+    const supabase = await createClient()
+    const user = await getCurrentUser()
+    if (!user || !user.email) return actionError('Not authenticated')
 
-  const isAdmin = user.profile?.role === 'admin'
-  const accountId = formData.get('id') as string
-  const memberId = formData.get('member_id') as string
+    const isAdmin = user.profile?.role === 'admin'
+    const accountId = formData.get('id') as string
+    const memberId = formData.get('member_id') as string
 
-  if (!memberId) return { error: 'Member is required' }
+    if (!memberId) return actionError('Member is required', 'member_id')
 
-  // Non-admin authorization: the chosen member must actually be the user.
-  if (!isAdmin) {
-    const { data: ownMember } = await supabase
-      .from('members')
-      .select('id')
-      .ilike('email', user.email)
-      .maybeSingle()
-    if (!ownMember || ownMember.id !== memberId) {
-      return { error: 'Unauthorized' }
+    // Non-admin authorization: the chosen member must actually be the user.
+    if (!isAdmin) {
+      const { data: ownMember } = await supabase
+        .from('members')
+        .select('id')
+        .ilike('email', user.email)
+        .maybeSingle()
+      if (!ownMember || ownMember.id !== memberId) {
+        return actionError('Unauthorized')
+      }
     }
-  }
 
-  const payload = {
-    member_id: memberId,
-    full_name: formData.get('full_name') as string,
-    account_number: formData.get('account_number') as string,
-    bank_name: formData.get('bank_name') as string,
-    ifsc_code: (formData.get('ifsc_code') as string).toUpperCase(),
-    account_type: formData.get('account_type') as string,
-    branch: (formData.get('branch') as string) || null,
-    upi_id: (formData.get('upi_id') as string) || null,
-    is_primary: formData.get('is_primary') === 'on',
-  }
+    const payload = {
+      member_id: memberId,
+      full_name: formData.get('full_name') as string,
+      account_number: formData.get('account_number') as string,
+      bank_name: formData.get('bank_name') as string,
+      ifsc_code: (formData.get('ifsc_code') as string).toUpperCase(),
+      account_type: formData.get('account_type') as string,
+      branch: (formData.get('branch') as string) || null,
+      upi_id: (formData.get('upi_id') as string) || null,
+      is_primary: formData.get('is_primary') === 'on',
+    }
 
-  if (accountId) {
-    const { error } = await supabase
-      .from('bank_accounts')
-      .update(payload)
-      .eq('id', accountId)
-    if (error) return { error: error.message }
-  } else {
-    const { error } = await supabase
-      .from('bank_accounts')
-      .insert(payload)
-    if (error) return { error: error.message }
-  }
+    if (accountId) {
+      const { error } = await supabase
+        .from('bank_accounts')
+        .update(payload)
+        .eq('id', accountId)
+      if (error) return actionError(error.message)
+    } else {
+      const { error } = await supabase
+        .from('bank_accounts')
+        .insert(payload)
+      if (error) return actionError(error.message)
+    }
 
-  revalidatePath('/admin/bank-accounts')
-  revalidatePath('/dashboard')
-  revalidatePath('/dashboard/members')
-  return { success: 'Bank account saved' }
+    revalidatePath('/admin/bank-accounts')
+    revalidatePath('/dashboard')
+    revalidatePath('/dashboard/members')
+    updateTag('dashboard')
+    return actionOk(undefined, 'Bank account saved')
+  })
 }
 
-export async function deleteBankAccount(accountId: string) {
-  const supabase = await createClient()
-  const user = await getCurrentUser()
-  if (!user) return { error: 'Not authenticated' }
+export async function deleteBankAccount(accountId: string): Promise<ActionResult> {
+  return runAction('deleteBankAccount', async () => {
+    const supabase = await createClient()
+    const user = await getCurrentUser()
+    if (!user) return actionError('Not authenticated')
 
-  // Admin can delete anyone's row. A non-admin can delete only an account
-  // that belongs to their own member row (email-matched, same rule as
-  // saveBankAccount above).
-  if (user.profile?.role !== 'admin') {
-    if (!user.email) return { error: 'Unauthorized' }
-    const { data: account, error: lookupErr } = await supabase
-      .from('bank_accounts')
-      .select('member_id')
-      .eq('id', accountId)
-      .maybeSingle()
-    if (lookupErr) return { error: lookupErr.message }
-    if (!account || !account.member_id) return { error: 'Bank account not found' }
+    // Admin can delete anyone's row. A non-admin can delete only an account
+    // that belongs to their own member row (email-matched, same rule as
+    // saveBankAccount above).
+    if (user.profile?.role !== 'admin') {
+      if (!user.email) return actionError('Unauthorized')
+      const { data: account, error: lookupErr } = await supabase
+        .from('bank_accounts')
+        .select('member_id')
+        .eq('id', accountId)
+        .maybeSingle()
+      if (lookupErr) return actionError(lookupErr.message)
+      if (!account || !account.member_id) return actionError('Bank account not found')
 
-    const { data: ownMember, error: ownErr } = await supabase
-      .from('members')
-      .select('id')
-      .ilike('email', user.email)
-      .maybeSingle()
-    if (ownErr) return { error: ownErr.message }
-    if (!ownMember || ownMember.id !== account.member_id) {
-      return { error: 'You can only remove your own bank accounts' }
+      const { data: ownMember, error: ownErr } = await supabase
+        .from('members')
+        .select('id')
+        .ilike('email', user.email)
+        .maybeSingle()
+      if (ownErr) return actionError(ownErr.message)
+      if (!ownMember || ownMember.id !== account.member_id) {
+        return actionError('You can only remove your own bank accounts')
+      }
     }
-  }
 
-  const { error } = await supabase
-    .from('bank_accounts')
-    .delete()
-    .eq('id', accountId)
+    const { error } = await supabase
+      .from('bank_accounts')
+      .delete()
+      .eq('id', accountId)
 
-  if (error) return { error: error.message }
-  revalidatePath('/admin/bank-accounts')
-  revalidatePath('/dashboard/members')
-  return { success: 'Bank account deleted' }
+    if (error) return actionError(error.message)
+    revalidatePath('/admin/bank-accounts')
+    revalidatePath('/dashboard/members')
+    updateTag('dashboard')
+    return actionOk(undefined, 'Bank account deleted')
+  })
 }

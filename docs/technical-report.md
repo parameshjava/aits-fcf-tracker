@@ -236,12 +236,9 @@ These are issues that don't break anything today but will compound.
 ### C1. Doc drift on AGENTS.md / CLAUDE.md — ✅ resolved (2026-05-24)
 See A4. AGENTS.md now mirrors `scripts/prod/`. Re-run this check whenever a schema PR lands.
 
-### C2. Two parallel migration scripts (canonical-vs-legacy)
-- `scripts/migrate-seed-to-db.sql` — legacy one-shot, uses `SEED-{year}-{MM}-{slug}` IDs.
-- `scripts/prod/transactions/{year}.sql` — new per-year, uses `SEED-{year}-{MM}-{XXX}` short codes.
-- They will produce **different `transaction_id` values for the same logical row**, so running both inserts duplicates.
-
-**Fix:** designate the new per-year files canonical, delete `migrate-seed-to-db.sql` and `generate-migration.mjs`, and rename `scripts/extract_data.py` / `seed.json` to `deprecated/` (or delete — see C3).
+### C2. Two parallel migration scripts (canonical-vs-legacy) — partly resolved (2026-05-24)
+- `scripts/prod/` is now organised as numbered migrations (`001_init_schema.sql` … `007_seed_allowed_emails.sql`) under `scripts/prod/migrations/`, with per-year historical seeds living under `scripts/prod/transactions/`. Old snapshot files `01-schema.sql` / `02-views.sql` / `03-seed-members.sql` are deleted.
+- **Still to clean up:** the dev-only artifacts in `scripts/` root (`migrate-seed-to-db.sql`, `generate-migration.mjs`, `seed.json`, `extract_data.py`, `dedupe-members.sql`, `bank-accounts-to-members.sql`, `fix-interest.sql`, `link-members-emails.sql`). They're not on the production path anymore but still tempt copy-paste mistakes. Move under `scripts/legacy/` or delete in a follow-up.
 
 ### C3. `seed.json` is unreliable
 Proven by the 2016 bank-interest double-count (1,408 vs. the correct 704). The artifact pretends to be a clean intermediate but is actually a leftover from the legacy pipeline. The new generator reads the Excel directly; `seed.json` should be deleted to remove the temptation to use it.
@@ -251,33 +248,20 @@ Proven by the 2016 bank-interest double-count (1,408 vs. the correct 704). The a
 - Add a post-generation sanity SQL block in each year file: `select 'MISSING EMAIL' as err where exists (select 1 from public.transactions where transaction_id like 'SEED-{year}-%' and member_id is null and transaction_type = 'contribution');`
 - Long term, source the alias→email map from `scripts/prod/03-seed-members.sql` programmatically rather than copying it into the Python.
 
-### C5. Server-action contracts are inconsistent
-Some actions return `{ success: string }`, some `{ error: string }`, some both, some throw. Forms in `src/app/(app)/admin/**` handle this inconsistently. Define a single discriminated-union type:
+### C5. Server-action contracts are inconsistent — ✅ resolved 2026-05-24
+Adopted across all 19 mutating actions. See `@/lib/actions/action-result.ts` for the type + `runAction` helper. New actions should follow the pattern automatically — TypeScript surfaces drift via the discriminated-union narrowing.
 
-```ts
-type ActionResult<T = void> =
-  | { ok: true; data?: T; message?: string }
-  | { ok: false; error: string; field?: string }
-```
+### C6. No automated tests — ✅ resolved 2026-05-24 (core math + format)
+Vitest 4 installed; 35 tests across `src/lib/{format,loan-math,aggregate}.test.ts` cover en-IN locale pinning, the piecewise loan-interest accrual (including waiver windows + over-payment edges), and the dashboard aggregation helpers. CI runs on every push to main + every PR via `.github/workflows/test.yml`. The "prod SQL scripts replay" smoke test from the original recommendation is still pending — it'd need a scratch Supabase + the docker recipe from `scripts/prod/README.md`.
 
-…and adopt it in every server action over a few PRs.
-
-### C6. No automated tests
-For a financial app this is a real gap. At minimum:
-- Unit tests for `lib/loan-math.ts` and `lib/aggregate.ts` (pure functions).
-- Snapshot tests for `lib/format.ts:formatRupees` (locale pinning).
-- A smoke test that runs the prod SQL scripts against a local Supabase and asserts row counts match the Excel.
-
-Vitest + a tiny CI workflow (~2 hours).
-
-### C7. No production error visibility
-Vercel Hobby has no Log Drains; even with Pro, you need a destination. Without observability, errors silently degrade UX. **Recommendation:** Sentry (free tier for one project) or Axiom (Vercel-native). Wiring is a single `instrumentation.ts` file + `NEXT_PUBLIC_SENTRY_DSN`.
+### C7. No production error visibility — ✅ resolved 2026-05-24 (code path)
+Sentry wiring landed; see `docs/sentry-setup.md`. Pending the four env vars in Vercel before events start flowing.
 
 ### C8. Excel is the system of record for historical data
 The 2016-2026 history is in `FCF Latest one upto 6_07_2020.xlsx` — checked into git but easy to lose, and its row labels vary year-over-year. Once `scripts/prod/transactions/*.sql` is loaded into prod, **prod becomes the new system of record.** Move the Excel under `archive/` with a README explaining it's a frozen historical artifact, not the canonical source.
 
 ### C9. No staging environment / migration testing
-SQL schema changes are applied directly to prod by pasting into the Supabase SQL Editor. There's no rehearsal step. Recommendation: a second Supabase project (Free tier allows 2 per org) as staging. Run every schema change there first.
+SQL schema changes are applied directly to prod by pasting into the Supabase SQL Editor. There's no rehearsal step. Setup guide drafted in `docs/staging-setup.md` — a free second Supabase project + a Preview-scoped Vercel env. Pending: actually doing it.
 
 ### C10. RLS off (re-flagged from B4 for action-list completeness)
 
@@ -296,18 +280,18 @@ Each item annotated with **effort** (S = ≤1h, M = half-day, L = full day+) and
 | 2   | ~~Daily anti-pause cron at `/api/ping` doing `select 1`.~~ **Done 2026-05-24** (`vercel.json` cron + `CRON_SECRET`-guarded route). Setup guide: `docs/cron-setup.md`. | — | Prevents 7-day Supabase pause. ✅                              |
 | 3   | ~~Rewrite the stale sections of `AGENTS.md` + `CLAUDE.md` to match `scripts/prod/`.~~ **Done 2026-05-24.**                              | —      | Stops AI drift. ✅                                              |
 | 4   | **Delete legacy migration artifacts** (`migrate-seed-to-db.sql`, `generate-migration.mjs`, `seed.json`); rename the Excel to `archive/`. | S      | Removes "which script is canonical?" ambiguity.                 |
-| 5   | **Enable RLS** on user-facing tables with `service_role`-only writes.                                                                    | S      | Closes the public Data API hole.                                |
-| 6   | **Rotate to `sb_publishable_*` / `sb_secret_*` keys.**                                                                                   | S      | Avoids end-of-2026 forced migration under pressure.             |
-| 7   | **Sentry / Axiom wiring** via `instrumentation.ts`.                                                                                      | M      | Production error visibility.                                    |
-| 8   | **Standardize server-action return type** to `ActionResult<T>`.                                                                          | M      | Stops form-handling drift.                                      |
-| 9   | **Enable Cache Components** + tag-based revalidation on dashboard reads.                                                                 | M      | 5-10x faster dashboards; cleaner cache invalidation.            |
-| 10  | **Migrate Recharts to shadcn `<Chart>` wrapper**, add `tabular-nums` everywhere amounts render.                                          | M      | Coherent palette; column stability on hover.                    |
-| 11  | **Adopt shadcn/ui primitives** (Button, Card, Dialog, Sheet, Tabs, Sonner) over ~10 small PRs.                                           | L      | Accessibility, dark mode, keyboard nav for free.                |
-| 12  | **Set up a staging Supabase project** + rehearse all schema changes there first.                                                         | M      | Eliminates "the prod schema editor is the migration tool" risk. |
-| 13  | **Add Vitest** + ~20 unit tests for `loan-math`, `aggregate`, `format`. CI on PR.                                                        | M      | Catches financial-math regressions.                             |
+| 5   | ~~Enable RLS on user-facing tables.~~ **Done 2026-05-24** — `scripts/prod/migrations/004_rls_policies.sql` enables RLS on every `public.*` table and adds `is_admin()`-gated write policies (the app authenticates as `authenticated`, not `service_role`, so the original "service-role-only writes" recipe wouldn't have worked). | — | Closes the public Data API hole. ✅                          |
+| 6   | ~~Rotate to `sb_publishable_*` / `sb_secret_*` keys.~~ **Code path done 2026-05-24** — new `@/lib/supabase/admin` reads `SUPABASE_SECRET_KEY` with fallback to legacy `SUPABASE_SERVICE_ROLE_KEY`. `/api/ping` switched to the admin client (needed once RLS turned on). Remaining work is human-only: paste the `sb_publishable_*` / `sb_secret_*` values from the Supabase Dashboard into Vercel env, then revoke the legacy JWT keys. | — | Avoids end-of-2026 forced migration. ⚠ env var paste still pending. |
+| 7   | ~~Sentry / Axiom wiring via `instrumentation.ts`.~~ **Code done 2026-05-24** — `@sentry/nextjs@10` installed; `instrumentation.ts` + `instrumentation-client.ts` + `sentry.server.config.ts` + `sentry.edge.config.ts` + `src/app/global-error.tsx` + `withSentryConfig` wrapper in `next.config.ts`. SDK is a no-op until 4 env vars (`NEXT_PUBLIC_SENTRY_DSN`, `SENTRY_ORG`, `SENTRY_PROJECT`, `SENTRY_AUTH_TOKEN`) are set in Vercel — see `docs/sentry-setup.md`. | — | Production error visibility. ⚠ env var paste still pending. |
+| 8   | ~~Standardize server-action return type to `ActionResult<T>`.~~ **Done 2026-05-24** — new `@/lib/actions/action-result.ts` defines `ActionResult<T>` + `runAction` (Sentry span + throw-to-`{ok:false}`). All 19 mutating server actions in `@/lib/actions/{transactions,loans,bank-accounts,payments,members,reference}.ts` and every form caller migrated. Read-only actions kept their throw-on-failure shape. | — | Stops form-handling drift. ✅ |
+| 9   | ~~Enable Cache Components + tag-based revalidation on dashboard reads.~~ **Done 2026-05-24** — `cacheComponents: true` in `next.config.ts`; root layout wraps `<body>` in `<Suspense fallback={null}>` (keeps app dynamic-by-default); every read in `src/lib/actions/dashboard.ts` uses `'use cache' + cacheLife('hours') + cacheTag('dashboard')`; every mutating action calls `updateTag('dashboard')` alongside its `revalidatePath` calls. `/api/ping` lost its `dynamic`/`revalidate` exports (cacheComponents-incompatible — header access already implies dynamic). | — | Faster dashboards + clean tag-based invalidation. ✅ |
+| 10  | ~~Migrate Recharts to shadcn `<Chart>` wrapper, add `tabular-nums` everywhere amounts render.~~ **Done 2026-05-24** — `npx shadcn@latest init` ran (components.json, lib/utils.ts, globals.css with OKLCH tokens + chart-1..5 vars, Geist font wired). `npx shadcn@latest add chart` brought in `src/components/ui/chart.tsx`. All 4 charts in `src/components/charts/dashboard-bars.tsx` migrated to `ChartContainer`/`ChartTooltip`/`ChartLegend` driven by `ChartConfig`. `tabular-nums` applied globally on `<body>` (root layout) so every rupee figure, count, and ID is fixed-width without per-site annotation. | — | Coherent palette + column stability + shadcn foothold for #11. ✅ |
+| 11  | ~~Adopt shadcn/ui primitives (Button, Card, Dialog, Sheet, Tabs, Sonner) over ~10 small PRs.~~ **Partly done 2026-05-24** — Sonner toasts (Toaster in `(app)/layout.tsx`; `toast.success(...)` in new-transaction, submit-payment, new-loan), `<Sheet>` (mobile sidebar drawer, replaces `sidebar:open` CustomEvent), `<Dialog>` (delete-transaction confirm). Tabs primitive was tried and **reverted** — `<TabsContent>` re-mounts children on switch (kills Recharts), and the visual override fight to recover the underline strip wasn't worth the coupling cost. `dashboard-tabs.tsx` stays on the `<button aria-current="page">` pattern (see its docstring). `Button`/`Card` primitives are installed; replacing ~50 custom buttons + ~30 card blocks deferred to a separate visual-only sweep. `Input`/`Select`/`Table` also deferred. | M | Focus traps + accessible modal/drawer landed; toasts replace inline success banners. ⚠ ~75% of visual sites still on custom styling, by design. |
+| 12  | **Set up a staging Supabase project** + rehearse all schema changes there first. Step-by-step task list: `docs/staging-setup.md`.        | M      | Eliminates "the prod schema editor is the migration tool" risk. |
+| 13  | ~~Add Vitest + ~20 unit tests for `loan-math`, `aggregate`, `format`. CI on PR.~~ **Done 2026-05-24** — Vitest 4 + `@vitest/coverage-v8` installed. `vitest.config.ts` runs in plain Node (no jsdom — pure functions). 35 tests across `src/lib/{format,loan-math,aggregate}.test.ts` (>= the ~20 target). `.github/workflows/test.yml` runs lint + tsc + vitest on every push to main + every PR; concurrency-cancels superseded runs. | — | Catches financial-math regressions. ✅ |
 | 14  | **Decide Hobby vs Pro** on Vercel — if real money flows through this, $20/mo Pro removes commercial-use ambiguity and adds Log Drains.   | S      | Compliance + observability.                                     |
 
-**If you only do five things this quarter:** items 5, 6, 7, 8, 9 (items 1 + 2 + 3 already done). The remaining cluster covers the security + observability + form-handling + caching risks.
+**If you only do five things this quarter:** items 12 (staging Supabase), 14 (Hobby vs Pro), finish #11's Button/Card/Input/Select/Table sweep, the "prod SQL scripts replay" smoke test for #13, and pick one new initiative. Items 1 + 2 + 3 + 5 + 8 + 9 + 10 + 13 done; #11 capability-add primitives done (modal/drawer/tabs/toasts); #6 + #7 code done, env vars pending.
 
 ---
 

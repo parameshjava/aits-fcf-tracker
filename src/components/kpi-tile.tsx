@@ -2,7 +2,7 @@ type Props = {
   label: string
   value: string
   hint?: string
-  accent?: 'blue' | 'indigo' | 'emerald' | 'gray'
+  accent?: 'blue' | 'indigo' | 'emerald' | 'gray' | 'rose' | 'amber'
 }
 
 const ACCENT: Record<NonNullable<Props['accent']>, string> = {
@@ -10,6 +10,8 @@ const ACCENT: Record<NonNullable<Props['accent']>, string> = {
   indigo:  'from-indigo-500/10 to-indigo-500/0 text-indigo-700',
   emerald: 'from-emerald-500/10 to-emerald-500/0 text-emerald-700',
   gray:    'from-gray-200/60 to-gray-100/0   text-gray-700',
+  rose:    'from-rose-500/10 to-rose-500/0   text-rose-700',
+  amber:   'from-amber-500/10 to-amber-500/0 text-amber-700',
 }
 
 export function KpiTile({ label, value, hint, accent = 'gray' }: Props) {

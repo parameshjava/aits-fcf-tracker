@@ -8,6 +8,7 @@ import {
   MemberContributionBars,
 } from '@/components/charts/dashboard-bars'
 import { TransactionsTable, type TxnRow } from '@/components/transactions-table'
+import { MemberMonthMatrix } from '@/components/member-month-matrix'
 import { YearPicker } from '@/components/year-picker'
 import { DASHBOARD_BAR_COLORS } from '@/lib/transaction-groups'
 import {
@@ -19,10 +20,9 @@ import {
   getDashboardTransactions,
   type DashboardTxn,
   type DashboardMemberTotal,
-  type DashboardMemberMonthRow,
 } from '@/lib/actions/dashboard'
 import { computeEligibility, type EligibilityRow } from '@/lib/eligibility'
-import { getBadDebtsByYear } from '@/lib/actions/loans'
+import { getBadDebtsByYear, getTotalPendingPrincipal } from '@/lib/actions/loans'
 import { Admonition } from '@/components/ui/admonition'
 import { SubmitPaymentForm } from './submit-payment-form'
 import { DashboardTabs } from './dashboard-tabs'
@@ -75,12 +75,15 @@ export default async function DashboardPage({
   const { data: { user } } = await supabase.auth.getUser()
 
   // All aggregates come from views — see scripts/create-dashboard-views.sql.
-  const [overall, yearly, memberTotals, bankBalanceRow] = await Promise.all([
+  const [overall, yearly, memberTotals, bankBalanceRow, pendingPrincipal] = await Promise.all([
     getDashboardOverall(),
     getDashboardYearly(),
     getDashboardMemberTotals(),
     getReferenceRow('bank_balance'),
+    getTotalPendingPrincipal(),
   ])
+  const bankBalance = Number(bankBalanceRow?.value ?? 0)
+  const availableBalance = bankBalance + pendingPrincipal
 
   // listYears: every year that appears in the yearly view, plus the current
   // calendar year if it's missing (so the picker always has "this year").
@@ -112,16 +115,6 @@ export default async function DashboardPage({
       bankInterest:  m?.bank_interest  ?? 0,
     }
   })
-
-  // Headline balance — same formula as before, but every input now comes
-  // from the views.
-  const balance =
-    overall.contributions +
-    overall.loan_interest +
-    overall.bank_interest +
-    overall.loan_repayments +
-    overall.penalty -
-    overall.donations
 
   // Donation-eligibility ledger. The two rules (corpus_threshold + annual %)
   // are read PER-YEAR from public.reference_history so historical changes
@@ -188,6 +181,7 @@ export default async function DashboardPage({
 
   return (
     <div className="space-y-8">
+      <h1 className="text-lg font-semibold text-gray-900">Dashboard</h1>
       <section className="grid grid-cols-2 gap-4 lg:grid-cols-5">
         <KpiTile
           label="Total contributions"
@@ -208,20 +202,20 @@ export default async function DashboardPage({
           accent="emerald"
         />
         <KpiTile
-          label="Current balance"
-          value={formatRupees(balance)}
-          hint="Net of donations"
-          accent="gray"
-        />
-        <KpiTile
           label="FCF Bank Balance"
-          value={formatRupees(bankBalanceRow?.value ?? 0)}
+          value={formatRupees(bankBalance)}
           hint={
             bankBalanceRow?.updated_at
               ? `Updated ${new Date(bankBalanceRow.updated_at).toLocaleDateString('en-IN')}`
               : 'Not set'
           }
           accent="blue"
+        />
+        <KpiTile
+          label="Available balance"
+          value={formatRupees(availableBalance)}
+          hint="Bank balance + outstanding loan principal"
+          accent="amber"
         />
       </section>
 
@@ -352,94 +346,6 @@ function toTxnRow(t: DashboardTxn): TxnRow {
     description: t.description,
     member_name: t.member_name ?? null,
   }
-}
-
-function MemberMonthMatrix({ rows }: { rows: DashboardMemberMonthRow[] }) {
-  if (rows.length === 0) {
-    return (
-      <p className="rounded-md border border-dashed border-gray-200 px-3 py-6 text-center text-xs text-gray-400">
-        No contributions recorded for this year yet.
-      </p>
-    )
-  }
-
-  const months = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'] as const
-  const monthLabels = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
-
-  // Column totals (footer).
-  const colTotals = months.reduce<Record<(typeof months)[number], number>>(
-    (acc, k) => {
-      acc[k] = rows.reduce((s, r) => s + (r[k] ?? 0), 0)
-      return acc
-    },
-    {} as Record<(typeof months)[number], number>,
-  )
-  const grandTotal = rows.reduce((s, r) => s + r.total, 0)
-
-  // top-28 = 112px clears the two-row sticky top bar (Row 1 h-16 = 64px +
-  // Row 2 min-h-12 + 2×4 py = ~48px). Sticky is applied to each <th> (not
-  // just <thead>) for the widest cross-browser support; each cell carries
-  // its own bg so it visually covers the rows scrolling underneath.
-  const stickyHead =
-    'sticky top-28 z-10 bg-gray-50 shadow-[0_1px_0_0_theme(colors.gray.200)]'
-
-  return (
-    <div className="overflow-x-auto rounded-md border border-gray-200">
-      <table className="min-w-full divide-y divide-gray-200 text-sm">
-        <thead className="text-[10px] font-semibold uppercase tracking-wider text-gray-500">
-          <tr>
-            <th className={`${stickyHead} px-3 py-2 text-left`}>Member</th>
-            {monthLabels.map((m) => (
-              <th key={m} className={`${stickyHead} px-2 py-2 text-right`}>{m}</th>
-            ))}
-            <th className={`${stickyHead} px-3 py-2 text-right`}>Total</th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-gray-100 bg-white">
-          {rows.map((r) => (
-            <tr key={r.member_id ?? r.member_name} className="hover:bg-gray-50">
-              <td className="whitespace-nowrap px-3 py-2 font-medium text-gray-900">
-                {r.member_name}
-              </td>
-              {months.map((k) => {
-                const v = r[k] ?? 0
-                return (
-                  <td
-                    key={k}
-                    className={
-                      'whitespace-nowrap px-2 py-2 text-right tabular-nums ' +
-                      (v > 0 ? 'text-gray-700' : 'text-gray-300')
-                    }
-                  >
-                    {v > 0 ? formatRupees(v) : '—'}
-                  </td>
-                )
-              })}
-              <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums font-semibold text-gray-900">
-                {formatRupees(r.total)}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-        <tfoot className="bg-gray-50 text-sm">
-          <tr>
-            <td className="px-3 py-2 font-medium text-gray-700">Total</td>
-            {months.map((k) => (
-              <td
-                key={k}
-                className="whitespace-nowrap px-2 py-2 text-right tabular-nums font-medium text-gray-900"
-              >
-                {colTotals[k] > 0 ? formatRupees(colTotals[k]) : '—'}
-              </td>
-            ))}
-            <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums font-bold text-gray-900">
-              {formatRupees(grandTotal)}
-            </td>
-          </tr>
-        </tfoot>
-      </table>
-    </div>
-  )
 }
 
 function YearTotalsStrip({
@@ -596,7 +502,7 @@ function DonationEligibilityHeader({
           tone={availableNow < 0 ? 'rose' : 'blue'}
         />
         <Stat
-          label={`Earned this year (${currentRow?.year ?? '—'})`}
+          label={`Eligible this year (${currentRow?.year ?? '—'})`}
           value={formatRupees(currentYearEligibility)}
           hint={
             corpusReached

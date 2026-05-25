@@ -59,6 +59,7 @@ export default async function AdminLoansListPage() {
 
   return (
     <div className="space-y-6">
+      <h1 className="text-lg font-semibold text-gray-900">Manage loans</h1>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm text-gray-500">
           Admin view — create, edit, close, or reopen any loan. Members see a read-only list at{' '}

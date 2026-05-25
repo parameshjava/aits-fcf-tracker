@@ -32,8 +32,9 @@ export type EligibilityRow = {
   donations: number
   /** Bad debts written off this year. */
   badDebts: number
-  /** carryIn + eligibilityEarned − donations. Negative means donations
-   *  exceeded what the rule made available. */
+  /** carryIn + eligibilityEarned − donations − badDebts. Negative means
+   *  donations + written-off principal exceeded what the rule made
+   *  available. */
   carryOut: number
   /** True if this row represents the current calendar year — its values are
    *  pro-rata "so far" rather than a final yearly total. */
@@ -69,8 +70,13 @@ export type EligibilityRulesResolver = (year: number) => {
  *     contributions, provided the cumulative-contributions corpus has reached
  *     `threshold`.
  *   - Eligibility unspent in a year rolls forward to the next.
+ *   - Both DONATIONS and BAD DEBTS (loan principal written off) consume
+ *     eligibility — the fund treats a written-off loan as money the
+ *     membership has implicitly donated to that member, so the ledger
+ *     subtracts both from carryOut symmetrically.
  *   - For the current calendar year, the row is naturally pro-rata: it
- *     reflects only the contributions and donations recorded so far.
+ *     reflects only the contributions, donations, and write-offs recorded
+ *     so far.
  */
 export function computeEligibility(
   yearly: EligibilityYearInput[],
@@ -146,7 +152,10 @@ export function computeEligibility(
     const rule = resolveFor(y)
     const thresholdMet = corpus >= rule.threshold
     const eligibilityEarned = thresholdMet ? slot.contributions * (rule.pctOfYear / 100) : 0
-    const carryOut = carryIn + eligibilityEarned - slot.donations
+    // Both donations and bad debts consume eligibility — a write-off is
+    // economically a donation to the borrower, so the ledger treats them
+    // identically.
+    const carryOut = carryIn + eligibilityEarned - slot.donations - slot.badDebts
     rows.push({
       year: y,
       contributions: slot.contributions,
