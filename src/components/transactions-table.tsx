@@ -24,7 +24,7 @@ export type TxnRow = {
   manage_href?: string | null
 }
 
-type SortKey = 'member' | 'txn_id' | 'description' | 'date' | 'amount'
+type SortKey = 'date' | 'member' | 'txn_id' | 'description' | 'amount'
 
 const TYPE_META: Record<string, { label: string; bg: string; emoji: string }> = {
   contribution:   { label: 'Contribution',   bg: 'bg-blue-50',   emoji: '💰' },
@@ -49,11 +49,16 @@ export function TransactionsTable({
   showType = true,
   emptyLabel = 'No transactions yet',
   enableSearch = true,
+  memberColumnLabel = 'Member',
 }: {
   rows: TxnRow[]
   showType?: boolean
   emptyLabel?: string
   enableSearch?: boolean
+  /** Header label for the column rendering `member_name`. Defaults to
+   *  "Member"; the Donations section overrides it to "Beneficiary" since
+   *  the named party there is a recipient, not a fund member. */
+  memberColumnLabel?: string
 }) {
   const showActions = rows.some((r) => !!r.manage_href)
   const stringify = useCallback(
@@ -72,10 +77,10 @@ export function TransactionsTable({
   const { filtered, query, setQuery } = useTableFilter(rows, stringify)
 
   const accessor = useCallback((t: TxnRow, col: SortKey) => {
+    if (col === 'date') return new Date(t.transaction_date).getTime()
     if (col === 'member') return t.member_name ?? ''
     if (col === 'txn_id') return t.transaction_id
     if (col === 'description') return t.description ?? ''
-    if (col === 'date') return new Date(t.transaction_date).getTime()
     if (col === 'amount') return Number(t.amount) || 0
     return ''
   }, [])
@@ -92,7 +97,7 @@ export function TransactionsTable({
           <TableSearch
             value={query}
             onChange={setQuery}
-            placeholder="Search by member, description, ID…"
+            placeholder={`Search by ${memberColumnLabel.toLowerCase()}, description, ID…`}
             matched={filtered.length}
             total={rows.length}
           />
@@ -110,8 +115,21 @@ export function TransactionsTable({
             <tr className="border-b border-gray-200 bg-gray-50/60">
               <th scope="col" className="w-[52px] px-4 py-3"></th>
               <SortableHeader
+                col="date"
+                label="Date"
+                sort={sort}
+                onToggle={toggleSort}
+              />
+              <SortableHeader
                 col="member"
-                label="Member"
+                label={memberColumnLabel}
+                sort={sort}
+                onToggle={toggleSort}
+              />
+              <SortableHeader
+                col="amount"
+                label="Amount"
+                align="right"
                 sort={sort}
                 onToggle={toggleSort}
               />
@@ -124,19 +142,6 @@ export function TransactionsTable({
               <SortableHeader
                 col="description"
                 label="Description"
-                sort={sort}
-                onToggle={toggleSort}
-              />
-              <SortableHeader
-                col="date"
-                label="Date"
-                sort={sort}
-                onToggle={toggleSort}
-              />
-              <SortableHeader
-                col="amount"
-                label="Amount"
-                align="right"
                 sort={sort}
                 onToggle={toggleSort}
               />
@@ -169,6 +174,11 @@ export function TransactionsTable({
                         {meta.emoji}
                       </span>
                     </td>
+                    <td className="whitespace-nowrap px-4 py-3 text-gray-600">
+                      {new Date(t.transaction_date).toLocaleDateString('en-IN', {
+                        day: '2-digit', month: 'short', year: 'numeric',
+                      })}
+                    </td>
                     <td className="px-4 py-3 align-middle">
                       <div className="text-sm font-medium text-gray-900">
                         {t.member_name ?? <span className="text-gray-400">—</span>}
@@ -177,19 +187,14 @@ export function TransactionsTable({
                         <div className="text-xs text-gray-500">{typeLabel(t)}</div>
                       )}
                     </td>
+                    <td className="whitespace-nowrap px-4 py-3 text-right font-semibold tabular-nums text-gray-900">
+                      {formatRupees(t.amount)}
+                    </td>
                     <td className="whitespace-nowrap px-4 py-3 font-mono text-xs text-gray-500">
                       {t.transaction_id}
                     </td>
                     <td className="max-w-[280px] truncate px-4 py-3 text-gray-600">
                       {t.description || <span className="text-gray-300">—</span>}
-                    </td>
-                    <td className="whitespace-nowrap px-4 py-3 text-gray-600">
-                      {new Date(t.transaction_date).toLocaleDateString('en-IN', {
-                        day: '2-digit', month: 'short', year: 'numeric',
-                      })}
-                    </td>
-                    <td className="whitespace-nowrap px-4 py-3 text-right font-semibold tabular-nums text-gray-900">
-                      {formatRupees(t.amount)}
                     </td>
                     {showActions && (
                       <td className="whitespace-nowrap px-4 py-3 text-right">

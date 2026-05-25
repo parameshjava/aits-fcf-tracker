@@ -79,6 +79,7 @@ export default async function LoansListPage({
 
   return (
     <div className="space-y-6">
+      <h1 className="text-lg font-semibold text-gray-900">Loans</h1>
       <div className="flex items-start justify-between gap-3">
         <p className="text-sm text-gray-500">
           One row per loan. Interest accrues at{' '}

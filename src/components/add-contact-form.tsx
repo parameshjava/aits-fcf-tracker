@@ -23,7 +23,7 @@ export function AddContactForm({
   const [state, action, pending] = useActionState(
     async (_prev: unknown, formData: FormData) => {
       const result = await addMemberContact(formData)
-      if (result.success) {
+      if (result.ok) {
         setFormKey((k) => k + 1)
         onSubmitted?.()
       }
@@ -32,8 +32,7 @@ export function AddContactForm({
     null,
   )
 
-  const successKey =
-    state && 'success' in state && state.success ? `${state.success}-${formKey}` : null
+  const successKey = state?.ok ? `${state.message ?? 'ok'}-${formKey}` : null
 
   return (
     <form action={action} className="space-y-3">
@@ -100,7 +99,7 @@ export function AddContactForm({
         Mark as primary {kind === 'phone' ? 'phone' : 'email'}
       </label>
 
-      {state && 'error' in state && state.error && (
+      {state && !state.ok && (
         <p className="text-sm text-red-600">{state.error}</p>
       )}
       {successKey && <p className="text-sm text-green-600">Contact added.</p>}

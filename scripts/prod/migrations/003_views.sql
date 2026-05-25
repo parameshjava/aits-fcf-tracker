@@ -1,29 +1,34 @@
 -- =============================================================================
--- FCF Tracker — Production views
--- File 2 of 3.  Run after scripts/prod/01-schema.sql.
+-- 003 — Read-side views.
 --
--- These six views are everything the app reads for read-paths:
+-- These eight views are everything the app reads on read-paths:
 --
---   public.member_directory          → /dashboard/members (one row per
---                                       member with contacts + bank
---                                       accounts as JSON arrays)
---
+--   public.member_directory          → /dashboard/members (one row per member
+--                                       with contacts + bank_accounts as JSON arrays)
 --   public.dashboard_transactions    → flattened txns + member info
 --                                       (recent activity + drill-down)
---   public.dashboard_monthly         → per-(year, month_index) buckets
---                                       for the stacked-bar chart
+--   public.dashboard_monthly         → per-(year, month_index) buckets for
+--                                       the stacked-bar chart
 --   public.dashboard_yearly          → per-year totals across categories
 --                                       (year-totals strip, eligibility)
 --   public.dashboard_overall         → single-row all-time totals
 --                                       (KPI tiles)
 --   public.dashboard_member_totals   → per-member lifetime contributions
 --                                       (leaderboard)
+--   public.dashboard_member_month_matrix → member × month contribution matrix
+--   public.loans_balances            → per-loan paid principal, paid interest,
+--                                       pending principal (mirrors lib/loan-math.ts)
 --
 -- All views are plain SELECTs — Postgres folds them inline, no materialisation.
+-- Views inherit the caller's role and RLS posture (SECURITY INVOKER default
+-- in PG 16+), so the 004 read policies on the underlying tables apply.
+--
 -- Re-runnable (`create or replace view`).
 -- =============================================================================
 
--- 1) Member directory — one row per member with contacts + bank_accounts JSON
+begin;
+
+-- Member directory — one row per member with contacts + bank_accounts JSON.
 create or replace view public.member_directory as
 select
   m.id,
@@ -69,7 +74,7 @@ left join lateral (
   where ba.member_id = m.id
 ) b on true;
 
--- 2) Dashboard transactions — flattened txn rows + member name/slug.
+-- Dashboard transactions — flattened txn rows + member name/slug.
 create or replace view public.dashboard_transactions as
 select
   t.id,
@@ -87,8 +92,8 @@ select
 from public.transactions t
 left join public.members m on m.id = t.member_id;
 
--- 3) Per-(year, month_index) buckets for the stacked-bar chart.
---    month_index is 0-based to line up with JS Date.getUTCMonth().
+-- Per-(year, month_index) buckets for the stacked-bar chart.
+-- month_index is 0-based to line up with JS Date.getUTCMonth().
 create or replace view public.dashboard_monthly as
 select
   extract(year  from t.transaction_date)::int     as year,
@@ -99,7 +104,7 @@ select
 from public.transactions t
 group by 1, 2;
 
--- 4) Per-year totals across all categories.
+-- Per-year totals across all categories.
 create or replace view public.dashboard_yearly as
 select
   extract(year from t.transaction_date)::int as year,
@@ -113,7 +118,7 @@ from public.transactions t
 group by 1
 order by 1;
 
--- 5) Single-row all-time totals (KPI tiles).
+-- Single-row all-time totals (KPI tiles).
 create or replace view public.dashboard_overall as
 select
   coalesce(sum(case when transaction_type = 'contribution'                            then amount end), 0)::numeric as contributions,
@@ -124,10 +129,10 @@ select
   coalesce(sum(case when transaction_type = 'penalty'                                 then amount end), 0)::numeric as penalty
 from public.transactions;
 
--- 6.5) Per-loan balances — joins loans + their transactions and reports
---      paid principal, paid interest, and pending principal in one row.
---      Mirrors the math in src/lib/loan-math.ts:computeLoanFinancials so
---      SQL queries and the app stay in sync.
+-- Per-loan balances — joins loans + transactions, reports paid principal,
+-- paid interest, and pending principal in one row. Mirrors the math in
+-- src/lib/loan-math.ts:computeLoanFinancials so SQL queries and the app
+-- stay in sync.
 create or replace view public.loans_balances as
 select
   l.id                            as loan_id,
@@ -140,11 +145,8 @@ select
   l.start_date,
   l.end_date,
   l.status,
-  -- Principal repaid = sum of `amount` on loan_repayment rows.
   coalesce(sum(t.amount) filter (where t.transaction_type = 'loan_repayment'), 0)::numeric  as paid_principal,
-  -- Interest collected = sum of `amount` on interest rows tagged to loans.
   coalesce(sum(t.amount) filter (where t.transaction_type = 'interest' and t.interest_source = 'loans'), 0)::numeric  as paid_interest,
-  -- Pending principal = principal − paid principal − bad debt, clamped ≥ 0.
   greatest(
     l.principal_amount
     - coalesce(sum(t.amount) filter (where t.transaction_type = 'loan_repayment'), 0)
@@ -155,10 +157,10 @@ from public.loans l
 left join public.transactions t on t.loan_id = l.id
 group by l.id;
 
--- 6.6) Member × month contribution matrix. One row per (year, member),
---      twelve numeric columns (jan…dec) holding that member's contribution
---      sum for that month, plus a `total` for the year. The dashboard
---      filters by year via WHERE year = :year.
+-- Member × month contribution matrix. One row per (year, member), twelve
+-- numeric columns (jan…dec) holding that member's contribution sum for that
+-- month, plus a `total` for the year. The dashboard filters by year via
+-- WHERE year = :year.
 create or replace view public.dashboard_member_month_matrix as
 select
   extract(year from t.transaction_date)::int        as year,
@@ -183,7 +185,7 @@ where t.transaction_type = 'contribution'
 group by extract(year from t.transaction_date), m.id, m.name
 order by 1 desc, member_name;
 
--- 7) Per-member lifetime contribution totals (leaderboard, descending).
+-- Per-member lifetime contribution totals (leaderboard, descending).
 create or replace view public.dashboard_member_totals as
 select
   coalesce(m.name, '— Unattributed —') as member_name,
@@ -194,5 +196,7 @@ left join public.members m on m.id = t.member_id
 where t.transaction_type = 'contribution'
 group by coalesce(m.name, '— Unattributed —')
 order by sum(t.amount) desc;
+
+commit;
 
 notify pgrst, 'reload schema';

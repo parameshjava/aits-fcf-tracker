@@ -16,7 +16,7 @@ begin;
 
 -- 1) Member contributions (126 rows)
 insert into public.transactions
-  (transaction_id, amount, contribution_type, interest_source, member_id, transaction_date, description) values
+  (transaction_id, amount, transaction_type, interest_source, member_id, transaction_date, description) values
   ('SEED-2020-01-ANL', 500.00, 'contribution', null, (select id from public.members where email = 'anil.kothacheruvu@gmail.com'), '2020-01-15', 'Kothacheruvu Anil Kumar Reddy'),
   ('SEED-2020-02-ANL', 500.00, 'contribution', null, (select id from public.members where email = 'anil.kothacheruvu@gmail.com'), '2020-02-15', 'Kothacheruvu Anil Kumar Reddy'),
   ('SEED-2020-03-ANL', 500.00, 'contribution', null, (select id from public.members where email = 'anil.kothacheruvu@gmail.com'), '2020-03-15', 'Kothacheruvu Anil Kumar Reddy'),
@@ -147,7 +147,7 @@ on conflict (transaction_id) do nothing;
 
 -- 2) Bank interest (5 rows)
 insert into public.transactions
-  (transaction_id, amount, contribution_type, interest_source, member_id, transaction_date, description) values
+  (transaction_id, amount, transaction_type, interest_source, member_id, transaction_date, description) values
   ('SEED-BANK-2020-03', 2243.00, 'interest', 'bank', null, '2020-03-28', 'Bank interest credited'),
   ('SEED-BANK-2020-06', 1547.00, 'interest', 'bank', null, '2020-06-28', 'Bank interest credited'),
   ('SEED-BANK-2020-07', 3000.00, 'interest', 'bank', null, '2020-07-28', 'Bank interest credited'),
@@ -158,7 +158,7 @@ on conflict (transaction_id) do nothing;
 commit;
 
 -- Sanity check (uncomment to run after insert):
--- select contribution_type, interest_source, count(*), sum(amount)
+-- select transaction_type, interest_source, count(*), sum(amount)
 --   from public.transactions
 --  where transaction_date >= '2020-01-01' and transaction_date < '2021-01-01'
 --  group by 1, 2 order by 1, 2;

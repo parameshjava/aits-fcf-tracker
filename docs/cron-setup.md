@@ -8,12 +8,14 @@ Supabase **Free** auto-pauses any project that goes 7 days without traffic. A pa
 
 Components:
 
-| Piece           | File                        | Purpose                                                            |
-| :-------------- | :-------------------------- | :----------------------------------------------------------------- |
-| Route           | `src/app/api/ping/route.ts` | `GET /api/ping` — runs a tiny `select` against `public.reference`. |
-| Cron schedule   | `vercel.json`               | `0 7 * * *` (07:00 UTC = 12:30 IST) once a day.                    |
-| Auth gate       | `CRON_SECRET` env var       | Vercel auto-injects this as `Authorization: Bearer <secret>`.      |
-| Heartbeat table | `public.reference` (4 rows) | Stable, indexed-by-PK, cheap to query.                             |
+| Piece              | File                            | Purpose                                                            |
+| :----------------- | :------------------------------ | :----------------------------------------------------------------- |
+| Route              | `src/app/api/ping/route.ts`     | `GET /api/ping` — runs a tiny `select` against `public.reference`. |
+| Admin client       | `src/lib/supabase/admin.ts`     | Uses the secret key so the route can read past RLS.                |
+| Cron schedule      | `vercel.json`                   | `0 7 * * *` (07:00 UTC = 12:30 IST) once a day.                    |
+| Auth gate          | `CRON_SECRET` env var           | Vercel auto-injects this as `Authorization: Bearer <secret>`.      |
+| Privileged client  | `SUPABASE_SECRET_KEY` env var   | Server-only key (formerly `service_role`) for RLS bypass.          |
+| Heartbeat table    | `public.reference` (4 rows)     | Stable, indexed-by-PK, cheap to query.                             |
 
 ## One-time setup
 
@@ -26,15 +28,23 @@ openssl rand -hex 32
 
 Copy the 64-character hex string. This is your `CRON_SECRET`.
 
-### Step 2 — add the secret to Vercel
+### Step 2 — add `CRON_SECRET` *and* `SUPABASE_SECRET_KEY` to Vercel
 
-1. Open the Vercel project → **Settings** → **Environment Variables**.
-2. Click **Add new**.
-3. Name: `CRON_SECRET`. Value: the string from Step 1.
-4. Environments: tick **Production** *and* **Preview** (leave **Development** unticked unless you want to test locally — see Step 4).
-5. Save.
+The cron route uses two server-only env vars:
 
-Vercel automatically forwards this value as `Authorization: Bearer <secret>` whenever it triggers a cron. You do not have to wire that up yourself.
+| Name                  | Source                                                                                        | Why                                                                                                       |
+| :-------------------- | :-------------------------------------------------------------------------------------------- | :-------------------------------------------------------------------------------------------------------- |
+| `CRON_SECRET`         | The string from Step 1 (`openssl rand -hex 32`).                                              | Vercel auto-injects it as `Authorization: Bearer <secret>` on cron triggers; the route 401s without it.   |
+| `SUPABASE_SECRET_KEY` | Supabase Dashboard → **Project Settings → API Keys → secret** (the `sb_secret_…` value).      | The route bypasses RLS (no user session). The publishable key wouldn't work; with RLS on, `anon` has no SELECT policy on `public.reference`. |
+
+Add both:
+
+1. Vercel project → **Settings** → **Environment Variables**.
+2. **Add new** for `CRON_SECRET` — paste the Step 1 string. Tick **Production** + **Preview** (leave **Development** unticked unless you want to test locally — Step 4).
+3. **Add new** for `SUPABASE_SECRET_KEY` — paste the value from the Supabase API Keys panel. Tick **Production** + **Preview**. Keep it secret; never ship to the browser.
+4. (Legacy fallback) If you already had `SUPABASE_SERVICE_ROLE_KEY` set, the admin client still honours it — but rotate to `SUPABASE_SECRET_KEY` so you're ready when Supabase deprecates the JWT-style keys at end of 2026.
+
+Vercel forwards the `CRON_SECRET` automatically on every cron trigger. You do not have to wire that part up yourself.
 
 ### Step 3 — deploy
 
@@ -114,8 +124,14 @@ The first run hasn't fired yet. Cron jobs only fire after a deploy that contains
 **`500 CRON_SECRET not set`**
 The env var isn't attached to the **Production** environment. Re-tick Production in the env var settings and redeploy.
 
+**`500 SUPABASE_SECRET_KEY (or legacy SUPABASE_SERVICE_ROLE_KEY) is not set`**
+Same fix: add the secret key in Vercel env vars (Step 2 above) and redeploy. Without it the admin client can't initialise.
+
 **`502` with a Supabase error message**
-The DB is unreachable or `public.reference` was renamed/dropped. Sanity-check by running `select count(*) from public.reference;` in the Supabase SQL editor.
+The DB is unreachable, `public.reference` was renamed/dropped, or the secret key is wrong. Sanity-check by running `select count(*) from public.reference;` in the Supabase SQL editor — if that works, the key is wrong; if it doesn't, the table is gone. Rotate or restore as appropriate.
+
+**`502 permission denied for table reference`**
+You're using the publishable key, not the secret key. The route is supposed to use the admin client (which bypasses RLS); double-check `src/app/api/ping/route.ts` imports from `@/lib/supabase/admin`, not `@/lib/supabase/server`.
 
 **Supabase paused anyway**
 Likely the cron never fired (check **Last Run** in Vercel). The most common cause is the secret mismatch above — the route 401s, the request *does* hit Supabase's edge (which counts as activity), so you may stay un-paused even with a broken cron. But don't rely on that — fix the 401.

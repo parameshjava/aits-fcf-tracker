@@ -1,6 +1,14 @@
 import type { NextConfig } from 'next'
+import { withSentryConfig } from '@sentry/nextjs'
 
 const nextConfig: NextConfig = {
+  // Cache Components (Next 16). Lets us mark specific functions with
+  // `'use cache'` + cacheLife/cacheTag and invalidate them via updateTag()
+  // from server actions. See docs/caching.md (and the report's Part D #9)
+  // for the layout-level escape hatch that keeps the rest of the app
+  // dynamic-by-default.
+  cacheComponents: true,
+
   images: {
     remotePatterns: [
       { protocol: 'https', hostname: 'lh3.googleusercontent.com' },
@@ -32,4 +40,21 @@ const nextConfig: NextConfig = {
   },
 }
 
-export default nextConfig
+// Wrap with Sentry's build-time plugin. The plugin reads SENTRY_ORG /
+// SENTRY_PROJECT / SENTRY_AUTH_TOKEN at build time to upload source maps so
+// stack traces in the dashboard are readable. In environments where those
+// vars are missing (e.g. local dev without a Sentry account), the wrapper
+// is a no-op — the app still runs.
+export default withSentryConfig(nextConfig, {
+  org: process.env.SENTRY_ORG,
+  project: process.env.SENTRY_PROJECT,
+  authToken: process.env.SENTRY_AUTH_TOKEN,
+
+  // Only print upload logs in CI; keeps local builds quiet.
+  silent: !process.env.CI,
+
+  // Upload a wider set of source maps so client stack traces look right.
+  widenClientFileUpload: true,
+
+})
+

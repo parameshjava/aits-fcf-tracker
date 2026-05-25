@@ -26,6 +26,7 @@ export default async function AdminBankAccountsPage() {
 
   return (
     <div className="space-y-6">
+      <h1 className="text-lg font-semibold text-gray-900">Bank accounts</h1>
       <p className="text-sm text-gray-500">
         Manage member bank account details
       </p>

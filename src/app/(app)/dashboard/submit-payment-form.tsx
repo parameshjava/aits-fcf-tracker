@@ -1,6 +1,7 @@
 'use client'
 
-import { useActionState, useState } from 'react'
+import { useActionState, useEffect, useState } from 'react'
+import { toast } from 'sonner'
 import { TRANSACTION_TYPES } from '@/lib/constants'
 import { submitPayment } from '@/lib/actions/payments'
 import { getActiveLoansWithBalance, type ActiveLoanOption } from '@/lib/actions/loans'
@@ -13,6 +14,10 @@ export function SubmitPaymentForm() {
     },
     null
   )
+
+  useEffect(() => {
+    if (state?.ok) toast.success(state.message ?? 'Payment submitted for review')
+  }, [state])
 
   const [transactionType, setTransactionType] = useState<string>('')
   const [loanId, setLoanId] = useState<string>('')
@@ -195,10 +200,9 @@ export function SubmitPaymentForm() {
           </div>
         </div>
 
-        {state?.success && (
-          <p className="text-sm text-green-600">{state.success}</p>
-        )}
-        {state && 'error' in state && (
+        {/* Success → toast (see useEffect above); error stays inline with
+            the form so the user can correlate it with the offending field. */}
+        {state && !state.ok && (
           <p className="text-sm text-red-600">{state.error}</p>
         )}
 

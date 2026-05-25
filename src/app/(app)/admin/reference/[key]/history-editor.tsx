@@ -170,11 +170,11 @@ export function ReferenceHistoryEditor({
           </div>
 
           <div className="sm:col-span-4">
-            {state && 'error' in state && state.error && (
+            {state && !state.ok && (
               <p className="mb-2 text-xs text-rose-600">{state.error}</p>
             )}
-            {state && 'success' in state && state.success && (
-              <p className="mb-2 text-xs text-emerald-600">{state.success}</p>
+            {state?.ok && state.message && (
+              <p className="mb-2 text-xs text-emerald-600">{state.message}</p>
             )}
             <button
               type="submit"

@@ -1,0 +1,44 @@
+name: Test — lint + type-check + vitest
+
+# Cheap, fast verification on every push and PR. Designed to fail fast:
+# lint is the fastest, then tsc --noEmit, then vitest. The whole job
+# should run in well under a minute.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  # Cancel an in-flight run on the same ref when a new push lands. PR runs
+  # are scoped per-PR by github.ref; pushes to main are scoped per-sha.
+  group: test-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Lint + Type-check + Vitest
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Type check
+        run: npx tsc --noEmit
+
+      - name: Unit tests
+        run: npm test

@@ -1,8 +1,14 @@
 'use server'
 
-import { revalidatePath } from 'next/cache'
+import { revalidatePath, updateTag } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { getCurrentUser } from './auth'
+import {
+  actionError,
+  actionOk,
+  runAction,
+  type ActionResult,
+} from './action-result'
 
 export type MemberStatus = 'active' | 'inactive' | 'archived'
 
@@ -50,8 +56,7 @@ export type MemberDirectoryRow = MemberRow & {
 }
 
 /**
- * Reads from the public.member_directory view (see
- * scripts/create-member-directory-view.sql). One row per member, with
+ * Reads from the public.member_directory view. One row per member, with
  * `contacts` and `bank_accounts` already json-aggregated. No FK embed, no
  * JS-side join.
  */
@@ -156,102 +161,111 @@ async function assertCanEditMember(memberId: string): Promise<string | null> {
   return null
 }
 
-export async function addMemberContact(formData: FormData) {
-  const memberId = (formData.get('member_id') as string | null)?.trim() ?? ''
-  if (!memberId) return { error: 'Member is required' }
-  const denied = await assertCanEditMember(memberId)
-  if (denied) return { error: denied }
+export async function addMemberContact(formData: FormData): Promise<ActionResult> {
+  return runAction('addMemberContact', async () => {
+    const memberId = (formData.get('member_id') as string | null)?.trim() ?? ''
+    if (!memberId) return actionError('Member is required', 'member_id')
+    const denied = await assertCanEditMember(memberId)
+    if (denied) return actionError(denied)
 
-  const kind = (formData.get('kind') as string | null)?.trim() as MemberContactKind | undefined
-  const value = ((formData.get('value') as string | null) ?? '').trim()
-  const label = ((formData.get('label') as string | null) ?? '').trim() || null
-  const makePrimary = formData.get('is_primary') === 'on' || formData.get('is_primary') === '1'
-  if (kind !== 'phone' && kind !== 'email') return { error: 'Kind must be phone or email' }
-  if (!value) return { error: 'Value is required' }
-  if (kind === 'email' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) {
-    return { error: 'Email format looks invalid' }
-  }
+    const kind = (formData.get('kind') as string | null)?.trim() as MemberContactKind | undefined
+    const value = ((formData.get('value') as string | null) ?? '').trim()
+    const label = ((formData.get('label') as string | null) ?? '').trim() || null
+    const makePrimary = formData.get('is_primary') === 'on' || formData.get('is_primary') === '1'
+    if (kind !== 'phone' && kind !== 'email') return actionError('Kind must be phone or email', 'kind')
+    if (!value) return actionError('Value is required', 'value')
+    if (kind === 'email' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) {
+      return actionError('Email format looks invalid', 'value')
+    }
 
-  const supabase = await createClient()
+    const supabase = await createClient()
 
-  // If this row should be primary, clear the existing primary of the same
-  // kind first — the partial unique index would otherwise reject the insert.
-  if (makePrimary) {
+    // If this row should be primary, clear the existing primary of the same
+    // kind first — the partial unique index would otherwise reject the insert.
+    if (makePrimary) {
+      const { error: clearErr } = await supabase
+        .from('member_contacts')
+        .update({ is_primary: false })
+        .eq('member_id', memberId)
+        .eq('kind', kind)
+        .eq('is_primary', true)
+      if (clearErr) return actionError(clearErr.message)
+    }
+
+    const { error } = await supabase.from('member_contacts').insert({
+      member_id: memberId,
+      kind,
+      value,
+      label,
+      is_primary: makePrimary,
+    })
+    if (error) return actionError(error.message)
+
+    revalidatePath('/dashboard/members')
+    revalidatePath(`/dashboard/members/[slug]`, 'page')
+    updateTag('dashboard')
+    return actionOk(undefined, 'Contact added')
+  })
+}
+
+export async function removeMemberContact(id: string): Promise<ActionResult> {
+  return runAction('removeMemberContact', async () => {
+    if (!id) return actionError('Contact id is required')
+    const supabase = await createClient()
+    const { data: target, error: fetchErr } = await supabase
+      .from('member_contacts')
+      .select('id, member_id')
+      .eq('id', id)
+      .maybeSingle()
+    if (fetchErr) return actionError(fetchErr.message)
+    if (!target) return actionError('Contact not found')
+    const denied = await assertCanEditMember(target.member_id)
+    if (denied) return actionError(denied)
+
+    const { error } = await supabase.from('member_contacts').delete().eq('id', id)
+    if (error) return actionError(error.message)
+    revalidatePath('/dashboard/members')
+    revalidatePath(`/dashboard/members/[slug]`, 'page')
+    updateTag('dashboard')
+    return actionOk(undefined, 'Contact removed')
+  })
+}
+
+export async function setPrimaryContact(id: string): Promise<ActionResult> {
+  return runAction('setPrimaryContact', async () => {
+    if (!id) return actionError('Contact id is required')
+
+    const supabase = await createClient()
+    // Look up the contact so we know its (member_id, kind) and can clear the
+    // existing primary in the same partition before flipping this row.
+    const { data: target, error: fetchErr } = await supabase
+      .from('member_contacts')
+      .select('id, member_id, kind, is_primary')
+      .eq('id', id)
+      .maybeSingle()
+    if (fetchErr) return actionError(fetchErr.message)
+    if (!target) return actionError('Contact not found')
+    const denied = await assertCanEditMember(target.member_id)
+    if (denied) return actionError(denied)
+    if (target.is_primary) return actionOk(undefined, 'Already primary')
+
     const { error: clearErr } = await supabase
       .from('member_contacts')
       .update({ is_primary: false })
-      .eq('member_id', memberId)
-      .eq('kind', kind)
+      .eq('member_id', target.member_id)
+      .eq('kind', target.kind)
       .eq('is_primary', true)
-    if (clearErr) return { error: clearErr.message }
-  }
+    if (clearErr) return actionError(clearErr.message)
 
-  const { error } = await supabase.from('member_contacts').insert({
-    member_id: memberId,
-    kind,
-    value,
-    label,
-    is_primary: makePrimary,
+    const { error: setErr } = await supabase
+      .from('member_contacts')
+      .update({ is_primary: true })
+      .eq('id', id)
+    if (setErr) return actionError(setErr.message)
+
+    revalidatePath('/dashboard/members')
+    revalidatePath(`/dashboard/members/[slug]`, 'page')
+    updateTag('dashboard')
+    return actionOk(undefined, 'Marked as primary')
   })
-  if (error) return { error: error.message }
-
-  revalidatePath('/dashboard/members')
-  revalidatePath(`/dashboard/members/[slug]`, 'page')
-  return { success: 'Contact added' }
-}
-
-export async function removeMemberContact(id: string) {
-  if (!id) return { error: 'Contact id is required' }
-  const supabase = await createClient()
-  const { data: target, error: fetchErr } = await supabase
-    .from('member_contacts')
-    .select('id, member_id')
-    .eq('id', id)
-    .maybeSingle()
-  if (fetchErr) return { error: fetchErr.message }
-  if (!target) return { error: 'Contact not found' }
-  const denied = await assertCanEditMember(target.member_id)
-  if (denied) return { error: denied }
-
-  const { error } = await supabase.from('member_contacts').delete().eq('id', id)
-  if (error) return { error: error.message }
-  revalidatePath('/dashboard/members')
-  revalidatePath(`/dashboard/members/[slug]`, 'page')
-  return { success: 'Contact removed' }
-}
-
-export async function setPrimaryContact(id: string) {
-  if (!id) return { error: 'Contact id is required' }
-
-  const supabase = await createClient()
-  // Look up the contact so we know its (member_id, kind) and can clear the
-  // existing primary in the same partition before flipping this row.
-  const { data: target, error: fetchErr } = await supabase
-    .from('member_contacts')
-    .select('id, member_id, kind, is_primary')
-    .eq('id', id)
-    .maybeSingle()
-  if (fetchErr) return { error: fetchErr.message }
-  if (!target) return { error: 'Contact not found' }
-  const denied = await assertCanEditMember(target.member_id)
-  if (denied) return { error: denied }
-  if (target.is_primary) return { success: 'Already primary' }
-
-  const { error: clearErr } = await supabase
-    .from('member_contacts')
-    .update({ is_primary: false })
-    .eq('member_id', target.member_id)
-    .eq('kind', target.kind)
-    .eq('is_primary', true)
-  if (clearErr) return { error: clearErr.message }
-
-  const { error: setErr } = await supabase
-    .from('member_contacts')
-    .update({ is_primary: true })
-    .eq('id', id)
-  if (setErr) return { error: setErr.message }
-
-  revalidatePath('/dashboard/members')
-  revalidatePath(`/dashboard/members/[slug]`, 'page')
-  return { success: 'Marked as primary' }
 }

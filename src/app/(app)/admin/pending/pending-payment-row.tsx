@@ -37,7 +37,7 @@ export function PendingPaymentRow({
 
   // After a successful approval, leave the "approved" pill up and stop
   // rendering the form.
-  const approved = approveState && 'success' in approveState && approveState.success
+  const approved = approveState?.ok === true
 
   const balanceDefault = defaultDirectionForContribution(
     payment.transaction_type as TransactionType,
@@ -101,7 +101,7 @@ export function PendingPaymentRow({
       </div>
 
       {approved ? (
-        <p className="mt-2 text-sm text-green-600">{approveState!.success as string}</p>
+        <p className="mt-2 text-sm text-green-600">{approveState!.ok ? approveState!.message ?? 'Approved' : ''}</p>
       ) : (
         <form action={approveAction} className="mt-3 space-y-3">
           <input type="hidden" name="id" value={payment.id} />
@@ -185,7 +185,7 @@ export function PendingPaymentRow({
             label="Update FCF bank balance with this payment"
           />
 
-          {approveState && 'error' in approveState && approveState.error && (
+          {approveState && !approveState.ok && (
             <p className="text-sm text-red-600">{approveState.error}</p>
           )}
 
@@ -227,8 +227,8 @@ function RejectButton({ paymentId }: { paymentId: string }) {
     null,
   )
 
-  if (state?.success) {
-    return <p className="text-sm text-green-600">{state.success}</p>
+  if (state?.ok) {
+    return <p className="text-sm text-green-600">{state.message ?? 'Rejected'}</p>
   }
 
   return (
@@ -249,7 +249,7 @@ function RejectButton({ paymentId }: { paymentId: string }) {
           {pending ? 'Rejecting…' : 'Reject'}
         </button>
       </form>
-      {state?.error && (
+      {state && !state.ok && (
         <p className="text-sm text-red-600">{state.error}</p>
       )}
     </span>

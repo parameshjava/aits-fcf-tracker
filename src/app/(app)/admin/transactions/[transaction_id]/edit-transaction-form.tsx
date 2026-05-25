@@ -53,7 +53,7 @@ export function EditTransactionForm({
   const [memberId, setMemberId] = useState<string>(txn.member_id ?? '')
 
   useEffect(() => {
-    if (state && 'success' in state && state.success) {
+    if (state?.ok) {
       router.refresh()
     }
   }, [state, router])
@@ -218,11 +218,11 @@ export function EditTransactionForm({
         </div>
       </div>
 
-      {state && 'error' in state && state.error && (
+      {state && !state.ok && (
         <p className="text-sm text-red-600">{state.error}</p>
       )}
-      {state && 'success' in state && state.success && (
-        <p className="text-sm text-green-600">{state.success}</p>
+      {state?.ok && state.message && (
+        <p className="text-sm text-green-600">{state.message}</p>
       )}
 
       <div className="flex justify-end gap-3">

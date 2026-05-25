@@ -9,16 +9,21 @@ import {
   Line,
   Pie,
   PieChart,
-  ResponsiveContainer,
-  Tooltip,
   XAxis,
   YAxis,
-  Legend,
 } from 'recharts'
 import { useRouter, useSearchParams, usePathname } from 'next/navigation'
 import { formatRupees, formatRupeesCompact } from '@/lib/format'
 import { DASHBOARD_BAR_COLORS, type SectionKey } from '@/lib/transaction-groups'
 import type { DashboardMonth, MemberTotal } from '@/lib/aggregate'
+import {
+  ChartContainer,
+  ChartLegend,
+  ChartLegendContent,
+  ChartTooltip,
+  ChartTooltipContent,
+  type ChartConfig,
+} from '@/components/ui/chart'
 
 type SeriesKey = 'contributions' | 'loanInterest' | 'bankInterest'
 
@@ -27,6 +32,12 @@ const SERIES: { key: SeriesKey; label: string; color: string }[] = [
   { key: 'loanInterest',  label: 'Loan interest',  color: DASHBOARD_BAR_COLORS.loanInterest },
   { key: 'bankInterest',  label: 'Bank interest',  color: DASHBOARD_BAR_COLORS.bankInterest },
 ]
+
+const STACKED_BARS_CONFIG = {
+  contributions: { label: 'Contributions', color: DASHBOARD_BAR_COLORS.contributions },
+  loanInterest:  { label: 'Loan interest', color: DASHBOARD_BAR_COLORS.loanInterest },
+  bankInterest:  { label: 'Bank interest', color: DASHBOARD_BAR_COLORS.bankInterest },
+} satisfies ChartConfig
 
 function pad2(n: number) {
   return n < 10 ? '0' + n : '' + n
@@ -54,46 +65,50 @@ export function DashboardBars({
   }
 
   return (
-    <div className="w-full">
-      {/* Give ResponsiveContainer a numeric height so it never has to wait
-          for a parent measurement to compute its own — that avoids the
-          recharts width(-1)/height(-1) warning on first paint. Width still
-          flexes via "100%". */}
-      <ResponsiveContainer width="100%" height={320} minWidth={0}>
-        <BarChart data={data} margin={{ top: 10, right: 12, left: 0, bottom: 4 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" vertical={false} />
-          <XAxis dataKey="month" tick={{ fill: '#6b7280', fontSize: 12 }} tickLine={false} axisLine={{ stroke: '#e5e7eb' }} />
-          <YAxis
-            tick={{ fill: '#6b7280', fontSize: 12 }}
-            tickLine={false}
-            axisLine={{ stroke: '#e5e7eb' }}
-            tickFormatter={(v: number) => formatRupeesCompact(v)}
-            width={70}
-          />
-          <Tooltip
-            cursor={{ fill: '#f3f4f6' }}
-            contentStyle={{ borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 12 }}
-            formatter={(v: unknown) => formatRupees(Number(v ?? 0))}
-          />
-          <Legend wrapperStyle={{ fontSize: 12, paddingTop: 8 }} iconType="circle" />
-          {SERIES.map((s, i) => (
-            <Bar
-              key={s.key}
-              dataKey={s.key}
-              name={s.label}
-              fill={s.color}
-              stackId="inflow"
-              radius={i === SERIES.length - 1 ? [4, 4, 0, 0] : [0, 0, 0, 0]}
-              cursor="pointer"
-              activeBar={false}
-              onClick={(d: { payload?: DashboardMonth }) =>
-                pick(d?.payload?.monthIndex, s.key)
-              }
+    // ChartContainer wraps Recharts' ResponsiveContainer and:
+    //   • injects the per-series CSS variables (`--color-contributions`, …)
+    //     from STACKED_BARS_CONFIG so themes apply via CSS, not hard-coded
+    //     hex props on individual <Bar fill>.
+    //   • normalises Recharts' default sub-element styling against the
+    //     shadcn token palette — fewer raw stroke="#e5e7eb" overrides here.
+    <ChartContainer config={STACKED_BARS_CONFIG} className="aspect-auto h-80 w-full">
+      <BarChart data={data} margin={{ top: 10, right: 12, left: 0, bottom: 4 }}>
+        <CartesianGrid strokeDasharray="3 3" vertical={false} />
+        <XAxis dataKey="month" tickLine={false} axisLine={false} fontSize={12} />
+        <YAxis
+          tickLine={false}
+          axisLine={false}
+          fontSize={12}
+          tickFormatter={(v: number) => formatRupeesCompact(v)}
+          width={70}
+        />
+        <ChartTooltip
+          cursor={{ className: 'fill-muted' }}
+          content={
+            <ChartTooltipContent
+              valueFormatter={(v) => formatRupees(Number(v ?? 0))}
+              indicator="dot"
             />
-          ))}
-        </BarChart>
-      </ResponsiveContainer>
-    </div>
+          }
+        />
+        <ChartLegend content={<ChartLegendContent />} />
+        {SERIES.map((s, i) => (
+          <Bar
+            key={s.key}
+            dataKey={s.key}
+            name={s.label}
+            fill={`var(--color-${s.key})`}
+            stackId="inflow"
+            radius={i === SERIES.length - 1 ? [4, 4, 0, 0] : [0, 0, 0, 0]}
+            cursor="pointer"
+            activeBar={false}
+            onClick={(d: { payload?: DashboardMonth }) =>
+              pick(d?.payload?.monthIndex, s.key)
+            }
+          />
+        ))}
+      </BarChart>
+    </ChartContainer>
   )
 }
 
@@ -127,6 +142,10 @@ function memberShortLabel(name: string): string {
   return first
 }
 
+const MEMBER_BARS_CONFIG = {
+  total: { label: 'Contributions', color: DASHBOARD_BAR_COLORS.contributions },
+} satisfies ChartConfig
+
 export function MemberContributionBars({ data }: { data: MemberTotal[] }) {
   // Compact label for the axis tick — see memberShortLabel docstring.
   // The tooltip still shows the full canonical name from `member`.
@@ -136,45 +155,47 @@ export function MemberContributionBars({ data }: { data: MemberTotal[] }) {
   }))
 
   return (
-    <div className="w-full">
-      <ResponsiveContainer width="100%" height={320} minWidth={0}>
-        <BarChart data={shaped} margin={{ top: 10, right: 12, left: 0, bottom: 56 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" vertical={false} />
-          <XAxis
-            dataKey="label"
-            tick={{ fill: '#6b7280', fontSize: 11 }}
-            tickLine={false}
-            axisLine={{ stroke: '#e5e7eb' }}
-            interval={0}
-            angle={-35}
-            textAnchor="end"
-            height={60}
-          />
-          <YAxis
-            tick={{ fill: '#6b7280', fontSize: 12 }}
-            tickLine={false}
-            axisLine={{ stroke: '#e5e7eb' }}
-            tickFormatter={(v: number) => formatRupeesCompact(v)}
-            width={70}
-          />
-          <Tooltip
-            cursor={{ fill: '#f3f4f6' }}
-            contentStyle={{ borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 12 }}
-            labelFormatter={(_label, payload) =>
-              (payload?.[0]?.payload as MemberTotal | undefined)?.member ?? ''
-            }
-            formatter={(v: unknown) => [formatRupees(Number(v ?? 0)), 'Contributions']}
-          />
-          <Bar
-            dataKey="total"
-            name="Contributions"
-            fill={DASHBOARD_BAR_COLORS.contributions}
-            radius={[4, 4, 0, 0]}
-            activeBar={false}
-          />
-        </BarChart>
-      </ResponsiveContainer>
-    </div>
+    <ChartContainer config={MEMBER_BARS_CONFIG} className="aspect-auto h-80 w-full">
+      <BarChart data={shaped} margin={{ top: 10, right: 12, left: 0, bottom: 56 }}>
+        <CartesianGrid strokeDasharray="3 3" vertical={false} />
+        <XAxis
+          dataKey="label"
+          tickLine={false}
+          axisLine={false}
+          fontSize={11}
+          interval={0}
+          angle={-35}
+          textAnchor="end"
+          height={60}
+        />
+        <YAxis
+          tickLine={false}
+          axisLine={false}
+          fontSize={12}
+          tickFormatter={(v: number) => formatRupeesCompact(v)}
+          width={70}
+        />
+        <ChartTooltip
+          cursor={{ className: 'fill-muted' }}
+          content={
+            <ChartTooltipContent
+              labelFormatter={(_label, payload) =>
+                (payload?.[0]?.payload as MemberTotal | undefined)?.member ?? ''
+              }
+              formatter={(v) => formatRupees(Number(v ?? 0))}
+              indicator="dot"
+            />
+          }
+        />
+        <Bar
+          dataKey="total"
+          name="Contributions"
+          fill="var(--color-total)"
+          radius={[4, 4, 0, 0]}
+          activeBar={false}
+        />
+      </BarChart>
+    </ChartContainer>
   )
 }
 
@@ -195,38 +216,46 @@ export function DashboardPie({ data }: { data: DashboardPieSlice[] }) {
     )
   }
 
+  // Build a config from the slice list so each slice gets a CSS variable
+  // (`--color-<name>`) and the tooltip / legend can pull human labels.
+  const config = Object.fromEntries(
+    data.map((d) => [d.name, { label: d.name, color: d.color }]),
+  ) satisfies ChartConfig
+
   return (
-    <div className="w-full">
-      <ResponsiveContainer width="100%" height={320} minWidth={0}>
-        <PieChart>
-          <Pie
-            data={data}
-            dataKey="value"
-            nameKey="name"
-            cx="50%"
-            cy="50%"
-            outerRadius={110}
-            innerRadius={62}
-            paddingAngle={2}
-            stroke="#fff"
-            strokeWidth={2}
-          >
-            {data.map((d) => (
-              <Cell key={d.name} fill={d.color} />
-            ))}
-          </Pie>
-          <Tooltip
-            contentStyle={{ borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 12 }}
-            formatter={(v: unknown) => {
-              const n = Number(v ?? 0)
-              const pct = total > 0 ? (n / total) * 100 : 0
-              return [`${formatRupees(n)} (${pct.toFixed(1)}%)`, '']
-            }}
-          />
-          <Legend wrapperStyle={{ fontSize: 12, paddingTop: 8 }} iconType="circle" />
-        </PieChart>
-      </ResponsiveContainer>
-    </div>
+    <ChartContainer config={config} className="aspect-auto h-80 w-full">
+      <PieChart>
+        <Pie
+          data={data}
+          dataKey="value"
+          nameKey="name"
+          cx="50%"
+          cy="50%"
+          outerRadius={110}
+          innerRadius={62}
+          paddingAngle={2}
+          stroke="#fff"
+          strokeWidth={2}
+        >
+          {data.map((d) => (
+            <Cell key={d.name} fill={d.color} />
+          ))}
+        </Pie>
+        <ChartTooltip
+          content={
+            <ChartTooltipContent
+              formatter={(v) => {
+                const n = Number(v ?? 0)
+                const pct = total > 0 ? (n / total) * 100 : 0
+                return `${formatRupees(n)} (${pct.toFixed(1)}%)`
+              }}
+              indicator="dot"
+            />
+          }
+        />
+        <ChartLegend content={<ChartLegendContent />} />
+      </PieChart>
+    </ChartContainer>
   )
 }
 
@@ -235,10 +264,12 @@ export function SectionBars({
   section,
 }: {
   /** Each row: `month` is the axis label (year string for yearly trend or
-   *  month abbreviation for monthly), `value` is the bar height, and
-   *  optional `ceiling` paints a reference line — currently used by the
-   *  donations section to show the eligibility cap per year. */
-  data: { month: string; value: number; ceiling?: number }[]
+   *  month abbreviation for monthly), `value` is the donations / primary
+   *  bar height, optional `writeOff` is stacked above for the donations
+   *  section (loan principal written off in that year — economically a
+   *  donation), and optional `ceiling` paints the per-year eligibility
+   *  cap as a reference line. */
+  data: { month: string; value: number; writeOff?: number; ceiling?: number }[]
   section: SectionKey
 }) {
   const color =
@@ -248,42 +279,73 @@ export function SectionBars({
         ? DASHBOARD_BAR_COLORS.loanInterest
         : DASHBOARD_BAR_COLORS.bankInterest
 
-  const hasCeiling = data.some((d) => d.ceiling != null)
+  const hasCeiling  = data.some((d) => d.ceiling != null)
+  const hasWriteOff = data.some((d) => (d.writeOff ?? 0) > 0)
+
+  const config = {
+    value:    { label: hasCeiling ? 'Donated' : 'Total', color },
+    writeOff: { label: 'Written off',         color: '#9333ea' }, // purple — distinct from the donation tone
+    ceiling:  { label: 'Eligibility ceiling', color: '#dc2626' },
+  } satisfies ChartConfig
 
   return (
-    <div className="w-full">
-      <ResponsiveContainer width="100%" height={260} minWidth={0}>
-        <ComposedChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 4 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" vertical={false} />
-          <XAxis dataKey="month" tick={{ fill: '#6b7280', fontSize: 11 }} tickLine={false} axisLine={{ stroke: '#e5e7eb' }} />
-          <YAxis
-            tick={{ fill: '#6b7280', fontSize: 11 }}
-            tickLine={false}
-            axisLine={{ stroke: '#e5e7eb' }}
-            tickFormatter={(v: number) => formatRupeesCompact(v)}
-            width={60}
-          />
-          <Tooltip
-            cursor={{ fill: '#f3f4f6' }}
-            contentStyle={{ borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 12 }}
-            formatter={(v: unknown) => formatRupees(Number(v ?? 0))}
-          />
-          {hasCeiling && <Legend wrapperStyle={{ fontSize: 11, paddingTop: 4 }} iconType="circle" />}
-          <Bar dataKey="value" name={hasCeiling ? 'Donated' : undefined} fill={color} radius={[4, 4, 0, 0]} activeBar={false} />
-          {hasCeiling && (
-            <Line
-              type="monotone"
-              dataKey="ceiling"
-              name="Eligibility ceiling"
-              stroke="#dc2626"
-              strokeWidth={2}
-              strokeDasharray="6 4"
-              dot={{ r: 3, fill: '#dc2626', strokeWidth: 0 }}
-              activeDot={{ r: 4 }}
+    <ChartContainer config={config} className="aspect-auto h-64 w-full">
+      <ComposedChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 4 }}>
+        <CartesianGrid strokeDasharray="3 3" vertical={false} />
+        <XAxis dataKey="month" tickLine={false} axisLine={false} fontSize={11} />
+        <YAxis
+          tickLine={false}
+          axisLine={false}
+          fontSize={11}
+          tickFormatter={(v: number) => formatRupeesCompact(v)}
+          width={60}
+        />
+        <ChartTooltip
+          cursor={{ className: 'fill-muted' }}
+          content={
+            <ChartTooltipContent
+              valueFormatter={(v) => formatRupees(Number(v ?? 0))}
+              indicator="dot"
             />
-          )}
-        </ComposedChart>
-      </ResponsiveContainer>
-    </div>
+          }
+        />
+        {(hasCeiling || hasWriteOff) && <ChartLegend content={<ChartLegendContent />} />}
+        {/* Render the ceiling line BEFORE the bars so bars paint on top
+            and aren't sliced by the dashed line where they overlap. The
+            line also keeps a mild opacity so it reads as a guide rather
+            than a hard divider when it crosses a tall bar. */}
+        {hasCeiling && (
+          <Line
+            type="monotone"
+            dataKey="ceiling"
+            name="Eligibility ceiling"
+            stroke="var(--color-ceiling)"
+            strokeOpacity={0.65}
+            strokeWidth={2}
+            strokeDasharray="6 4"
+            dot={{ r: 3, fill: 'var(--color-ceiling)', strokeWidth: 0, fillOpacity: 0.65 }}
+            activeDot={{ r: 4 }}
+          />
+        )}
+        <Bar
+          dataKey="value"
+          name={hasCeiling ? 'Donated' : undefined}
+          fill="var(--color-value)"
+          stackId={hasWriteOff ? 'outflow' : undefined}
+          radius={hasWriteOff ? [0, 0, 0, 0] : [4, 4, 0, 0]}
+          activeBar={false}
+        />
+        {hasWriteOff && (
+          <Bar
+            dataKey="writeOff"
+            name="Written off"
+            fill="var(--color-writeOff)"
+            stackId="outflow"
+            radius={[4, 4, 0, 0]}
+            activeBar={false}
+          />
+        )}
+      </ComposedChart>
+    </ChartContainer>
   )
 }

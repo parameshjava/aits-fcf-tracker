@@ -58,8 +58,8 @@ export function CloseLoanForm({
             </button>
           </form>
         </div>
-        {reopenState?.success && <p className="mt-2 text-xs text-green-600">{reopenState.success}</p>}
-        {reopenState?.error && <p className="mt-2 text-xs text-red-600">{reopenState.error}</p>}
+        {reopenState?.ok && reopenState.message && <p className="mt-2 text-xs text-green-600">{reopenState.message}</p>}
+        {reopenState && !reopenState.ok && <p className="mt-2 text-xs text-red-600">{reopenState.error}</p>}
       </div>
     )
   }
@@ -211,8 +211,8 @@ export function CloseLoanForm({
         </p>
       )}
 
-      {state?.error && <p className="text-sm text-red-600">{state.error}</p>}
-      {state?.success && <p className="text-sm text-green-600">{state.success}</p>}
+      {state && !state.ok && <p className="text-sm text-red-600">{state.error}</p>}
+      {state?.ok && state.message && <p className="text-sm text-green-600">{state.message}</p>}
 
       <div className="flex justify-end">
         <button

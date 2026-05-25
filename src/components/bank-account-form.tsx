@@ -60,7 +60,7 @@ export function BankAccountForm({
   const [state, action, pending] = useActionState(
     async (_prev: unknown, formData: FormData) => {
       const result = await saveBankAccount(formData)
-      if (result.success) onSubmitted?.()
+      if (result.ok) onSubmitted?.()
       return result
     },
     null,
@@ -73,7 +73,7 @@ export function BankAccountForm({
     }
   }, [lockedMember])
 
-  const s = state as { error?: string; success?: string } | null
+  // State is ActionResult or null; the JSX below reads `state` directly.
 
   return (
     <form
@@ -224,8 +224,8 @@ export function BankAccountForm({
         </div>
       </div>
 
-      {s?.error && <p className="text-sm text-red-600">{s.error}</p>}
-      {s?.success && <p className="text-sm text-green-600">{s.success}</p>}
+      {state && !state.ok && <p className="text-sm text-red-600">{state.error}</p>}
+      {state?.ok && state.message && <p className="text-sm text-green-600">{state.message}</p>}
 
       <div className="flex justify-end gap-3">
         {onCancel && (

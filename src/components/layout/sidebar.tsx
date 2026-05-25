@@ -4,6 +4,13 @@ import { useEffect, useMemo, useState, useSyncExternalStore } from 'react'
 import Image from 'next/image'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetDescription,
+} from '@/components/ui/sheet'
 
 type NavItem = {
   label: string
@@ -416,22 +423,27 @@ export function Sidebar({ user }: { user: SidebarUser }) {
         />
       </div>
 
-      {/* Mobile drawer */}
-      {drawerOpen && (
-        <div className="fixed inset-0 z-40 lg:hidden" role="dialog" aria-modal="true">
-          <div className="absolute inset-0 bg-gray-900/40" onClick={() => setDrawerOpen(false)} />
-          <div className="absolute left-3 top-3 bottom-3">
-            <SidebarBody
-              collapsed={false}
-              setCollapsed={() => undefined}
-              closeDrawer={() => setDrawerOpen(false)}
-              pathname={pathname}
-              groups={groups}
-              isMobile={true}
-            />
-          </div>
-        </div>
-      )}
+      {/* Mobile drawer — shadcn Sheet provides focus trap, escape-to-close,
+          inert-content-behind, and the slide-in animation for free. */}
+      <Sheet open={drawerOpen} onOpenChange={setDrawerOpen}>
+        <SheetContent
+          side="left"
+          className="w-72 max-w-[85vw] border-0 bg-transparent p-0 shadow-none lg:hidden"
+        >
+          <SheetHeader className="sr-only">
+            <SheetTitle>Navigation</SheetTitle>
+            <SheetDescription>Site navigation</SheetDescription>
+          </SheetHeader>
+          <SidebarBody
+            collapsed={false}
+            setCollapsed={() => undefined}
+            closeDrawer={() => setDrawerOpen(false)}
+            pathname={pathname}
+            groups={groups}
+            isMobile={true}
+          />
+        </SheetContent>
+      </Sheet>
     </>
   )
 }

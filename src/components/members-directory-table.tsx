@@ -123,14 +123,14 @@ export function MembersDirectoryTable({
                       </td>
                       <td className="px-4 py-3">
                         {primaryPhone ? (
-                          <ContactChip contact={primaryPhone} size="sm" />
+                          <ContactChip contact={primaryPhone} size="sm" hidePrimaryBadge />
                         ) : (
                           <span className="text-gray-400">—</span>
                         )}
                       </td>
                       <td className="px-4 py-3">
                         {primaryEmail ? (
-                          <ContactChip contact={primaryEmail} size="sm" />
+                          <ContactChip contact={primaryEmail} size="sm" hidePrimaryBadge />
                         ) : (
                           <span className="text-gray-400">—</span>
                         )}

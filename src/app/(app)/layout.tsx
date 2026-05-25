@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { Sidebar, type SidebarUser } from '@/components/layout/sidebar'
 import { TopBar } from '@/components/layout/top-bar'
+import { Toaster } from '@/components/ui/sonner'
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient()
@@ -48,6 +49,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           {children}
         </div>
       </main>
+      {/* Sonner toast portal — every authenticated screen can call `toast.success(...)`
+          / `toast.error(...)` from sonner. Positioned bottom-right by default. */}
+      <Toaster richColors closeButton position="bottom-right" />
     </div>
   )
 }

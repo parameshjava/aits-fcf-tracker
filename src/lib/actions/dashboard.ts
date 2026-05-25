@@ -1,11 +1,37 @@
-'use server'
-
-import { createClient } from '@/lib/supabase/server'
+import { cacheLife, cacheTag } from 'next/cache'
+import { createAdminClient } from '@/lib/supabase/admin'
 
 /**
  * Dashboard data accessors. All of these read from the dashboard_* views
- * created by scripts/create-dashboard-views.sql — never from the raw
+ * created by scripts/prod/migrations/003_views.sql — never from the raw
  * `transactions` table — so aggregation happens in Postgres, not JS.
+ *
+ * Every export is cached via `'use cache'` + cacheTag('dashboard'). Write
+ * actions in the rest of `@/lib/actions/*` call `updateTag('dashboard')` to
+ * invalidate the cache after a mutation. The cache key automatically
+ * includes the function arguments, so `getDashboardMonthly(2024)` and
+ * `getDashboardMonthly(2025)` are separate entries.
+ *
+ * Cache lifetime is "hours" — even if a write fails to invalidate the
+ * cache, the data refreshes within the hour. For the 22-member traffic
+ * profile this trades a small staleness risk for a large response-time win.
+ *
+ * Why this file is NOT 'use server': `'use cache'` and `'use server'` are
+ * mutually exclusive directives. Server Components import these as plain
+ * async helpers, so the `'use server'` annotation was never load-bearing
+ * here. Mutating actions still live in their `'use server'` files
+ * (transactions.ts, loans.ts, etc.).
+ *
+ * Why these use createAdminClient (NOT createClient): Cache Components
+ * forbids reading dynamic data sources (cookies, headers, request) inside
+ * a `'use cache'` scope — and `createClient()` calls `await cookies()` to
+ * thread the user's session. Since the dashboard data is fund-wide
+ * (identical for every authenticated user), we use the secret-key admin
+ * client instead. Auth gating still happens in `(app)/layout.tsx` BEFORE
+ * these functions run, so anonymous users never see this cached data.
+ *
+ * Requires `SUPABASE_SECRET_KEY` in env (or legacy `SUPABASE_SERVICE_ROLE_KEY`).
+ * See docs/sentry-setup.md / docs/cron-setup.md for the env-var conventions.
  */
 
 export type DashboardOverall = {
@@ -66,7 +92,11 @@ function asNum(x: unknown): number {
 }
 
 export async function getDashboardOverall(): Promise<DashboardOverall> {
-  const supabase = await createClient()
+  'use cache'
+  cacheLife('hours')
+  cacheTag('dashboard')
+
+  const supabase = createAdminClient()
   const { data, error } = await supabase
     .from('dashboard_overall')
     .select('*')
@@ -84,7 +114,11 @@ export async function getDashboardOverall(): Promise<DashboardOverall> {
 }
 
 export async function getDashboardYearly(): Promise<DashboardYearly[]> {
-  const supabase = await createClient()
+  'use cache'
+  cacheLife('hours')
+  cacheTag('dashboard')
+
+  const supabase = createAdminClient()
   const { data, error } = await supabase
     .from('dashboard_yearly')
     .select('*')
@@ -105,7 +139,11 @@ export async function getDashboardYearly(): Promise<DashboardYearly[]> {
 }
 
 export async function getDashboardMonthly(year: number): Promise<DashboardMonthly[]> {
-  const supabase = await createClient()
+  'use cache'
+  cacheLife('hours')
+  cacheTag('dashboard')
+
+  const supabase = createAdminClient()
   const { data, error } = await supabase
     .from('dashboard_monthly')
     .select('*')
@@ -126,7 +164,11 @@ export async function getDashboardMonthly(year: number): Promise<DashboardMonthl
 export async function getDashboardMemberMonthMatrix(
   year: number,
 ): Promise<DashboardMemberMonthRow[]> {
-  const supabase = await createClient()
+  'use cache'
+  cacheLife('hours')
+  cacheTag('dashboard')
+
+  const supabase = createAdminClient()
   const { data, error } = await supabase
     .from('dashboard_member_month_matrix')
     .select('*')
@@ -148,7 +190,11 @@ export async function getDashboardMemberMonthMatrix(
 }
 
 export async function getDashboardMemberTotals(): Promise<DashboardMemberTotal[]> {
-  const supabase = await createClient()
+  'use cache'
+  cacheLife('hours')
+  cacheTag('dashboard')
+
+  const supabase = createAdminClient()
   const { data, error } = await supabase
     .from('dashboard_member_totals')
     .select('*')
@@ -173,7 +219,11 @@ export async function getDashboardTransactions(opts?: {
   series?: 'contributions' | 'loanInterest' | 'bankInterest' | null
   limit?: number
 }): Promise<DashboardTxn[]> {
-  const supabase = await createClient()
+  'use cache'
+  cacheLife('hours')
+  cacheTag('dashboard')
+
+  const supabase = createAdminClient()
   let query = supabase
     .from('dashboard_transactions')
     .select('*')

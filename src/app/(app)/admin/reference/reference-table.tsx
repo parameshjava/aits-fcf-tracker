@@ -139,7 +139,7 @@ function DisplayRow({
     setError(null)
     startTransition(async () => {
       const result = await deleteReference(row.key)
-      if (result.error) {
+      if (!result.ok) {
         setError(result.error)
         setConfirmOpen(false)
         return
@@ -257,7 +257,7 @@ function EditableRow({
     setError(null)
     startTransition(async () => {
       const result = await upsertReference(fd)
-      if (result.error) {
+      if (!result.ok) {
         setError(result.error)
         return
       }
