@@ -2,6 +2,10 @@
 
 import { useActionState, useState } from 'react'
 import { updateLoan } from '@/lib/actions/loans'
+import {
+  MAX_INTEREST_WAIVER_MONTHS,
+  type LoanType,
+} from '@/lib/loan-type'
 import { todayISO } from '@/lib/format'
 import { AmountInput } from '@/components/amount-input'
 
@@ -9,6 +13,7 @@ type Props = {
   loanId: string
   principal: number
   startDate: string
+  loanType: LoanType
   interestWaiverMonths: number
   notes: string | null
 }
@@ -17,10 +22,12 @@ export function EditLoanForm({
   loanId,
   principal,
   startDate,
+  loanType: initialLoanType,
   interestWaiverMonths,
   notes,
 }: Props) {
   const [open, setOpen] = useState(false)
+  const [loanType, setLoanType] = useState<LoanType>(initialLoanType)
   const [state, action, pending] = useActionState(
     async (_prev: unknown, formData: FormData) => {
       const result = await updateLoan(formData)
@@ -65,6 +72,45 @@ export function EditLoanForm({
 
       <input type="hidden" name="loan_id" value={loanId} />
 
+      <fieldset>
+        <legend className="text-xs font-medium text-gray-700">Loan type</legend>
+        <div className="mt-2 flex gap-3">
+          {(['personal', 'medical'] as const).map((t) => {
+            const checked = loanType === t
+            return (
+              <label
+                key={t}
+                className={
+                  'flex flex-1 cursor-pointer items-start gap-2 rounded-md border px-3 py-1.5 text-sm transition-colors ' +
+                  (checked
+                    ? 'border-blue-500 bg-blue-50 ring-1 ring-blue-500'
+                    : 'border-gray-300 hover:bg-gray-50')
+                }
+              >
+                <input
+                  type="radio"
+                  name="loan_type"
+                  value={t}
+                  checked={checked}
+                  onChange={() => setLoanType(t)}
+                  className="mt-0.5"
+                />
+                <span>
+                  <span className="block font-medium text-gray-900">
+                    {t === 'personal' ? 'Personal' : 'Medical'}
+                  </span>
+                  <span className="block text-[11px] text-gray-500">
+                    {t === 'personal'
+                      ? 'Standard loan — waiver optional.'
+                      : 'Medical-benefit loan — typically with waiver.'}
+                  </span>
+                </span>
+              </label>
+            )
+          })}
+        </div>
+      </fieldset>
+
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <div>
           <label htmlFor="principal_amount" className="block text-xs font-medium text-gray-700">
@@ -103,12 +149,14 @@ export function EditLoanForm({
             name="interest_waiver_months"
             type="number"
             min="0"
+            max={MAX_INTEREST_WAIVER_MONTHS}
             step="1"
             defaultValue={interestWaiverMonths}
             className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
           />
           <p className="mt-1 text-[11px] text-gray-400">
-            No interest accrues for this many months from start date.
+            No interest accrues for this many months from start date (0–
+            {MAX_INTEREST_WAIVER_MONTHS}).
           </p>
         </div>
 

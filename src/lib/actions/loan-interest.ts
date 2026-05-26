@@ -5,6 +5,8 @@ import { createClient } from '@/lib/supabase/server'
 import { runAction, actionOk, actionError } from '@/lib/actions/action-result'
 import type { ActionResult } from '@/lib/actions/action-result'
 import { getCurrentUser } from '@/lib/actions/auth'
+import { applyBalanceDelta } from '@/lib/actions/reference'
+import type { BalanceDirection } from '@/lib/balance-direction'
 
 export type LoanInterestAccrual = {
   id: string
@@ -79,7 +81,8 @@ export async function payLoanInterest(
   allocations: InterestAllocation[],
   transactionDate: string,
   notes?: string,
-): Promise<ActionResult<{ transactionId: string }>> {
+  bankBalance?: { apply: boolean; direction: BalanceDirection },
+): Promise<ActionResult<{ transactionId: string; balanceUpdateFailed: boolean }>> {
   return runAction('payLoanInterest', async () => {
     const user = await getCurrentUser()
     if (!user || user.profile?.role !== 'admin') return actionError('Unauthorized')
@@ -100,11 +103,26 @@ export async function payLoanInterest(
     })
     if (error) return actionError(error.message)
 
+    let balanceUpdateFailed = false
+    if (bankBalance?.apply) {
+      const total = allocations.reduce((s, a) => s + a.amount, 0)
+      const delta = bankBalance.direction === 'subtract' ? -total : total
+      const result = await applyBalanceDelta(delta)
+      if (!result.ok) {
+        console.error('applyBalanceDelta failed for payLoanInterest:', result.error)
+        balanceUpdateFailed = true
+      }
+    }
+
     revalidatePath(`/admin/loans/${loanId}`)
     revalidatePath('/admin/loans')
+    revalidatePath('/admin/reference')
     updateTag('dashboard')
 
-    return actionOk({ transactionId: data as string }, 'Interest payment recorded')
+    return actionOk(
+      { transactionId: data as string, balanceUpdateFailed },
+      'Interest payment recorded',
+    )
   })
 }
 
@@ -146,6 +164,36 @@ export async function reverseInterestPayment(
     updateTag('dashboard')
 
     return actionOk({ loanId }, 'Payment reversed')
+  })
+}
+
+/**
+ * Surgical per-loan accrual recompute. Loops every EOM from the loan's
+ * start_date through today and idempotently upserts each accrual row,
+ * preserving prior payments (status is recomputed from paid_amount).
+ *
+ * Use this after editing principal, start_date, or interest_waiver_months
+ * on a single loan — far less invasive than `recomputeLoanInterest`, which
+ * touches every active loan for a given EOM.
+ */
+export async function recomputeLoanAccruals(
+  loanId: string,
+): Promise<ActionResult<{ rows: number }>> {
+  return runAction('recomputeLoanAccruals', async () => {
+    const user = await getCurrentUser()
+    if (!user || user.profile?.role !== 'admin') return actionError('Unauthorized')
+    if (!loanId) return actionError('Loan id required')
+
+    const supabase = await createClient()
+    const { data, error } = await supabase.rpc('fn_recompute_loan_accruals', {
+      p_loan_id: loanId,
+    })
+    if (error) return actionError(error.message)
+
+    revalidatePath(`/admin/loans/${loanId}`)
+    revalidatePath('/admin/loans')
+    updateTag('dashboard')
+    return actionOk({ rows: toNumber(data ?? 0) }, 'Accruals recomputed')
   })
 }
 

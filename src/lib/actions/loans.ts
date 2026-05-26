@@ -21,6 +21,10 @@ import {
   buildLoanTimeline,
   type AccrualPayment,
 } from './loan-timeline'
+import {
+  MAX_INTEREST_WAIVER_MONTHS,
+  type LoanType,
+} from '@/lib/loan-type'
 
 export type LoanStatus = 'active' | 'paid' | 'write_off'
 
@@ -51,6 +55,8 @@ export type LoanRow = {
   start_date: string
   end_date: string | null
   status: LoanStatus
+  /** Personal (no waiver) or Medical (admin may waive up to 12 months). */
+  loan_type: LoanType
   bad_debt: number
   /** Months from start_date during which no interest accrues. 0 = none. */
   interest_waiver_months: number
@@ -107,6 +113,28 @@ export async function getWriteOffLoanCount(): Promise<number> {
     .not('end_date', 'is', null)
   if (error) throw new Error(error.message)
   return count ?? 0
+}
+
+/** Map of `pending_interest` from `loans_balances` for the given loan ids.
+ *  Sourced from `loan_interest_accruals` (the cron-maintained authoritative
+ *  ledger), not from the on-the-fly `interest_per_lakh × months` math in
+ *  `computeLoanFinancials`. Use this anywhere "interest due" needs to match
+ *  what the Pending-interest panel shows. */
+export async function getPendingInterestByLoan(
+  loanIds: string[],
+): Promise<Map<string, number>> {
+  if (loanIds.length === 0) return new Map()
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .from('loans_balances')
+    .select('loan_id, pending_interest')
+    .in('loan_id', loanIds)
+  if (error) throw new Error(error.message)
+  const out = new Map<string, number>()
+  for (const r of (data ?? []) as { loan_id: string; pending_interest: number | string | null }[]) {
+    out.set(r.loan_id, Number(r.pending_interest) || 0)
+  }
+  return out
 }
 
 /** Sum of `pending_principal` across all loans (from the `loans_balances`
@@ -238,10 +266,11 @@ export async function getLoanDetail(loanId: string): Promise<LoanDetailData | nu
       .order('period_end', { ascending: true }),
     // Fetch only the junction rows whose accrual belongs to THIS loan.
     // The embedded `accrual` selector forces the join + filter; we then
-    // discard it client-side because we only need accrual_id + transaction_id.
+    // discard it client-side because we only need accrual_id + transaction_id
+    // + the allocation amount (amount_applied).
     supabase
       .from('loan_interest_payments')
-      .select('accrual_id, transaction_id, accrual:accrual_id!inner(loan_id)')
+      .select('accrual_id, transaction_id, amount_applied, accrual:accrual_id!inner(loan_id)')
       .eq('accrual.loan_id', loanId),
     getInterestPerLakh(),
   ])
@@ -283,10 +312,15 @@ export async function getLoanDetail(loanId: string): Promise<LoanDetailData | nu
     created_at: r.created_at,
   }))
 
-  type RawPayment = { accrual_id: string; transaction_id: string }
+  type RawPayment = {
+    accrual_id: string
+    transaction_id: string
+    amount_applied: number | string | null
+  }
   const payments: AccrualPayment[] = ((paymentRes.data ?? []) as RawPayment[]).map((p) => ({
     accrualId: p.accrual_id,
     transactionId: p.transaction_id,
+    amount: Number(p.amount_applied) || 0,
   }))
 
   const txnShortIdByUuid = new Map<string, string>(
@@ -294,7 +328,19 @@ export async function getLoanDetail(loanId: string): Promise<LoanDetailData | nu
   )
 
   const timeline = buildLoanTimeline(accruals, transactions, payments, txnShortIdByUuid)
-  const financials = computeLoanFinancials(loan, transactions, interestPerLakh)
+  const baseFinancials = computeLoanFinancials(loan, transactions, interestPerLakh)
+
+  // The accrual ledger (loan_interest_accruals, populated by the EOM cron) is
+  // the authoritative source for "interest due" — not the on-the-fly
+  // `months_elapsed × interest_per_lakh − paid` math. Override interestDue so
+  // the detail page agrees with the Pending-interest panel.
+  const pendingFromAccruals = accruals
+    .filter((a) => a.status === 'pending' || a.status === 'partially_paid')
+    .reduce((s, a) => s + Math.max(a.amount_due - a.paid_amount, 0), 0)
+  const financials: LoanFinancials = {
+    ...baseFinancials,
+    interestDue: baseFinancials.isClosed ? 0 : pendingFromAccruals,
+  }
   return { loan, transactions, accruals, timeline, interestPerLakh, financials }
 }
 
@@ -312,6 +358,8 @@ export async function createLoan(
     const principal = parseFloat(formData.get('principal_amount') as string)
     const startDate = formData.get('start_date') as string
     const notes = ((formData.get('notes') as string) || '').trim() || null
+    const loanTypeRaw = ((formData.get('loan_type') as string | null) ?? '').trim()
+    const loanType: LoanType = loanTypeRaw === 'medical' ? 'medical' : 'personal'
     const waiverRaw = (formData.get('interest_waiver_months') as string | null)?.trim() || ''
     const interestWaiverMonths = waiverRaw === '' ? 0 : Math.floor(Number(waiverRaw))
 
@@ -320,9 +368,18 @@ export async function createLoan(
       return actionError('Principal must be a positive number', 'principal_amount')
     }
     if (!startDate) return actionError('Start date is required', 'start_date')
+    if (loanTypeRaw && loanTypeRaw !== 'personal' && loanTypeRaw !== 'medical') {
+      return actionError('Loan type must be Personal or Medical', 'loan_type')
+    }
     if (!Number.isFinite(interestWaiverMonths) || interestWaiverMonths < 0) {
       return actionError(
         'Interest waiver months must be 0 or a positive integer',
+        'interest_waiver_months',
+      )
+    }
+    if (interestWaiverMonths > MAX_INTEREST_WAIVER_MONTHS) {
+      return actionError(
+        `Interest waiver caps at ${MAX_INTEREST_WAIVER_MONTHS} months`,
         'interest_waiver_months',
       )
     }
@@ -336,6 +393,7 @@ export async function createLoan(
       start_date: startDate,
       end_date: null,
       status: 'active',
+      loan_type: loanType,
       bad_debt: 0,
       interest_waiver_months: interestWaiverMonths,
       notes,
@@ -383,16 +441,26 @@ export async function updateLoan(formData: FormData): Promise<ActionResult> {
     const startDate = (formData.get('start_date') as string) || null
     const notesRaw = (formData.get('notes') as string) ?? ''
     const waiverRaw = (formData.get('interest_waiver_months') as string) ?? ''
+    const loanTypeRaw = ((formData.get('loan_type') as string | null) ?? '').trim()
 
     const principal = parseFloat(principalRaw)
-    const waiverMonths = waiverRaw === '' ? null : Math.floor(Number(waiverRaw))
+    const waiverMonthsInput = waiverRaw === '' ? null : Math.floor(Number(waiverRaw))
 
     if (principalRaw && (!Number.isFinite(principal) || principal <= 0)) {
       return actionError('Principal must be a positive number', 'principal_amount')
     }
-    if (waiverMonths != null && (!Number.isFinite(waiverMonths) || waiverMonths < 0)) {
+    if (waiverMonthsInput != null && (!Number.isFinite(waiverMonthsInput) || waiverMonthsInput < 0)) {
       return actionError(
         'Interest waiver months must be 0 or a positive integer',
+        'interest_waiver_months',
+      )
+    }
+    if (loanTypeRaw && loanTypeRaw !== 'personal' && loanTypeRaw !== 'medical') {
+      return actionError('Loan type must be Personal or Medical', 'loan_type')
+    }
+    if (waiverMonthsInput != null && waiverMonthsInput > MAX_INTEREST_WAIVER_MONTHS) {
+      return actionError(
+        `Interest waiver caps at ${MAX_INTEREST_WAIVER_MONTHS} months`,
         'interest_waiver_months',
       )
     }
@@ -402,7 +470,8 @@ export async function updateLoan(formData: FormData): Promise<ActionResult> {
     }
     if (principalRaw) patch.principal_amount = principal
     if (startDate)    patch.start_date = startDate
-    if (waiverMonths != null) patch.interest_waiver_months = waiverMonths
+    if (loanTypeRaw)  patch.loan_type = loanTypeRaw as LoanType
+    if (waiverMonthsInput != null) patch.interest_waiver_months = waiverMonthsInput
 
     const { error } = await supabase.from('loans').update(patch).eq('id', loanId)
     if (error) return actionError(error.message)

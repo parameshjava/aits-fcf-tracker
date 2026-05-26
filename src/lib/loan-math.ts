@@ -88,6 +88,13 @@ export function computeLoanFinancials(
   const paidInterestTotal = paidInterestFromTxns
 
   // Resolve interest-waiver window. Interest only accrues from start + waiver.
+  //
+  // This stays day-precise (addMonths preserves day-of-month) on purpose:
+  // `monthsBetweenDates` is anniversary-month based, so cursor = start_date + N
+  // months naturally consumes N monthly accruals before any interest is
+  // counted. The SQL recompute uses a full-month boundary (first day of
+  // (start_month + 1 + N)) when emitting waived/charged rows, but the
+  // *count* of charged months at any given EOM matches either way.
   const interestWaiverMonths = Math.max(
     Math.floor(Number(loan.interest_waiver_months) || 0),
     0,

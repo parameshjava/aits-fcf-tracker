@@ -1,14 +1,19 @@
 'use client'
 
-import { useActionState, useEffect } from 'react'
+import { useActionState, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { createLoan } from '@/lib/actions/loans'
+import {
+  MAX_INTEREST_WAIVER_MONTHS,
+  type LoanType,
+} from '@/lib/loan-type'
 import { todayISO } from '@/lib/format'
 import { BankBalanceUpdater } from '@/components/bank-balance-updater'
 import { AmountInput } from '@/components/amount-input'
 import { LOAN_DISBURSEMENT_DEFAULT } from '@/lib/balance-direction'
+import { SearchableSelect } from '@/components/searchable-select'
 
 type Member = { id: string; name: string }
 
@@ -20,6 +25,8 @@ export function NewLoanForm({
   interestPerLakh: number
 }) {
   const router = useRouter()
+  const [memberId, setMemberId] = useState('')
+  const [loanType, setLoanType] = useState<LoanType>('personal')
   const [state, action, pending] = useActionState(
     async (_prev: unknown, formData: FormData) => createLoan(formData),
     null,
@@ -35,25 +42,61 @@ export function NewLoanForm({
 
   return (
     <form action={action} className="space-y-4 rounded-lg border bg-white p-6">
+      <fieldset>
+        <legend className="text-sm font-medium text-gray-700">Loan type</legend>
+        <div className="mt-2 flex gap-3">
+          {(['personal', 'medical'] as const).map((t) => {
+            const checked = loanType === t
+            return (
+              <label
+                key={t}
+                className={
+                  'flex flex-1 cursor-pointer items-start gap-2 rounded-md border px-3 py-2 text-sm transition-colors ' +
+                  (checked
+                    ? 'border-blue-500 bg-blue-50 ring-1 ring-blue-500'
+                    : 'border-gray-300 hover:bg-gray-50')
+                }
+              >
+                <input
+                  type="radio"
+                  name="loan_type"
+                  value={t}
+                  checked={checked}
+                  onChange={() => setLoanType(t)}
+                  className="mt-0.5"
+                />
+                <span>
+                  <span className="block font-medium text-gray-900">
+                    {t === 'personal' ? 'Personal' : 'Medical'}
+                  </span>
+                  <span className="block text-xs text-gray-500">
+                    {t === 'personal'
+                      ? 'Standard loan — waiver optional.'
+                      : 'Medical-benefit loan — typically with waiver.'}
+                  </span>
+                </span>
+              </label>
+            )
+          })}
+        </div>
+      </fieldset>
+
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <div>
           <label htmlFor="member_id" className="block text-sm font-medium text-gray-700">
             Member
           </label>
-          <select
-            id="member_id"
-            name="member_id"
-            required
-            defaultValue=""
-            className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-          >
-            <option value="">Select member</option>
-            {members.map((m) => (
-              <option key={m.id} value={m.id}>
-                {m.name}
-              </option>
-            ))}
-          </select>
+          <div className="mt-1">
+            <SearchableSelect
+              name="member_id"
+              options={members}
+              value={memberId}
+              onChange={setMemberId}
+              placeholder="Select member"
+              emptyOption="Select member"
+              required
+            />
+          </div>
         </div>
 
         <div>
@@ -103,7 +146,7 @@ export function NewLoanForm({
           <label htmlFor="interest_waiver_months" className="block text-sm font-medium text-gray-700">
             Interest waiver
             <span className="ml-1 text-xs font-normal text-gray-400">
-              (months from start with no interest — e.g. medical-benefit loans)
+              (months from start with no interest — 0 to {MAX_INTEREST_WAIVER_MONTHS}; 0 = no waiver)
             </span>
           </label>
           <input
@@ -111,6 +154,7 @@ export function NewLoanForm({
             name="interest_waiver_months"
             type="number"
             min="0"
+            max={MAX_INTEREST_WAIVER_MONTHS}
             step="1"
             defaultValue={0}
             className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"

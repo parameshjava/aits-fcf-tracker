@@ -44,25 +44,32 @@ describe('buildLoanTimeline', () => {
     expect(buildLoanTimeline([], [], [], new Map())).toEqual([])
   })
 
-  it('sorts by sortDate ascending and puts accruals before transactions on the same date', () => {
+  it('assigns 1-based SNO in sorted order', () => {
     const a = accrual({ id: 'a-eom', period_end: '2025-10-31' })
-    const t = txn({ id: 't-eom', transaction_date: '2025-10-31', transaction_id: '20251031-01' })
+    const t = txn({
+      id: 't-repay',
+      transaction_date: '2025-11-15',
+      transaction_id: '20251115-02',
+      transaction_type: 'loan_repayment',
+      interest_source: null,
+      amount: 25_000,
+    })
     const rows = buildLoanTimeline(
       [a],
       [t],
       [],
-      new Map([['t-eom', '20251031-01']]),
+      new Map([['t-repay', '20251115-02']]),
     )
-    expect(rows.map((r) => r.kind)).toEqual(['accrual', 'transaction'])
+    expect(rows.map((r) => r.sno)).toEqual([1, 2])
   })
 
-  it('cross-references accruals and a single multi-allocation payment', () => {
+  it('folds an interest-payment transaction into its accrual settlements', () => {
     const oct = accrual({ id: 'a-oct', period_end: '2025-10-31', status: 'paid', paid_amount: 650 })
     const nov = accrual({ id: 'a-nov', period_end: '2025-11-30', status: 'paid', paid_amount: 650 })
     const pay = txn({ id: 't-pay', transaction_date: '2025-12-10', transaction_id: '20251210-04', amount: 1300 })
     const payments: AccrualPayment[] = [
-      { accrualId: 'a-oct', transactionId: 't-pay' },
-      { accrualId: 'a-nov', transactionId: 't-pay' },
+      { accrualId: 'a-oct', transactionId: 't-pay', amount: 650 },
+      { accrualId: 'a-nov', transactionId: 't-pay', amount: 650 },
     ]
     const rows = buildLoanTimeline(
       [oct, nov],
@@ -71,13 +78,22 @@ describe('buildLoanTimeline', () => {
       new Map([['t-pay', '20251210-04']]),
     )
 
+    // The interest-payment transaction is absorbed into the accruals.
+    expect(rows.filter((r) => r.kind === 'transaction')).toHaveLength(0)
     const octRow = rows.find((r) => r.kind === 'accrual' && r.accrual.id === 'a-oct') as Extract<LoanTimelineRow, { kind: 'accrual' }>
     const novRow = rows.find((r) => r.kind === 'accrual' && r.accrual.id === 'a-nov') as Extract<LoanTimelineRow, { kind: 'accrual' }>
-    const payRow = rows.find((r) => r.kind === 'transaction') as Extract<LoanTimelineRow, { kind: 'transaction' }>
 
-    expect(octRow.settledByTxnIds).toEqual(['20251210-04'])
-    expect(novRow.settledByTxnIds).toEqual(['20251210-04'])
-    expect(payRow.settledAccrualPeriods).toEqual(['Oct 2025', 'Nov 2025'])
+    expect(octRow.settlements).toEqual([
+      {
+        txnUuid: 't-pay',
+        txnIdShort: '20251210-04',
+        date: '2025-12-10',
+        amount: 650,
+        description: null,
+      },
+    ])
+    expect(novRow.settlements[0].txnIdShort).toBe('20251210-04')
+    expect(novRow.settlements[0].amount).toBe(650)
   })
 
   it('sorts opening balance row to the top', () => {
@@ -93,14 +109,14 @@ describe('buildLoanTimeline', () => {
     expect(rows[1].kind === 'accrual' && rows[1].accrual.id).toBe('a-oct')
   })
 
-  it('marks waived accruals without settledByTxnIds', () => {
+  it('waived accruals have empty settlements', () => {
     const w = accrual({ id: 'a-w', status: 'waived', waiver_reason: 'loan_closed', period_end: '2025-12-31' })
     const rows = buildLoanTimeline([w], [], [], new Map())
     expect(rows).toHaveLength(1)
-    expect(rows[0].kind === 'accrual' && rows[0].settledByTxnIds).toEqual([])
+    expect(rows[0].kind === 'accrual' && rows[0].settlements).toEqual([])
   })
 
-  it('non-interest transactions appear with empty settledAccrualPeriods', () => {
+  it('non-interest transactions remain as standalone rows', () => {
     const repay = txn({
       id: 't-repay',
       transaction_id: '20251115-02',
@@ -111,15 +127,26 @@ describe('buildLoanTimeline', () => {
     })
     const rows = buildLoanTimeline([], [repay], [], new Map([['t-repay', '20251115-02']]))
     expect(rows).toHaveLength(1)
-    expect(rows[0].kind === 'transaction' && rows[0].settledAccrualPeriods).toEqual([])
+    expect(rows[0].kind).toBe('transaction')
   })
 
-  it('skips settledByTxnIds when payment txn UUID is absent from the lookup map', () => {
+  it('preserves an interest-payment transaction when it has no junction allocation', () => {
+    // Legacy seed data: interest transaction exists but no row in
+    // loan_interest_payments. We must still surface it as a standalone row.
+    const t = txn({ id: 't-legacy', transaction_id: '20200101-01', transaction_date: '2020-01-01' })
+    const rows = buildLoanTimeline([], [t], [], new Map([['t-legacy', '20200101-01']]))
+    expect(rows).toHaveLength(1)
+    expect(rows[0].kind).toBe('transaction')
+  })
+
+  it('drops payments whose transaction UUID does not match a known transaction', () => {
     const a = accrual({ id: 'a-ghost' })
-    const payments: AccrualPayment[] = [{ accrualId: 'a-ghost', transactionId: 't-missing' }]
+    const payments: AccrualPayment[] = [
+      { accrualId: 'a-ghost', transactionId: 't-missing', amount: 100 },
+    ]
     const rows = buildLoanTimeline([a], [], payments, new Map())
     expect(rows).toHaveLength(1)
-    expect(rows[0].kind === 'accrual' && rows[0].settledByTxnIds).toEqual([])
+    expect(rows[0].kind === 'accrual' && rows[0].settlements).toEqual([])
   })
 })
 
