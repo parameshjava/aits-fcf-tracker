@@ -1,6 +1,9 @@
 import { getTransactions } from '@/lib/actions/transactions'
-import { getReference, getReferenceYearMap } from '@/lib/actions/reference'
-import { getBadDebtsByYear, getWriteOffLoanCount } from '@/lib/actions/loans'
+import { getWriteOffLoanCount } from '@/lib/actions/loans'
+import {
+  getDashboardEligibilitySummary,
+  getDashboardEligibilityLedger,
+} from '@/lib/actions/dashboard'
 import { formatRupees } from '@/lib/format'
 import { KpiTile } from '@/components/kpi-tile'
 import { SectionBars } from '@/components/charts/dashboard-bars'
@@ -11,7 +14,6 @@ import {
   sumWhere,
   type RawTxn,
 } from '@/lib/aggregate'
-import { computeEligibility } from '@/lib/eligibility'
 import {
   SECTION_DESCRIPTIONS,
   SECTION_LABELS,
@@ -80,68 +82,80 @@ export async function SectionView({
   let thisYearBadDebts = 0
   let writeOffCount = 0
   if (section === 'donations') {
-    let fallbackThreshold = 500000
-    let fallbackPct = 25
-    try { fallbackThreshold = await getReference('corpus_threshold') } catch {}
-    try { fallbackPct       = await getReference('donation_eligibility_pct') } catch {}
-
-    // computeEligibility needs both contributions + donations totals per
-    // year. We derive them from the raw txns directly so the same source
-    // of truth feeds the bars (donations) and the line (eligibility).
-    const byYear = new Map<number, { contributions: number; donations: number }>()
-    for (const t of txns) {
-      const y = new Date(t.transaction_date).getUTCFullYear()
-      if (!Number.isFinite(y)) continue
-      const slot = byYear.get(y) ?? { contributions: 0, donations: 0 }
-      const amt = Number(t.amount) || 0
-      if (t.transaction_type === 'contribution') slot.contributions += amt
-      else if (t.transaction_type === 'donation') slot.donations += amt
-      byYear.set(y, slot)
-    }
-
-    const years = Array.from(byYear.keys())
-    const fromYear = years.length ? Math.min(...years) : new Date().getUTCFullYear()
-    const toYear   = years.length ? Math.max(...years) : new Date().getUTCFullYear()
-    const [thresholdByYear, pctByYear, badDebtsByYear, writeOffs] = await Promise.all([
-      getReferenceYearMap('corpus_threshold',         fromYear, toYear),
-      getReferenceYearMap('donation_eligibility_pct', fromYear, toYear),
-      getBadDebtsByYear(),
+    // Donation eligibility is sourced from migration 010/012's table+views.
+    // The ledger is per-EOM; we aggregate by year here to feed both the
+    // chart's ceiling line and the donations-section KPIs.
+    const [summary, ledger, writeOffs] = await Promise.all([
+      getDashboardEligibilitySummary(),
+      getDashboardEligibilityLedger(),
       getWriteOffLoanCount(),
     ])
     writeOffCount = writeOffs
-    for (const [y, v] of badDebtsByYear) {
-      totalBadDebts += v
-      if (y === currentYear) thisYearBadDebts += v
+
+    // Roll the per-EOM ledger up into yearly buckets. `carry_balance` is a
+    // running net across all periods — so the latest EOM in each year holds
+    // that year's carry-out, and the previous year's carry-out is this
+    // year's carry-in.
+    const byYear = new Map<
+      number,
+      {
+        amountEarned: number
+        donations: number
+        badDebts: number
+        latestEom: string
+        latestCarry: number
+      }
+    >()
+    for (const row of ledger) {
+      const y = new Date(row.period_end).getUTCFullYear()
+      if (!Number.isFinite(y)) continue
+      const slot = byYear.get(y)
+      if (!slot) {
+        byYear.set(y, {
+          amountEarned: row.amount_earned,
+          donations: row.donations_in_period,
+          badDebts: row.bad_debts_in_period,
+          latestEom: row.period_end,
+          latestCarry: row.carry_balance,
+        })
+      } else {
+        slot.amountEarned += row.amount_earned
+        slot.donations   += row.donations_in_period
+        slot.badDebts    += row.bad_debts_in_period
+        // `ledger` is ordered newest-first (see action), so the FIRST row
+        // we see for a year is the latest EOM in that year.
+      }
     }
 
-    const eligibility = computeEligibility(
-      Array.from(byYear.entries()).map(([year, v]) => ({
-        year,
-        contributions: v.contributions,
-        donations: v.donations,
-        badDebts: badDebtsByYear.get(year) ?? 0,
-      })),
-      {
-        threshold: fallbackThreshold,
-        pctOfYear: fallbackPct,
-        resolveFor: (y) => ({
-          threshold: thresholdByYear.get(y) ?? fallbackThreshold,
-          pctOfYear: pctByYear.get(y) ?? fallbackPct,
-        }),
-      },
-    )
-    const ceilingByYear = new Map<number, number>()
-    for (const r of eligibility.rows) {
-      ceilingByYear.set(r.year, r.carryIn + r.eligibilityEarned)
+    // Per-year bad-debt totals (drives KPIs + chart writeOff bar).
+    const badDebtsByYear = new Map<number, number>()
+    for (const [y, slot] of byYear) {
+      badDebtsByYear.set(y, slot.badDebts)
+      totalBadDebts += slot.badDebts
+      if (y === currentYear) thisYearBadDebts += slot.badDebts
     }
+
+    // Build per-year ceiling: carry_at_year_start + amount_earned_in_year.
+    // `carry_at_year_start` = previous year's carry-out (0 for the first
+    // year). Walk years oldest-first to thread the running carry.
+    const yearsAsc = Array.from(byYear.keys()).sort((a, b) => a - b)
+    const ceilingByYear = new Map<number, number>()
+    let prevCarry = 0
+    for (const y of yearsAsc) {
+      const slot = byYear.get(y)!
+      const carryIn = prevCarry
+      ceilingByYear.set(y, carryIn + slot.amountEarned)
+      prevCarry = slot.latestCarry
+    }
+
     // Some years have a write-off but zero donation transactions, so the
     // base `yearly` series omits them entirely. Re-add those years so the
     // bar chart shows a write-off bar even when donations were 0.
     //
     // Bars (donations + write-offs) are positive amounts. The eligibility
-    // ceiling can mathematically go negative when carryOut < 0 (over-spent),
-    // but we clamp it at 0 for the chart so the visual stays in the
-    // positive half and lines up with the bars. The true (signed)
+    // ceiling can mathematically go negative when carry goes underwater
+    // (over-spent), but we clamp it at 0 for the chart so the visual
+    // stays in the positive half and lines up with the bars. The signed
     // "Eligible amount" KPI tile still surfaces the negative value when
     // applicable.
     const yearsWithAnyOutflow = new Set<number>([
@@ -161,8 +175,15 @@ export async function SectionView({
           ceiling: Math.max(0, ceilingByYear.get(y) ?? 0),
         }
       })
-    availableEligibility = eligibility.availableNow
-    eligibilityEarnedSoFar = eligibility.rows.reduce((s, r) => s + r.eligibilityEarned, 0)
+
+    // `summary.availableNow` from the view is clamped at 0 (see migration
+    // 012). The donations section KPI used to surface the SIGNED value so
+    // members could see "over-spent" — derive that signed value here so
+    // the tile keeps its existing semantics:
+    //   signed availableNow = total_earned − total_donated − total_bad_debt.
+    availableEligibility =
+      summary.totalEarned - summary.totalDonated - summary.totalBadDebt
+    eligibilityEarnedSoFar = summary.totalEarned
   }
 
   return (

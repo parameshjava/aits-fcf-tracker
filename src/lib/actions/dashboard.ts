@@ -87,6 +87,28 @@ export type DashboardTxn = {
   member_slug: string | null
 }
 
+/** One-row dashboard tile data sourced from `donation_eligibility_summary`. */
+export type DashboardEligibilitySummary = {
+  totalEarned: number
+  totalDonated: number
+  totalBadDebt: number
+  availableNow: number
+}
+
+/** Per-EOM eligibility ledger row from `donation_eligibility_ledger`. */
+export type DashboardEligibilityRow = {
+  period_end: string
+  contributions_basis: number
+  pct_used: number
+  threshold_used: number
+  corpus_at_period_end: number
+  threshold_met: boolean
+  amount_earned: number
+  donations_in_period: number
+  bad_debts_in_period: number
+  carry_balance: number
+}
+
 function asNum(x: unknown): number {
   return typeof x === 'number' ? x : Number(x ?? 0)
 }
@@ -258,4 +280,70 @@ export async function getDashboardTransactions(opts?: {
   const { data, error } = await query
   if (error) throw new Error(error.message)
   return (data ?? []) as DashboardTxn[]
+}
+
+/**
+ * Donation-eligibility tile data — single row from the
+ * `donation_eligibility_summary` view (see migration 012).
+ *
+ * Pure read; safe to cache with `cacheTag('dashboard')`. Write actions in
+ * transactions/loans/eligibility call `updateTag('dashboard')` after a
+ * mutation so this refreshes on the next request.
+ */
+export async function getDashboardEligibilitySummary(): Promise<DashboardEligibilitySummary> {
+  'use cache'
+  cacheLife('hours')
+  cacheTag('dashboard')
+
+  const supabase = createAdminClient()
+  const { data, error } = await supabase
+    .from('donation_eligibility_summary')
+    .select('*')
+    .maybeSingle()
+  if (error) throw new Error(error.message)
+  const row = (data ?? {}) as Partial<{
+    total_earned: number | string
+    total_donated: number | string
+    total_bad_debt: number | string
+    available_now: number | string
+  }>
+  return {
+    totalEarned:  asNum(row.total_earned),
+    totalDonated: asNum(row.total_donated),
+    totalBadDebt: asNum(row.total_bad_debt),
+    availableNow: asNum(row.available_now),
+  }
+}
+
+/**
+ * Per-month eligibility ledger rows, ordered newest-first. Read from the
+ * `donation_eligibility_ledger` view (see migration 012). Consumers that
+ * want yearly aggregates group these by `period_end.getUTCFullYear()`.
+ */
+export async function getDashboardEligibilityLedger(): Promise<DashboardEligibilityRow[]> {
+  'use cache'
+  cacheLife('hours')
+  cacheTag('dashboard')
+
+  const supabase = createAdminClient()
+  const { data, error } = await supabase
+    .from('donation_eligibility_ledger')
+    .select('*')
+    .order('period_end', { ascending: false })
+  if (error) throw new Error(error.message)
+  return (data ?? []).map((r) => {
+    const row = r as Partial<DashboardEligibilityRow>
+    return {
+      period_end:           String(row.period_end ?? ''),
+      contributions_basis:  asNum(row.contributions_basis),
+      pct_used:             asNum(row.pct_used),
+      threshold_used:       asNum(row.threshold_used),
+      corpus_at_period_end: asNum(row.corpus_at_period_end),
+      threshold_met:        Boolean(row.threshold_met),
+      amount_earned:        asNum(row.amount_earned),
+      donations_in_period:  asNum(row.donations_in_period),
+      bad_debts_in_period:  asNum(row.bad_debts_in_period),
+      carry_balance:        asNum(row.carry_balance),
+    }
+  })
 }
