@@ -8,6 +8,7 @@ import {
   type LoanInterestAccrual,
   type InterestAllocation,
 } from '@/lib/actions/loan-interest'
+import type { ActionResult } from '@/lib/actions/action-result'
 import { formatRupees, todayISO } from '@/lib/format'
 
 type Props = {
@@ -45,8 +46,10 @@ export function PendingInterestPanel({ loanId, accruals }: Props) {
 
   const total = allocations.reduce((s, a) => s + a.amount, 0)
 
-  const [state, formAction, isPending] = useActionState(
-    async (_prev: unknown) =>
+  const [state, formAction, isPending] = useActionState<
+    ActionResult<{ transactionId: string }> | null
+  >(
+    async (_prev) =>
       payLoanInterest(loanId, allocations, txnDate, notes || undefined),
     null,
   )
