@@ -4,7 +4,9 @@ import { createClient } from '@/lib/supabase/server'
 import { formatRupees } from '@/lib/format'
 import { getLoanByNumber, getLoanDetail } from '@/lib/actions/loans'
 import { EditLoanForm } from './edit-loan-form'
+import { LoanTimelineSection } from '@/components/loan-timeline-section'
 import { CloseLoanForm } from './close-loan-form'
+import { PendingInterestPanel } from './pending-interest-panel'
 
 const STATUS_PILL: Record<string, string> = {
   active:    'bg-blue-50 text-blue-700 ring-blue-200',
@@ -112,6 +114,15 @@ export default async function AdminLoanManagePage({
         interestWaiverMonths={Number(loan.interest_waiver_months || 0)}
         notes={loan.notes}
       />
+
+      <PendingInterestPanel loanId={loan.id} accruals={detail?.accruals ?? []} />
+
+      <section className="rounded-2xl border border-gray-200/80 bg-white p-5">
+        <h3 className="text-sm font-semibold text-gray-900">Timeline</h3>
+        <div className="mt-3">
+          <LoanTimelineSection timeline={detail?.timeline ?? []} size="md" />
+        </div>
+      </section>
 
       <CloseLoanForm
         loanId={loan.id}

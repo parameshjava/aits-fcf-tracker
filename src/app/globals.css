@@ -19,12 +19,20 @@
    the body rows underneath. Putting the background on each <th> makes
    the strip opaque so tbody content can't bleed through.
 
+   Why child selectors (`> thead > tr > th`) and not descendants: an
+   expandable row inside a `.sticky-thead` table can host a NESTED table
+   (e.g. the loan timeline inside `loans-list-table.tsx`). With a
+   descendant selector the nested table's `<th>` cells also become sticky
+   at `top: 97px`, which floats them out of their row context and visually
+   hides the data row underneath. Child selectors keep the rule scoped to
+   the outer table only.
+
    Top offset matches the sticky TopBar height: h-24 (96px) + 1px bottom
    border = 97px. Tables inside an overflow-x-auto wrapper need
    lg:overflow-x-visible (or similar) on the wrapper for this to pin
    against the viewport instead of the local scroll port — see usage in
    transactions-table.tsx etc. */
-.sticky-thead thead th {
+.sticky-thead > thead > tr > th {
   position: sticky;
   top: 97px;
   z-index: 10;

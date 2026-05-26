@@ -15,6 +15,12 @@ import {
   runAction,
   type ActionResult,
 } from './action-result'
+import type { LoanInterestAccrual } from './loan-interest'
+import type { LoanTimelineRow } from './loan-timeline'
+import {
+  buildLoanTimeline,
+  type AccrualPayment,
+} from './loan-timeline'
 
 export type LoanStatus = 'active' | 'paid' | 'write_off'
 
@@ -31,6 +37,8 @@ export type LoanDetailTxn = {
 export type LoanDetailData = {
   loan: LoanRow
   transactions: LoanDetailTxn[]
+  accruals: LoanInterestAccrual[]
+  timeline: LoanTimelineRow[]
   interestPerLakh: number
   financials: LoanFinancials
 }
@@ -212,7 +220,7 @@ export async function getActiveLoansWithBalance(): Promise<ActiveLoanOption[]> {
 
 export async function getLoanDetail(loanId: string): Promise<LoanDetailData | null> {
   const supabase = await createClient()
-  const [loanRes, txnRes, interestPerLakh] = await Promise.all([
+  const [loanRes, txnRes, accrualRes, paymentRes, interestPerLakh] = await Promise.all([
     supabase
       .from('loans')
       .select('*, member:member_id (id, name, slug)')
@@ -223,16 +231,71 @@ export async function getLoanDetail(loanId: string): Promise<LoanDetailData | nu
       .select('id, transaction_date, transaction_id, transaction_type, interest_source, amount, description')
       .eq('loan_id', loanId)
       .order('transaction_date', { ascending: true }),
+    supabase
+      .from('loan_interest_accruals')
+      .select('*')
+      .eq('loan_id', loanId)
+      .order('period_end', { ascending: true }),
+    // Fetch only the junction rows whose accrual belongs to THIS loan.
+    // The embedded `accrual` selector forces the join + filter; we then
+    // discard it client-side because we only need accrual_id + transaction_id.
+    supabase
+      .from('loan_interest_payments')
+      .select('accrual_id, transaction_id, accrual:accrual_id!inner(loan_id)')
+      .eq('accrual.loan_id', loanId),
     getInterestPerLakh(),
   ])
   if (loanRes.error) throw new Error(loanRes.error.message)
   if (!loanRes.data) return null
   if (txnRes.error) throw new Error(txnRes.error.message)
+  if (accrualRes.error) throw new Error(accrualRes.error.message)
+  if (paymentRes.error) throw new Error(paymentRes.error.message)
 
   const loan = loanRes.data as LoanRow
   const transactions = (txnRes.data ?? []) as LoanDetailTxn[]
+
+  type RawAccrual = {
+    id: string
+    loan_id: string
+    period_end: string
+    amount_due: number | string
+    paid_amount: number | string
+    status: 'pending' | 'partially_paid' | 'paid' | 'waived'
+    interest_rate_used: number | string
+    balance_basis: number | string
+    is_opening_balance: boolean
+    waiver_reason: string | null
+    paid_at: string | null
+    created_at: string
+  }
+  const accruals: LoanInterestAccrual[] = ((accrualRes.data ?? []) as RawAccrual[]).map((r) => ({
+    id: r.id,
+    loan_id: r.loan_id,
+    period_end: r.period_end,
+    amount_due: Number(r.amount_due),
+    paid_amount: Number(r.paid_amount),
+    status: r.status,
+    interest_rate_used: Number(r.interest_rate_used),
+    balance_basis: Number(r.balance_basis),
+    is_opening_balance: r.is_opening_balance,
+    waiver_reason: r.waiver_reason,
+    paid_at: r.paid_at,
+    created_at: r.created_at,
+  }))
+
+  type RawPayment = { accrual_id: string; transaction_id: string }
+  const payments: AccrualPayment[] = ((paymentRes.data ?? []) as RawPayment[]).map((p) => ({
+    accrualId: p.accrual_id,
+    transactionId: p.transaction_id,
+  }))
+
+  const txnShortIdByUuid = new Map<string, string>(
+    transactions.map((t) => [t.id, t.transaction_id]),
+  )
+
+  const timeline = buildLoanTimeline(accruals, transactions, payments, txnShortIdByUuid)
   const financials = computeLoanFinancials(loan, transactions, interestPerLakh)
-  return { loan, transactions, interestPerLakh, financials }
+  return { loan, transactions, accruals, timeline, interestPerLakh, financials }
 }
 
 export async function createLoan(

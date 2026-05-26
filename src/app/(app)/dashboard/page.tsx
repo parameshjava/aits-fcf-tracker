@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
-import { getReferenceRow, getReference, getReferenceYearMap } from '@/lib/actions/reference'
+import { getReferenceRow } from '@/lib/actions/reference'
 import { formatRupees } from '@/lib/format'
 import { KpiTile } from '@/components/kpi-tile'
 import {
@@ -18,14 +18,18 @@ import {
   getDashboardMemberTotals,
   getDashboardMemberMonthMatrix,
   getDashboardTransactions,
+  getDashboardEligibilitySummary,
+  getDashboardEligibilityLedger,
   type DashboardTxn,
   type DashboardMemberTotal,
+  type DashboardEligibilitySummary,
+  type DashboardEligibilityRow,
 } from '@/lib/actions/dashboard'
-import { computeEligibility, type EligibilityRow } from '@/lib/eligibility'
-import { getBadDebtsByYear, getTotalPendingPrincipal } from '@/lib/actions/loans'
+import { getTotalPendingPrincipal } from '@/lib/actions/loans'
 import { Admonition } from '@/components/ui/admonition'
 import { SubmitPaymentForm } from './submit-payment-form'
 import { DashboardTabs } from './dashboard-tabs'
+import { EligibilityMonthlyChart } from './eligibility-monthly-chart'
 
 type SeriesKey = 'contributions' | 'loanInterest' | 'bankInterest'
 
@@ -116,39 +120,46 @@ export default async function DashboardPage({
     }
   })
 
-  // Donation-eligibility ledger. The two rules (corpus_threshold + annual %)
-  // are read PER-YEAR from public.reference_history so historical changes
-  // to the rule are honoured. Falls back to today's reference value when no
-  // history row covers a given year.
-  let eligibilityThreshold = 500000
-  let eligibilityPct = 25
-  try { eligibilityThreshold = await getReference('corpus_threshold') } catch {}
-  try { eligibilityPct = await getReference('donation_eligibility_pct') } catch {}
-
-  const eligibilityYears = yearly.map((r) => r.year)
-  const fromYear = eligibilityYears.length > 0 ? Math.min(...eligibilityYears) : thisYear
-  const toYear = Math.max(thisYear, ...(eligibilityYears.length ? eligibilityYears : [thisYear]))
-  const [thresholdByYear, pctByYear, badDebtsByYear] = await Promise.all([
-    getReferenceYearMap('corpus_threshold',         fromYear, toYear),
-    getReferenceYearMap('donation_eligibility_pct', fromYear, toYear),
-    getBadDebtsByYear(),
+  // Donation-eligibility is sourced from the donation_eligibility_periods
+  // table + views (migrations 010 + 012). The dashboard tile uses the
+  // single-row summary; the per-year ledger table aggregates the per-EOM
+  // ledger rows by calendar year.
+  const [eligibilitySummary, eligibilityLedger] = await Promise.all([
+    getDashboardEligibilitySummary(),
+    getDashboardEligibilityLedger(),
   ])
+  const eligibilityYears = aggregateEligibilityByYear(eligibilityLedger, thisYear)
 
-  const eligibility = computeEligibility(
-    yearly.map((r) => ({
-      year: r.year,
-      contributions: r.contributions,
-      donations: r.donations,
-      badDebts: badDebtsByYear.get(r.year) ?? 0,
-    })),
-    {
-      threshold: eligibilityThreshold,
-      pctOfYear: eligibilityPct,
-      resolveFor: (y) => ({
-        threshold: thresholdByYear.get(y) ?? eligibilityThreshold,
-        pctOfYear: pctByYear.get(y) ?? eligibilityPct,
-      }),
-    },
+  // Monthly stacked bar dataset for the selected year:
+  //   • carryIn = lifetime cumulative EARNED eligibility BEFORE this month
+  //               (sum of `amount_earned` across all prior EOM rows). January
+  //               of the selected year inherits the lifetime total through
+  //               end of the prior year; each subsequent month rolls forward.
+  //   • earned  = this month's `amount_earned` (fresh accrual)
+  // Months without an EOM row render as zero bars. For the CURRENT calendar
+  // year we trim the chart at the current IST month; past years still render
+  // all 12 months. `period_end` is a date-only ISO string, so we read it via
+  // `getUTCMonth()` to stay stable across IST/UTC boundaries.
+  const rowsByMonth = new Map<number, { earned: number; donated: number; badDebts: number }>()
+  for (const row of eligibilityLedger) {
+    const d = new Date(row.period_end)
+    if (d.getUTCFullYear() !== year) continue
+    rowsByMonth.set(d.getUTCMonth(), {
+      earned: Number(row.amount_earned),
+      donated: Number(row.donations_in_period),
+      badDebts: Number(row.bad_debts_in_period),
+    })
+  }
+  // Use IST so "current month" matches the rest of the app's date semantics.
+  const todayIST = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }))
+  const currentYear = todayIST.getFullYear()
+  const currentMonthIdx = todayIST.getMonth() // 0-indexed
+  const eligibilityMonthlyData = buildEligibilityMonthlyData(
+    rowsByMonth,
+    eligibilityLedger,
+    year,
+    currentYear,
+    currentMonthIdx,
   )
 
   // Drill-down: bar-segment click sets ?month=YYYY-MM&series=X. The view
@@ -266,7 +277,26 @@ export default async function DashboardPage({
             />
           </div>
         }
-        eligibilityChart={<DonationEligibilityHeader eligibility={eligibility} />}
+        eligibilityChart={
+          <div className="space-y-6">
+            <DonationEligibilityHeader
+              summary={eligibilitySummary}
+              years={eligibilityYears}
+              thisYear={thisYear}
+            />
+            <div className="rounded-lg border border-gray-200 bg-white p-4">
+              <div className="mb-3">
+                <h3 className="text-sm font-semibold text-gray-900">
+                  Eligibility by month — {year}
+                </h3>
+                <p className="text-xs text-gray-500">
+                  Cumulative earned eligibility (orange) + this month&apos;s fresh accrual (blue)
+                </p>
+              </div>
+              <EligibilityMonthlyChart data={eligibilityMonthlyData} year={year} />
+            </div>
+          </div>
+        }
         matrixSection={null}
         inflowSection={
           <div>
@@ -296,7 +326,7 @@ export default async function DashboardPage({
             />
           </div>
         }
-        eligibilitySection={<DonationEligibilityLedger eligibility={eligibility} />}
+        eligibilitySection={<DonationEligibilityLedger years={eligibilityYears} />}
         membersSection={
           <div>
             <div className="mb-3">
@@ -333,6 +363,72 @@ export default async function DashboardPage({
       )}
     </div>
   )
+}
+
+/**
+ * Build the monthly-eligibility dataset for the selected year.
+ *
+ *   • Bottom segment (carryIn) = LIFETIME cumulative NET eligibility
+ *     (earned − donated − bad debts) across all EOM rows whose `period_end`
+ *     falls BEFORE this month. So January's carry is the lifetime net total
+ *     through end of the prior year, February's carry adds January's net
+ *     slice to that, etc. — no reset at year boundaries.
+ *   • Top segment (earned) = this month's `amount_earned` (fresh accrual).
+ *
+ * For the current calendar year we stop at the current IST month so we
+ * don't show empty future bars; past years still render Jan..Dec.
+ *
+ * Note: carryIn is signed (NOT clamped). If donations + bad debts exceed
+ * earned eligibility, the orange segment renders below the X-axis. That
+ * matches the Total Eligibility KPI tile, which is also signed.
+ */
+function buildEligibilityMonthlyData(
+  rowsByMonth: Map<number, { earned: number; donated: number; badDebts: number }>,
+  ledger: DashboardEligibilityRow[],
+  year: number,
+  currentYear: number,
+  currentMonthIdx: number,
+): { month: string; carryIn: number; earned: number }[] {
+  // Lifetime cumulative NET (earned − donated − bad debts) across all EOM
+  // rows BEFORE Jan of `year`.
+  let runningCarry = 0
+  for (const row of ledger) {
+    const d = new Date(row.period_end)
+    if (d.getUTCFullYear() < year) {
+      runningCarry += Number(row.amount_earned)
+                    - Number(row.donations_in_period)
+                    - Number(row.bad_debts_in_period)
+    }
+  }
+
+  // For the current calendar year, real data only exists through the
+  // current IST month. Future months still get an X-axis label, but with
+  // zero-height bars (carryIn = 0, earned = 0) so the chart keeps a
+  // consistent 12-month width across years.
+  const lastDataMonth = year === currentYear ? currentMonthIdx : MONTH_LABELS.length - 1
+
+  const out: { month: string; carryIn: number; earned: number }[] = []
+  for (let idx = 0; idx <= 11; idx++) {
+    if (idx > lastDataMonth) {
+      // Future month in the current (or a future) year — zero-height placeholder.
+      out.push({ month: MONTH_LABELS[idx], carryIn: 0, earned: 0 })
+      continue
+    }
+    const slot = rowsByMonth.get(idx)
+    const earned = slot?.earned ?? 0
+    const donated = slot?.donated ?? 0
+    const badDebts = slot?.badDebts ?? 0
+    // Push the bar BEFORE updating runningCarry — carryIn represents the
+    // value going INTO this month (lifetime net through end of prior month).
+    out.push({
+      month: MONTH_LABELS[idx],
+      carryIn: runningCarry,
+      earned,
+    })
+    // Roll lifetime carry forward by this month's net slice.
+    runningCarry += earned - donated - badDebts
+  }
+  return out
 }
 
 function toTxnRow(t: DashboardTxn): TxnRow {
@@ -436,26 +532,115 @@ function MemberTotalsTable({ rows }: { rows: DashboardMemberTotal[] }) {
   )
 }
 
+/** One yearly row aggregated from the per-EOM ledger view. */
+type EligibilityYearRow = {
+  year: number
+  /** Sum of `contributions_basis` across all EOM rows in the year. */
+  contributions: number
+  /** Sum of `amount_earned` in the year. 0 when threshold never met. */
+  amountEarned: number
+  /** Sum of `donations_in_period` in the year. */
+  donations: number
+  /** Sum of `bad_debts_in_period` in the year. */
+  badDebts: number
+  /** Eligibility carried INTO this year — i.e. the previous year-end's
+   *  `carry_balance`. 0 for the very first year. */
+  carryIn: number
+  /** carry_balance from the LATEST EOM row in this year — i.e. carry-out. */
+  carryOut: number
+  /** From the latest EOM in this year. True once the corpus reached the
+   *  configured threshold by that period. */
+  thresholdMet: boolean
+  /** Threshold + pct in effect for the latest EOM in this year. */
+  thresholdUsed: number
+  pctUsed: number
+  /** Corpus at the latest EOM in this year. */
+  corpus: number
+  /** True iff this row represents the current calendar year — it's
+   *  naturally pro-rata since only EOM rows up to today exist. */
+  isCurrentYear: boolean
+}
+
+/**
+ * Group the per-EOM ledger (ordered newest-first) by year. The ledger is
+ * sourced from `donation_eligibility_ledger` (migration 012); `carry_balance`
+ * is a running net across all periods.
+ *
+ *   - Per-year earned / donations / bad debts → sum of monthly slices.
+ *   - Year-end carry  → carry_balance of the latest EOM in the year.
+ *   - Year-start carry → previous year's year-end carry (or 0 for the first).
+ */
+function aggregateEligibilityByYear(
+  ledger: DashboardEligibilityRow[],
+  thisYear: number,
+): EligibilityYearRow[] {
+  const byYear = new Map<number, DashboardEligibilityRow[]>()
+  for (const row of ledger) {
+    const y = new Date(row.period_end).getUTCFullYear()
+    if (!Number.isFinite(y)) continue
+    const list = byYear.get(y) ?? []
+    list.push(row)
+    byYear.set(y, list)
+  }
+  // Sort each year's rows oldest-first so [0] is January EOM, [last] is the
+  // latest EOM (Dec for closed years, current month for the active year).
+  for (const rows of byYear.values()) {
+    rows.sort((a, b) => a.period_end.localeCompare(b.period_end))
+  }
+  const years = Array.from(byYear.keys()).sort((a, b) => a - b)
+  let prevCarry = 0
+  const yearRows: EligibilityYearRow[] = []
+  for (const year of years) {
+    const rows = byYear.get(year)!
+    const last = rows[rows.length - 1]
+    const carryOut = last.carry_balance
+    yearRows.push({
+      year,
+      contributions: rows.reduce((s, r) => s + r.contributions_basis, 0),
+      amountEarned: rows.reduce((s, r) => s + r.amount_earned, 0),
+      donations: rows.reduce((s, r) => s + r.donations_in_period, 0),
+      badDebts: rows.reduce((s, r) => s + r.bad_debts_in_period, 0),
+      carryIn: prevCarry,
+      carryOut,
+      thresholdMet: last.threshold_met,
+      thresholdUsed: last.threshold_used,
+      pctUsed: last.pct_used,
+      corpus: last.corpus_at_period_end,
+      isCurrentYear: year === thisYear,
+    })
+    prevCarry = carryOut
+  }
+  // Render newest-year first to match the existing UX (latest year up top).
+  return yearRows.sort((a, b) => b.year - a.year)
+}
+
 function DonationEligibilityHeader({
-  eligibility,
+  summary,
+  years,
+  thisYear,
 }: {
-  eligibility: ReturnType<typeof computeEligibility>
+  summary: DashboardEligibilitySummary
+  years: EligibilityYearRow[]
+  thisYear: number
 }) {
-  const {
-    rows,
-    threshold,
-    pctOfYear,
-    availableNow,
-    currentYearEligibility,
-    currentYearDonations,
-  } = eligibility
-  const currentRow = rows.find((r) => r.isCurrentYear)
-  const lastRow = rows.length > 0 ? rows[rows.length - 1] : null
-  const corpusReached = lastRow?.thresholdMet ?? false
-  // Corpus = cumulative contributions − cumulative donations − cumulative
-  // bad debts (loan principal written off). See computeEligibility.
-  const corpus = lastRow?.corpus ?? 0
+  // `years` is sorted newest-first; the first row may not necessarily be the
+  // current year (e.g. a brand new year with no contributions yet has no EOM
+  // rows in the ledger yet).
+  const currentRow = years.find((r) => r.isCurrentYear) ?? null
+  const latestRow = years[0] ?? null
+  // Latest reference snapshot — threshold/pct as of the latest EOM, falling
+  // back to the current-year row when available.
+  const headerRow = currentRow ?? latestRow
+  const threshold = headerRow?.thresholdUsed ?? 0
+  const pctOfYear = headerRow?.pctUsed ?? 0
+  const corpus = latestRow?.corpus ?? 0
+  const corpusReached = latestRow?.thresholdMet ?? false
   const remainingToThreshold = Math.max(threshold - corpus, 0)
+  const availableNow = summary.availableNow
+  const currentYearEligibility = currentRow?.amountEarned ?? 0
+  const currentYearDonations = currentRow?.donations ?? 0
+  const currentYearContributions = currentRow?.contributions ?? 0
+  const currentYearCeiling = (currentRow?.carryIn ?? 0) + currentYearEligibility
 
   return (
     <div>
@@ -488,7 +673,7 @@ function DonationEligibilityHeader({
         </Admonition>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5 xl:grid-cols-7">
         <Stat
           label="Available now"
           value={formatRupees(Math.max(availableNow, 0))}
@@ -502,11 +687,11 @@ function DonationEligibilityHeader({
           tone={availableNow < 0 ? 'rose' : 'blue'}
         />
         <Stat
-          label={`Eligible this year (${currentRow?.year ?? '—'})`}
+          label={`Eligible this year (${currentRow?.year ?? thisYear})`}
           value={formatRupees(currentYearEligibility)}
           hint={
             corpusReached
-              ? `pro-rata: ${pctOfYear}% × ${formatRupees(currentRow?.contributions ?? 0)} contributions so far`
+              ? `pro-rata: ${pctOfYear}% × ${formatRupees(currentYearContributions)} contributions so far`
               : 'no eligibility until corpus is funded'
           }
           tone="indigo"
@@ -515,7 +700,7 @@ function DonationEligibilityHeader({
           label="Donated this year"
           value={formatRupees(currentYearDonations)}
           hint={
-            currentRow && currentRow.donations > currentRow.carryIn + currentRow.eligibilityEarned
+            currentRow && currentRow.donations > currentYearCeiling
               ? 'exceeds this year’s ceiling'
               : 'against this year’s ceiling'
           }
@@ -527,16 +712,36 @@ function DonationEligibilityHeader({
           hint={corpusReached ? 'threshold reached' : `need ${formatRupees(remainingToThreshold)} more`}
           tone="gray"
         />
+        {(() => {
+          const totalEligibility =
+            summary.totalEarned - summary.totalDonated - summary.totalBadDebt
+          return (
+            <Stat
+              label="Total eligibility"
+              value={formatRupees(totalEligibility)}
+              hint="earned − donated − bad debts"
+              tone={totalEligibility < 0 ? 'rose' : 'amber'}
+            />
+          )
+        })()}
+        <Stat
+          label="Total donations"
+          value={formatRupees(summary.totalDonated)}
+          hint="lifetime paid out"
+          tone="gray"
+        />
+        <Stat
+          label="Total bad debts"
+          value={formatRupees(summary.totalBadDebt)}
+          hint="lifetime written off"
+          tone="gray"
+        />
       </div>
     </div>
   )
 }
 
-function DonationEligibilityLedger({
-  eligibility,
-}: {
-  eligibility: ReturnType<typeof computeEligibility>
-}) {
+function DonationEligibilityLedger({ years }: { years: EligibilityYearRow[] }) {
   return (
     <div>
       <div className="mb-3">
@@ -546,18 +751,19 @@ function DonationEligibilityLedger({
           pro-rata.
         </p>
       </div>
-      <EligibilityTable rows={eligibility.rows} />
+      <EligibilityTable rows={years} />
     </div>
   )
 }
 
-type StatTone = 'blue' | 'indigo' | 'emerald' | 'gray' | 'rose'
+type StatTone = 'blue' | 'indigo' | 'emerald' | 'gray' | 'rose' | 'amber'
 const STAT_TONES: Record<StatTone, string> = {
   blue:    'border-blue-200/70 bg-blue-50/40',
   indigo:  'border-indigo-200/70 bg-indigo-50/40',
   emerald: 'border-emerald-200/70 bg-emerald-50/40',
   gray:    'border-gray-200 bg-gray-50/40',
   rose:    'border-rose-200/70 bg-rose-50/40',
+  amber:   'border-amber-200/70 bg-amber-50/40',
 }
 
 function Stat({
@@ -580,7 +786,7 @@ function Stat({
   )
 }
 
-function EligibilityTable({ rows }: { rows: EligibilityRow[] }) {
+function EligibilityTable({ rows }: { rows: EligibilityYearRow[] }) {
   if (rows.length === 0) {
     return (
       <p className="rounded-md border border-dashed border-gray-200 px-3 py-4 text-center text-xs text-gray-400">
@@ -624,7 +830,7 @@ function EligibilityTable({ rows }: { rows: EligibilityRow[] }) {
                 }
                 title={r.thresholdMet ? undefined : 'Corpus below threshold this year'}
               >
-                {r.thresholdMet ? formatRupees(r.eligibilityEarned) : '—'}
+                {r.amountEarned > 0 ? formatRupees(r.amountEarned) : '—'}
               </td>
               <td className="px-3 py-2 text-right tabular-nums text-gray-600">
                 {formatRupees(r.carryIn)}

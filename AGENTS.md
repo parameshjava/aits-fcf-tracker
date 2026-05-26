@@ -62,6 +62,7 @@ Load only the file matching the task; do not preload all of these.
 - **Loan numbers and transaction IDs are auto-generated.** Postgres triggers fill `loan_number` as `YYYYMM-NNN` (per-year counter via `public.loan_year_counter`, month taken from `start_date`) and `transaction_id` as `YYYYMMDD-NNN` (date prefix + a **global** running sequence `public.transactions_seq` — *not* per-date). Leave both columns empty on insert.
 - **Global config lives in `public.reference`** (key/value rows: `interest_per_lakh`, `bank_balance`, `corpus_threshold`, `donation_eligibility_pct`). Read via helpers in `@/lib/actions/reference.ts` (e.g. `getInterestPerLakh()`). Admin updates to `reference.value` must also append a row to `public.reference_history` so the historical timeline stays intact. Never hardcode any reference value.
 - **`transaction_type` is the discriminator** on both `transactions` and `pending_payments`. Allowed values: `interest`, `contribution`, `loan_repayment`, `penalty`, `donation`, `other`. Interest rows additionally carry `interest_source` ∈ {`loans`, `bank`}.
+- **Loan interest payments must use `payLoanInterest`**, not direct `createTransaction` with type=interest+source=loans. The latter is now blocked at the action layer. The hybrid UI on `/admin/loans/[loan_number]` (the "Pending interest" panel) is the only entry point.
 
 ## Stack
 
@@ -179,6 +180,9 @@ Authoritative DDL: `scripts/prod/migrations/`. RLS is **enabled** on every `publ
 | `reference`          | Global key/value config (current value). Drives `interest_per_lakh`, `bank_balance`, `corpus_threshold`, `donation_eligibility_pct`. |
 | `reference_history`  | Versioned timeline of `reference` values (`effective_from` / `effective_to`) for historical math.      |
 | `loan_year_counter`  | Per-year loan counter (year PK, counter int). Bumped by `set_loan_number` trigger.                     |
+| `loan_interest_accruals`     | One row per active loan per month from cutover (+ one synthetic `is_opening_balance` row). Populated by `pg_cron` at EOM IST. Settled via `loan_interest_payments` junction. |
+| `loan_interest_payments`     | Junction (accrual ↔ transaction). One transaction can pay multiple accrual rows. Trigger maintains `paid_amount` + `status` on the accrual row. |
+| `donation_eligibility_periods` | One row per calendar month dated at EOM. Full historical backfill. Earned eligibility = `month.contributions × pct%` gated on corpus. Consumption (donations + bad_debt) derived live in views. |
 
 **Triggers / hooks**
 - `set_transaction_id` (BEFORE INSERT on `transactions`) — fills `transaction_id` from `transaction_date` + `transactions_seq` when null.
@@ -186,9 +190,15 @@ Authoritative DDL: `scripts/prod/migrations/`. RLS is **enabled** on every `publ
 - `handle_new_user` (AFTER INSERT on `auth.users`) — creates the matching `profiles` row, pulling role from `allowed_emails`.
 - `sync_profile_role_from_allowlist` (AFTER UPDATE on `allowed_emails`) — keeps `profiles.role` aligned with the allowlist.
 - `enforce_email_allowlist` (Auth → Before-User-Created hook) — rejects sign-ups not in `allowed_emails`.
+- `fn_recompute_accrual_paid_state` (AFTER INSERT/DELETE on `loan_interest_payments`) — keeps `loan_interest_accruals.paid_amount` + `status` in sync; rejects overpayment.
+- `fn_waive_accruals_on_loan_close` (AFTER UPDATE OF status on `loans`) — when a loan transitions to `paid` or `write_off`, all pending accruals are flipped to `waived` with `waiver_reason='loan_closed'`. (Note: only `pending` accruals are waived; `partially_paid` rows keep their state intact to preserve payment history.)
 
 **Views** (read-only; consumed via Supabase from server actions / RSCs — see `scripts/prod/02-views.sql`):
-`member_directory`, `dashboard_transactions`, `dashboard_monthly`, `dashboard_yearly`, `dashboard_overall`, `dashboard_member_totals`, `dashboard_member_month_matrix`, `loans_balances`.
+`member_directory`, `dashboard_transactions`, `dashboard_monthly`, `dashboard_yearly`, `dashboard_overall`, `dashboard_member_totals`, `dashboard_member_month_matrix`, `loans_balances`, `donation_eligibility_ledger`, `donation_eligibility_summary`.
+
+- `loans_balances` now exposes `pending_interest` sourced from `loan_interest_accruals` (active loans) — replacing the prior on-the-fly `interest_per_lakh × months` calculation.
+- `donation_eligibility_ledger` — one row per `donation_eligibility_periods` entry with running `carry_balance` (earned − consumed cumulatively). Used by the historical eligibility timeline.
+- `donation_eligibility_summary` — collapses the ledger to a single row of dashboard tile data (current carry balance, last-earned month, etc.).
 
 ## Boundaries
 

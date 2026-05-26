@@ -97,6 +97,7 @@ const adminGroup: NavGroup = {
     { label: 'Pending Payments',    href: '/admin/pending',          icon: <Emoji char="📥" label="Pending Payments" /> },
     { label: 'Bank Accounts',       href: '/admin/bank-accounts',    icon: <Emoji char="💳" label="Bank Accounts" /> },
     { label: 'Reference Values',    href: '/admin/reference',        icon: <Emoji char="⚙️" label="Reference Values" /> },
+    { label: 'System',              href: '/admin/system/accruals',  icon: <Emoji char="🛠️" label="System" /> },
   ],
 }
 
