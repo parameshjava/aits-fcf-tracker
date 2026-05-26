@@ -6,6 +6,7 @@ import {
   CartesianGrid,
   Cell,
   ComposedChart,
+  LabelList,
   Line,
   Pie,
   PieChart,
@@ -64,6 +65,14 @@ export function DashboardBars({
     router.push(`${pathname}?${sp.toString()}`, { scroll: false })
   }
 
+  // Precomputed stack total for the top-of-bar label. LabelList on the
+  // topmost stacked Bar pulls from this `total` field, so the rendered
+  // amount reflects the whole month's inflow, not just bank interest.
+  const shaped = data.map((d) => ({
+    ...d,
+    total: (d.contributions ?? 0) + (d.loanInterest ?? 0) + (d.bankInterest ?? 0),
+  }))
+
   return (
     // ChartContainer wraps Recharts' ResponsiveContainer and:
     //   • injects the per-series CSS variables (`--color-contributions`, …)
@@ -72,7 +81,7 @@ export function DashboardBars({
     //   • normalises Recharts' default sub-element styling against the
     //     shadcn token palette — fewer raw stroke="#e5e7eb" overrides here.
     <ChartContainer config={STACKED_BARS_CONFIG} className="aspect-auto h-80 w-full">
-      <BarChart data={data} margin={{ top: 10, right: 12, left: 0, bottom: 4 }}>
+      <BarChart data={shaped} margin={{ top: 24, right: 12, left: 0, bottom: 4 }}>
         <CartesianGrid strokeDasharray="3 3" vertical={false} />
         <XAxis dataKey="month" tickLine={false} axisLine={false} fontSize={12} />
         <YAxis
@@ -92,21 +101,35 @@ export function DashboardBars({
           }
         />
         <ChartLegend content={<ChartLegendContent />} />
-        {SERIES.map((s, i) => (
-          <Bar
-            key={s.key}
-            dataKey={s.key}
-            name={s.label}
-            fill={`var(--color-${s.key})`}
-            stackId="inflow"
-            radius={i === SERIES.length - 1 ? [4, 4, 0, 0] : [0, 0, 0, 0]}
-            cursor="pointer"
-            activeBar={false}
-            onClick={(d: { payload?: DashboardMonth }) =>
-              pick(d?.payload?.monthIndex, s.key)
-            }
-          />
-        ))}
+        {SERIES.map((s, i) => {
+          const isTop = i === SERIES.length - 1
+          return (
+            <Bar
+              key={s.key}
+              dataKey={s.key}
+              name={s.label}
+              fill={`var(--color-${s.key})`}
+              stackId="inflow"
+              radius={isTop ? [4, 4, 0, 0] : [0, 0, 0, 0]}
+              cursor="pointer"
+              activeBar={false}
+              onClick={(d: { payload?: DashboardMonth }) =>
+                pick(d?.payload?.monthIndex, s.key)
+              }
+            >
+              {isTop && (
+                <LabelList
+                  dataKey="total"
+                  position="top"
+                  offset={6}
+                  className="fill-foreground"
+                  fontSize={10}
+                  formatter={(v: number) => (v > 0 ? formatRupeesCompact(v) : '')}
+                />
+              )}
+            </Bar>
+          )
+        })}
       </BarChart>
     </ChartContainer>
   )
@@ -142,6 +165,14 @@ function memberShortLabel(name: string): string {
   return first
 }
 
+// Family name (first token of the canonical "Surname GivenName …" name).
+// For dotted surnames like "K.Anil Kumar Reddy", strip the dots so the
+// rendered tick stays compact ("K" rather than "K.").
+function familyName(name: string): string {
+  const first = name.trim().split(/\s+/).filter(Boolean)[0] ?? ''
+  return first.replace(/\.+$/, '').replace(/^\.+/, '')
+}
+
 const MEMBER_BARS_CONFIG = {
   total: { label: 'Contributions', color: DASHBOARD_BAR_COLORS.contributions },
 } satisfies ChartConfig
@@ -149,14 +180,28 @@ const MEMBER_BARS_CONFIG = {
 export function MemberContributionBars({ data }: { data: MemberTotal[] }) {
   // Compact label for the axis tick — see memberShortLabel docstring.
   // The tooltip still shows the full canonical name from `member`.
-  const shaped = data.map((d) => ({
-    ...d,
-    label: memberShortLabel(d.member),
-  }))
+  // When two members share the same short label (e.g. "Sunil" for both
+  // "Meda Sunil Kumar Reddy" and "Pulipati Sunil Kumar"), append the
+  // family name. Without this, Recharts collapses the duplicate
+  // categorical x-axis keys into a single slot — one bar renders invisibly.
+  const baseLabels = data.map((d) => memberShortLabel(d.member))
+  const labelCounts = baseLabels.reduce<Map<string, number>>((acc, l) => {
+    acc.set(l, (acc.get(l) ?? 0) + 1)
+    return acc
+  }, new Map())
+  const shaped = data.map((d, i) => {
+    const base = baseLabels[i]
+    const family = familyName(d.member)
+    const label =
+      (labelCounts.get(base) ?? 0) > 1 && family && family !== base
+        ? `${base} ${family}`
+        : base
+    return { ...d, label }
+  })
 
   return (
     <ChartContainer config={MEMBER_BARS_CONFIG} className="aspect-auto h-80 w-full">
-      <BarChart data={shaped} margin={{ top: 10, right: 12, left: 0, bottom: 56 }}>
+      <BarChart data={shaped} margin={{ top: 24, right: 12, left: 0, bottom: 56 }}>
         <CartesianGrid strokeDasharray="3 3" vertical={false} />
         <XAxis
           dataKey="label"
@@ -193,7 +238,16 @@ export function MemberContributionBars({ data }: { data: MemberTotal[] }) {
           fill="var(--color-total)"
           radius={[4, 4, 0, 0]}
           activeBar={false}
-        />
+        >
+          <LabelList
+            dataKey="total"
+            position="top"
+            offset={6}
+            className="fill-foreground"
+            fontSize={10}
+            formatter={(v: number) => formatRupeesCompact(v)}
+          />
+        </Bar>
       </BarChart>
     </ChartContainer>
   )
@@ -282,6 +336,13 @@ export function SectionBars({
   const hasCeiling  = data.some((d) => d.ceiling != null)
   const hasWriteOff = data.some((d) => (d.writeOff ?? 0) > 0)
 
+  // Precomputed stack total for the top-of-bar label (donations + write-offs
+  // when the section stacks them; otherwise just `value`).
+  const shaped = data.map((d) => ({
+    ...d,
+    total: (d.value ?? 0) + (d.writeOff ?? 0),
+  }))
+
   const config = {
     value:    { label: hasCeiling ? 'Donated' : 'Total', color },
     writeOff: { label: 'Written off',         color: '#9333ea' }, // purple — distinct from the donation tone
@@ -290,7 +351,7 @@ export function SectionBars({
 
   return (
     <ChartContainer config={config} className="aspect-auto h-64 w-full">
-      <ComposedChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 4 }}>
+      <ComposedChart data={shaped} margin={{ top: 24, right: 8, left: 0, bottom: 4 }}>
         <CartesianGrid strokeDasharray="3 3" vertical={false} />
         <XAxis dataKey="month" tickLine={false} axisLine={false} fontSize={11} />
         <YAxis
@@ -334,7 +395,18 @@ export function SectionBars({
           stackId={hasWriteOff ? 'outflow' : undefined}
           radius={hasWriteOff ? [0, 0, 0, 0] : [4, 4, 0, 0]}
           activeBar={false}
-        />
+        >
+          {!hasWriteOff && (
+            <LabelList
+              dataKey="total"
+              position="top"
+              offset={6}
+              className="fill-foreground"
+              fontSize={10}
+              formatter={(v: number) => (v > 0 ? formatRupeesCompact(v) : '')}
+            />
+          )}
+        </Bar>
         {hasWriteOff && (
           <Bar
             dataKey="writeOff"
@@ -343,7 +415,16 @@ export function SectionBars({
             stackId="outflow"
             radius={[4, 4, 0, 0]}
             activeBar={false}
-          />
+          >
+            <LabelList
+              dataKey="total"
+              position="top"
+              offset={6}
+              className="fill-foreground"
+              fontSize={10}
+              formatter={(v: number) => (v > 0 ? formatRupeesCompact(v) : '')}
+            />
+          </Bar>
         )}
       </ComposedChart>
     </ChartContainer>
