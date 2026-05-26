@@ -29,6 +29,7 @@ import { getTotalPendingPrincipal } from '@/lib/actions/loans'
 import { Admonition } from '@/components/ui/admonition'
 import { SubmitPaymentForm } from './submit-payment-form'
 import { DashboardTabs } from './dashboard-tabs'
+import { EligibilityCarryChart } from './eligibility-carry-chart'
 
 type SeriesKey = 'contributions' | 'loanInterest' | 'bankInterest'
 
@@ -128,6 +129,25 @@ export default async function DashboardPage({
     getDashboardEligibilityLedger(),
   ])
   const eligibilityYears = aggregateEligibilityByYear(eligibilityLedger, thisYear)
+
+  // Two-bar comparison for the eligibility tab: how much eligibility was
+  // carried into the latest period from all prior periods, vs. how much
+  // the latest period itself earned. `eligibilityLedger` is ordered
+  // newest-first (period_end desc), so [0] is the most recent EOM row.
+  // `availableNow` already includes the latest period's accrual, so we
+  // subtract `amount_earned` to isolate the prior-periods carry-in.
+  // `timeZone: 'UTC'` keeps the month label stable for date-only strings
+  // that would otherwise drift across IST midnight.
+  const latestEligibilityPeriod = eligibilityLedger[0]
+  const thisMonthEarned = latestEligibilityPeriod?.amount_earned ?? 0
+  const carryForward = Math.max(eligibilitySummary.availableNow - thisMonthEarned, 0)
+  const thisMonthLabel = latestEligibilityPeriod
+    ? new Date(latestEligibilityPeriod.period_end).toLocaleString('en-IN', {
+        month: 'short',
+        year: 'numeric',
+        timeZone: 'UTC',
+      })
+    : '—'
 
   // Drill-down: bar-segment click sets ?month=YYYY-MM&series=X. The view
   // does the filtering — we just hand it the params and render the result.
@@ -245,11 +265,28 @@ export default async function DashboardPage({
           </div>
         }
         eligibilityChart={
-          <DonationEligibilityHeader
-            summary={eligibilitySummary}
-            years={eligibilityYears}
-            thisYear={thisYear}
-          />
+          <div className="space-y-6">
+            <DonationEligibilityHeader
+              summary={eligibilitySummary}
+              years={eligibilityYears}
+              thisYear={thisYear}
+            />
+            <div className="rounded-lg border border-gray-200 bg-white p-4">
+              <div className="mb-3">
+                <h3 className="text-sm font-semibold text-gray-900">
+                  Earned vs carry forward
+                </h3>
+                <p className="text-xs text-gray-500">
+                  Eligibility carried in from prior periods vs. the latest period&apos;s fresh accrual.
+                </p>
+              </div>
+              <EligibilityCarryChart
+                carryForward={carryForward}
+                thisMonthEarned={thisMonthEarned}
+                thisMonthLabel={thisMonthLabel}
+              />
+            </div>
+          </div>
         }
         matrixSection={null}
         inflowSection={
