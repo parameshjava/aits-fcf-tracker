@@ -66,8 +66,8 @@ export function DashboardTabs({
     }
   }
 
-  // Year picker is relevant for inflow + matrix (both are year-scoped).
-  const yearScoped = tab === 'inflow' || tab === 'matrix'
+  // Year picker is relevant for inflow + matrix + eligibility (year-scoped).
+  const yearScoped = tab === 'inflow' || tab === 'matrix' || tab === 'eligibility'
 
   return (
     <>

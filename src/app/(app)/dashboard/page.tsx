@@ -130,14 +130,15 @@ export default async function DashboardPage({
   ])
   const eligibilityYears = aggregateEligibilityByYear(eligibilityLedger, thisYear)
 
-  // 12-month stacked bar dataset for the selected year:
-  //   • carryIn = cumulative year-to-date net (earned − donated − bad debts)
-  //               from prior months in the SAME year, clamped to 0. Resets
-  //               every January so the running carry is local to the year.
+  // Monthly stacked bar dataset for the selected year:
+  //   • carryIn = lifetime cumulative EARNED eligibility BEFORE this month
+  //               (sum of `amount_earned` across all prior EOM rows). January
+  //               of the selected year inherits the lifetime total through
+  //               end of the prior year; each subsequent month rolls forward.
   //   • earned  = this month's `amount_earned` (fresh accrual)
-  // Months without an EOM row (future months in the active year, or
-  // pre-history months) render as zero bars so the axis always shows
-  // Jan..Dec. `period_end` is a date-only ISO string, so we read it via
+  // Months without an EOM row render as zero bars. For the CURRENT calendar
+  // year we trim the chart at the current IST month; past years still render
+  // all 12 months. `period_end` is a date-only ISO string, so we read it via
   // `getUTCMonth()` to stay stable across IST/UTC boundaries.
   const rowsByMonth = new Map<number, { earned: number; donated: number; badDebts: number }>()
   for (const row of eligibilityLedger) {
@@ -149,7 +150,17 @@ export default async function DashboardPage({
       badDebts: Number(row.bad_debts_in_period),
     })
   }
-  const eligibilityMonthlyData = buildEligibilityMonthlyData(rowsByMonth)
+  // Use IST so "current month" matches the rest of the app's date semantics.
+  const todayIST = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }))
+  const currentYear = todayIST.getFullYear()
+  const currentMonthIdx = todayIST.getMonth() // 0-indexed
+  const eligibilityMonthlyData = buildEligibilityMonthlyData(
+    rowsByMonth,
+    eligibilityLedger,
+    year,
+    currentYear,
+    currentMonthIdx,
+  )
 
   // Drill-down: bar-segment click sets ?month=YYYY-MM&series=X. The view
   // does the filtering — we just hand it the params and render the result.
@@ -279,7 +290,7 @@ export default async function DashboardPage({
                   Eligibility by month — {year}
                 </h3>
                 <p className="text-xs text-gray-500">
-                  Year-to-date carry coming in (orange) + this month&apos;s fresh accrual (blue)
+                  Cumulative earned eligibility (orange) + this month&apos;s fresh accrual (blue)
                 </p>
               </div>
               <EligibilityMonthlyChart data={eligibilityMonthlyData} year={year} />
@@ -355,29 +366,56 @@ export default async function DashboardPage({
 }
 
 /**
- * Build the 12-row dataset for the monthly eligibility chart.
- * Bottom segment (carryIn) = clamped year-to-date net coming INTO month M.
- * Top segment (earned)     = M's `amount_earned` (fresh accrual).
- * Running net is tracked in a local accumulator inside this function — kept
- * out of the render body to keep the React 19 immutability rule happy.
+ * Build the monthly-eligibility dataset for the selected year.
+ *
+ *   • Bottom segment (carryIn) = LIFETIME cumulative EARNED eligibility
+ *     across all EOM rows whose `period_end` falls BEFORE this month. So
+ *     January's carry is the lifetime total through end of the prior year,
+ *     February's carry adds January's earned to that, etc. — no reset at
+ *     year boundaries.
+ *   • Top segment (earned) = this month's `amount_earned` (fresh accrual).
+ *
+ * For the current calendar year we stop at the current IST month so we
+ * don't show empty future bars; past years still render Jan..Dec.
+ *
+ * We use "cumulative earned" rather than "net" (earned − donated − bad
+ * debts) on purpose: the chart's intent is to communicate cumulative
+ * eligibility built up, and a net view would hide eligibility for funds
+ * with negative net positions.
  */
 function buildEligibilityMonthlyData(
   rowsByMonth: Map<number, { earned: number; donated: number; badDebts: number }>,
+  ledger: DashboardEligibilityRow[],
+  year: number,
+  currentYear: number,
+  currentMonthIdx: number,
 ): { month: string; carryIn: number; earned: number }[] {
-  const out: { month: string; carryIn: number; earned: number }[] = []
+  // Lifetime cumulative EARNED across all EOM rows BEFORE Jan of `year`.
   let runningCarry = 0
-  for (let idx = 0; idx < MONTH_LABELS.length; idx++) {
+  for (const row of ledger) {
+    const d = new Date(row.period_end)
+    if (d.getUTCFullYear() < year) {
+      runningCarry += Number(row.amount_earned)
+    }
+  }
+
+  // For the current calendar year, stop at the current IST month so we
+  // don't render empty bars for months that haven't happened yet.
+  const lastMonth = year === currentYear ? currentMonthIdx : MONTH_LABELS.length - 1
+
+  const out: { month: string; carryIn: number; earned: number }[] = []
+  for (let idx = 0; idx <= lastMonth; idx++) {
     const slot = rowsByMonth.get(idx)
     const earned = slot?.earned ?? 0
     out.push({
       month: MONTH_LABELS[idx],
-      // Carry coming INTO this month (year-to-date, clamped to 0).
-      carryIn: Math.max(runningCarry, 0),
+      // Carry coming INTO this month = lifetime cumulative earned through
+      // end of the prior month.
+      carryIn: runningCarry,
       earned,
     })
-    // Roll the cumulative net forward (un-clamped so an overspent prior
-    // month still nets against later earnings within the same year).
-    runningCarry += earned - (slot?.donated ?? 0) - (slot?.badDebts ?? 0)
+    // Roll lifetime carry forward by this month's earned only.
+    runningCarry += earned
   }
   return out
 }
