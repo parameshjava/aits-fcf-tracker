@@ -669,7 +669,7 @@ function DonationEligibilityHeader({
         </Admonition>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
         <Stat
           label="Available now"
           value={formatRupees(Math.max(availableNow, 0))}
@@ -708,6 +708,12 @@ function DonationEligibilityHeader({
           hint={corpusReached ? 'threshold reached' : `need ${formatRupees(remainingToThreshold)} more`}
           tone="gray"
         />
+        <Stat
+          label="Total eligibility"
+          value={formatRupees(summary.totalEarned)}
+          hint="lifetime earned"
+          tone="amber"
+        />
       </div>
     </div>
   )
@@ -728,13 +734,14 @@ function DonationEligibilityLedger({ years }: { years: EligibilityYearRow[] }) {
   )
 }
 
-type StatTone = 'blue' | 'indigo' | 'emerald' | 'gray' | 'rose'
+type StatTone = 'blue' | 'indigo' | 'emerald' | 'gray' | 'rose' | 'amber'
 const STAT_TONES: Record<StatTone, string> = {
   blue:    'border-blue-200/70 bg-blue-50/40',
   indigo:  'border-indigo-200/70 bg-indigo-50/40',
   emerald: 'border-emerald-200/70 bg-emerald-50/40',
   gray:    'border-gray-200 bg-gray-50/40',
   rose:    'border-rose-200/70 bg-rose-50/40',
+  amber:   'border-amber-200/70 bg-amber-50/40',
 }
 
 function Stat({
