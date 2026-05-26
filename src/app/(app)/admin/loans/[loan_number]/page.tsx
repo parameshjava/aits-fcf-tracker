@@ -7,6 +7,7 @@ import { EditLoanForm } from './edit-loan-form'
 import { LoanTimelineSection } from '@/components/loan-timeline-section'
 import { CloseLoanForm } from './close-loan-form'
 import { PendingInterestPanel } from './pending-interest-panel'
+import { RecomputeAccrualsButton } from './recompute-accruals-button'
 
 const STATUS_PILL: Record<string, string> = {
   active:    'bg-blue-50 text-blue-700 ring-blue-200',
@@ -17,6 +18,14 @@ const STATUS_LABEL: Record<string, string> = {
   active:    'Active',
   paid:      'Paid',
   write_off: 'Write off',
+}
+const TYPE_PILL: Record<string, string> = {
+  personal: 'bg-gray-50 text-gray-700 ring-gray-200',
+  medical:  'bg-violet-50 text-violet-700 ring-violet-200',
+}
+const TYPE_LABEL: Record<string, string> = {
+  personal: 'Personal',
+  medical:  'Medical',
 }
 
 function formatDate(iso: string | null): string {
@@ -62,14 +71,24 @@ export default async function AdminLoanManagePage({
             </span>
           </h1>
         </div>
-        <span
-          className={
-            'rounded-full px-2.5 py-0.5 text-xs font-medium ring-1 ' +
-            (STATUS_PILL[loan.status] ?? STATUS_PILL.active)
-          }
-        >
-          {STATUS_LABEL[loan.status] ?? loan.status}
-        </span>
+        <div className="flex items-center gap-2">
+          <span
+            className={
+              'rounded-full px-2.5 py-0.5 text-xs font-medium ring-1 ' +
+              (TYPE_PILL[loan.loan_type] ?? TYPE_PILL.personal)
+            }
+          >
+            {TYPE_LABEL[loan.loan_type] ?? loan.loan_type}
+          </span>
+          <span
+            className={
+              'rounded-full px-2.5 py-0.5 text-xs font-medium ring-1 ' +
+              (STATUS_PILL[loan.status] ?? STATUS_PILL.active)
+            }
+          >
+            {STATUS_LABEL[loan.status] ?? loan.status}
+          </span>
+        </div>
       </div>
 
       <section className="rounded-2xl border border-gray-200/80 bg-white p-5">
@@ -111,9 +130,21 @@ export default async function AdminLoanManagePage({
         loanId={loan.id}
         principal={Number(loan.principal_amount)}
         startDate={loan.start_date}
+        loanType={loan.loan_type}
         interestWaiverMonths={Number(loan.interest_waiver_months || 0)}
         notes={loan.notes}
       />
+
+      <div className="rounded-2xl border border-gray-200/80 bg-white p-5">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p className="text-sm text-gray-600">
+            Rebuild this loan&rsquo;s EOM accruals from <span className="font-mono">start_date</span> to today.
+            Existing payments are preserved; amount due and status are recomputed. Run this after
+            editing principal, start date, or interest waiver.
+          </p>
+          <RecomputeAccrualsButton loanId={loan.id} />
+        </div>
+      </div>
 
       <PendingInterestPanel loanId={loan.id} accruals={detail?.accruals ?? []} />
 

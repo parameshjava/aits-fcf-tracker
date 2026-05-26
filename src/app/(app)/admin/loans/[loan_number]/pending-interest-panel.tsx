@@ -10,6 +10,7 @@ import {
 } from '@/lib/actions/loan-interest'
 import type { ActionResult } from '@/lib/actions/action-result'
 import { formatRupees, todayISO } from '@/lib/format'
+import type { BalanceDirection } from '@/lib/balance-direction'
 
 type Props = {
   loanId: string
@@ -38,6 +39,8 @@ export function PendingInterestPanel({ loanId, accruals }: Props) {
   )
   const [txnDate, setTxnDate] = useState<string>(todayISO())
   const [notes, setNotes] = useState<string>('')
+  const [applyToBank, setApplyToBank] = useState(false)
+  const [bankDirection, setBankDirection] = useState<BalanceDirection>('add')
 
   const allocations: InterestAllocation[] = pending
     .filter((a) => selected[a.id])
@@ -47,16 +50,28 @@ export function PendingInterestPanel({ loanId, accruals }: Props) {
   const total = allocations.reduce((s, a) => s + a.amount, 0)
 
   const [state, formAction, isPending] = useActionState<
-    ActionResult<{ transactionId: string }> | null
+    ActionResult<{ transactionId: string; balanceUpdateFailed: boolean }> | null
   >(
     async (_prev) =>
-      payLoanInterest(loanId, allocations, txnDate, notes || undefined),
+      payLoanInterest(
+        loanId,
+        allocations,
+        txnDate,
+        notes || undefined,
+        applyToBank ? { apply: true, direction: bankDirection } : undefined,
+      ),
     null,
   )
 
   useEffect(() => {
     if (state?.ok) {
-      toast.success(state.message ?? 'Interest payment recorded')
+      if (state.data?.balanceUpdateFailed) {
+        toast.warning(
+          'Interest payment recorded, but the FCF bank balance update failed — adjust it manually under Admin → Reference.',
+        )
+      } else {
+        toast.success(state.message ?? 'Interest payment recorded')
+      }
       router.refresh()
     }
   }, [state, router])
@@ -94,7 +109,8 @@ export function PendingInterestPanel({ loanId, accruals }: Props) {
           <table className="w-full text-sm">
             <thead className="text-left text-[11px] uppercase tracking-wider text-gray-400">
               <tr>
-                <th className="py-2 pr-2">Pay</th>
+                <th className="w-px whitespace-nowrap py-2 pr-2">Pay</th>
+                <th className="w-px whitespace-nowrap py-2 pr-3 text-right">SNO</th>
                 <th className="py-2 pr-2">Period</th>
                 <th className="py-2 pr-2">Due</th>
                 <th className="py-2 pr-2">Already paid</th>
@@ -102,11 +118,11 @@ export function PendingInterestPanel({ loanId, accruals }: Props) {
               </tr>
             </thead>
             <tbody>
-              {pending.map((a) => {
+              {pending.map((a, i) => {
                 const remaining = Math.max(a.amount_due - a.paid_amount, 0)
                 return (
                   <tr key={a.id} className="border-t border-gray-100">
-                    <td className="py-2 pr-2">
+                    <td className="w-px whitespace-nowrap py-2 pr-2">
                       <input
                         type="checkbox"
                         checked={!!selected[a.id]}
@@ -118,6 +134,7 @@ export function PendingInterestPanel({ loanId, accruals }: Props) {
                         }
                       />
                     </td>
+                    <td className="w-px whitespace-nowrap py-2 pr-3 text-right tabular-nums text-gray-500">{i + 1}</td>
                     <td className="py-2 pr-2 text-gray-700">{periodLabel(a)}</td>
                     <td className="py-2 pr-2 text-gray-900">
                       {formatRupees(a.amount_due)}
@@ -152,6 +169,44 @@ export function PendingInterestPanel({ loanId, accruals }: Props) {
               })}
             </tbody>
           </table>
+        </div>
+
+        <div className="rounded-md border border-gray-200 bg-gray-50 p-3 text-sm">
+          <label className="flex items-center gap-2 font-medium text-gray-700">
+            <input
+              type="checkbox"
+              checked={applyToBank}
+              onChange={(e) => setApplyToBank(e.target.checked)}
+              className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+            />
+            Update FCF bank balance with this interest payment
+          </label>
+          {applyToBank && (
+            <div className="mt-2 flex items-center gap-4 pl-6 text-xs text-gray-600">
+              <label className="flex items-center gap-1">
+                <input
+                  type="radio"
+                  name="balanceDirection"
+                  value="add"
+                  checked={bankDirection === 'add'}
+                  onChange={() => setBankDirection('add')}
+                  className="h-4 w-4 text-blue-600 focus:ring-blue-500"
+                />
+                Add to balance
+              </label>
+              <label className="flex items-center gap-1">
+                <input
+                  type="radio"
+                  name="balanceDirection"
+                  value="subtract"
+                  checked={bankDirection === 'subtract'}
+                  onChange={() => setBankDirection('subtract')}
+                  className="h-4 w-4 text-blue-600 focus:ring-blue-500"
+                />
+                Subtract from balance
+              </label>
+            </div>
+          )}
         </div>
 
         <div className="flex flex-wrap items-end gap-3 pt-2">

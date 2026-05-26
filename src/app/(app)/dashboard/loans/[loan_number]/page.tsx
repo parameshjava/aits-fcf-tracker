@@ -15,6 +15,14 @@ const STATUS_LABEL: Record<string, string> = {
   paid:      'Paid',
   write_off: 'Write off',
 }
+const TYPE_PILL: Record<string, string> = {
+  personal: 'bg-gray-50 text-gray-700 ring-gray-200',
+  medical:  'bg-violet-50 text-violet-700 ring-violet-200',
+}
+const TYPE_LABEL: Record<string, string> = {
+  personal: 'Personal',
+  medical:  'Medical',
+}
 
 function formatDate(iso: string | null): string {
   if (!iso) return '—'
@@ -61,14 +69,24 @@ export default async function LoanDetailPage({
             </span>
           </h1>
         </div>
-        <span
-          className={
-            'rounded-full px-2.5 py-0.5 text-xs font-medium ring-1 ' +
-            (STATUS_PILL[loan.status] ?? STATUS_PILL.active)
-          }
-        >
-          {STATUS_LABEL[loan.status] ?? loan.status}
-        </span>
+        <div className="flex items-center gap-2">
+          <span
+            className={
+              'rounded-full px-2.5 py-0.5 text-xs font-medium ring-1 ' +
+              (TYPE_PILL[loan.loan_type] ?? TYPE_PILL.personal)
+            }
+          >
+            {TYPE_LABEL[loan.loan_type] ?? loan.loan_type}
+          </span>
+          <span
+            className={
+              'rounded-full px-2.5 py-0.5 text-xs font-medium ring-1 ' +
+              (STATUS_PILL[loan.status] ?? STATUS_PILL.active)
+            }
+          >
+            {STATUS_LABEL[loan.status] ?? loan.status}
+          </span>
+        </div>
       </div>
 
       <section className="rounded-2xl border border-gray-200/80 bg-white p-5">

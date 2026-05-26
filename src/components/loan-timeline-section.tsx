@@ -1,5 +1,9 @@
 import { formatRupees } from '@/lib/format'
-import { accrualPeriodLabel, type LoanTimelineRow } from '@/lib/actions/loan-timeline'
+import {
+  accrualPeriodLabel,
+  type AccrualSettlement,
+  type LoanTimelineRow,
+} from '@/lib/actions/loan-timeline'
 import type { LoanInterestAccrual } from '@/lib/actions/loan-interest'
 
 type Props = {
@@ -37,36 +41,15 @@ function formatDate(iso: string | null): string {
   return `${String(d.getUTCDate()).padStart(2, '0')}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${d.getUTCFullYear()}`
 }
 
-function accrualDescription(
-  accrual: LoanInterestAccrual,
-  settledByTxnIds: string[],
-): string {
+function accrualDescription(accrual: LoanInterestAccrual): string {
   if (accrual.status === 'waived') {
     const reason = accrual.waiver_reason ? ` — ${accrual.waiver_reason}` : ''
     return `Waived${reason}`
   }
   if (accrual.is_opening_balance) {
-    const base = 'Carried over from pre-cutover months'
-    return settledByTxnIds.length > 0
-      ? `${base} · Settled via ${settledByTxnIds.join(', ')}`
-      : base
+    return 'Carried over from pre-cutover months'
   }
-  const base = `${accrualPeriodLabel(accrual)} · ${formatRupees(accrual.interest_rate_used)}/L on ${formatRupees(accrual.balance_basis)} pending`
-  return settledByTxnIds.length > 0
-    ? `${base} · Settled via ${settledByTxnIds.join(', ')}`
-    : base
-}
-
-function transactionDescription(
-  description: string | null,
-  settledAccrualPeriods: string[],
-): string {
-  const alloc =
-    settledAccrualPeriods.length > 0
-      ? `Allocated to ${settledAccrualPeriods.join(' + ')}`
-      : ''
-  if (description && alloc) return `${description} · ${alloc}`
-  return description ?? alloc ?? ''
+  return `${accrualPeriodLabel(accrual)} · ${formatRupees(accrual.interest_rate_used)}/L on ${formatRupees(accrual.balance_basis)} pending`
 }
 
 function transactionTypeLabel(
@@ -76,6 +59,25 @@ function transactionTypeLabel(
   if (type === 'interest' && source === 'loans') return 'Interest payment'
   const base = TYPE_LABELS[type] ?? type
   return type === 'interest' && source ? `${base} · ${source}` : base
+}
+
+function SettlementsCell({ settlements }: { settlements: AccrualSettlement[] }) {
+  if (settlements.length === 0) {
+    return <span className="text-gray-400">—</span>
+  }
+  return (
+    <ul className="space-y-0.5 text-[11px] leading-snug">
+      {settlements.map((s) => (
+        <li key={s.txnUuid} className="flex flex-wrap items-baseline gap-x-1.5">
+          <span className="text-gray-600 tabular-nums">{formatDate(s.date)}</span>
+          <span className="font-mono text-gray-500">{s.txnIdShort}</span>
+          <span className="tabular-nums font-medium text-gray-900">
+            {formatRupees(s.amount)}
+          </span>
+        </li>
+      ))}
+    </ul>
+  )
 }
 
 export function LoanTimelineSection({ timeline, size = 'sm' }: Props) {
@@ -99,18 +101,19 @@ export function LoanTimelineSection({ timeline, size = 'sm' }: Props) {
           <table className={`min-w-full ${bodyText}`}>
             <thead>
               <tr className="border-b border-gray-200 bg-gray-50/60">
+                <th scope="col" className={`${cellX} ${cellY} text-right ${headerText} font-semibold uppercase tracking-wider text-gray-500`}>SNO</th>
                 <th scope="col" className={`${cellX} ${cellY} text-left ${headerText} font-semibold uppercase tracking-wider text-gray-500`}>Date</th>
                 <th scope="col" className={`${cellX} ${cellY} text-left ${headerText} font-semibold uppercase tracking-wider text-gray-500`}>Type</th>
-                <th scope="col" className={`${cellX} ${cellY} text-left ${headerText} font-semibold uppercase tracking-wider text-gray-500`}>Txn ID</th>
                 <th scope="col" className={`${cellX} ${cellY} text-left ${headerText} font-semibold uppercase tracking-wider text-gray-500`}>Description</th>
-                <th scope="col" className={`${cellX} ${cellY} text-right ${headerText} font-semibold uppercase tracking-wider text-gray-500`}>Amount</th>
+                <th scope="col" className={`${cellX} ${cellY} text-right ${headerText} font-semibold uppercase tracking-wider text-gray-500`}>Due</th>
+                <th scope="col" className={`${cellX} ${cellY} text-left ${headerText} font-semibold uppercase tracking-wider text-gray-500`}>Payments</th>
                 <th scope="col" className={`${cellX} ${cellY} text-left ${headerText} font-semibold uppercase tracking-wider text-gray-500`}>Status</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
               {timeline.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className={`${cellX} py-5 text-center text-xs text-gray-400`}>
+                  <td colSpan={7} className={`${cellX} py-5 text-center text-xs text-gray-400`}>
                     No accruals or transactions yet.
                   </td>
                 </tr>
@@ -123,16 +126,21 @@ export function LoanTimelineSection({ timeline, size = 'sm' }: Props) {
                       : 'Interest accrual'
                     return (
                       <tr key={`a:${a.id}`} className="transition-colors hover:bg-gray-50">
+                        <td className={`whitespace-nowrap ${cellX} ${cellY} text-right tabular-nums text-gray-500`}>
+                          {row.sno}
+                        </td>
                         <td className={`whitespace-nowrap ${cellX} ${cellY} text-gray-600`}>
                           {formatDate(a.period_end)}
                         </td>
                         <td className={`${cellX} ${cellY} text-gray-700`}>{typeLabel}</td>
-                        <td className={`whitespace-nowrap ${cellX} ${cellY} text-gray-400`}>—</td>
                         <td className={`${cellX} ${cellY} text-gray-500`}>
-                          {accrualDescription(a, row.settledByTxnIds)}
+                          {accrualDescription(a)}
                         </td>
                         <td className={`whitespace-nowrap ${cellX} ${cellY} text-right font-semibold text-gray-900`}>
                           {formatRupees(a.amount_due)}
+                        </td>
+                        <td className={`${cellX} ${cellY} text-gray-600`}>
+                          <SettlementsCell settlements={row.settlements} />
                         </td>
                         <td className={`${cellX} ${cellY}`}>
                           <span
@@ -150,20 +158,23 @@ export function LoanTimelineSection({ timeline, size = 'sm' }: Props) {
                   const t = row.txn
                   return (
                     <tr key={`t:${t.id}`} className="transition-colors hover:bg-gray-50">
+                      <td className={`whitespace-nowrap ${cellX} ${cellY} text-right tabular-nums text-gray-500`}>
+                        {row.sno}
+                      </td>
                       <td className={`whitespace-nowrap ${cellX} ${cellY} text-gray-600`}>
                         {formatDate(t.transaction_date)}
                       </td>
                       <td className={`${cellX} ${cellY} text-gray-700`}>
                         {transactionTypeLabel(t.transaction_type, t.interest_source)}
                       </td>
-                      <td className={`whitespace-nowrap ${cellX} ${cellY} font-mono text-[11px] text-gray-500`}>
-                        {t.transaction_id}
-                      </td>
                       <td className={`${cellX} ${cellY} text-gray-500`}>
-                        {transactionDescription(t.description, row.settledAccrualPeriods) || '—'}
+                        {t.description ?? '—'}
                       </td>
                       <td className={`whitespace-nowrap ${cellX} ${cellY} text-right font-semibold text-gray-900`}>
                         {formatRupees(t.amount)}
+                      </td>
+                      <td className={`whitespace-nowrap ${cellX} ${cellY} font-mono text-[11px] text-gray-500`}>
+                        {t.transaction_id}
                       </td>
                       <td className={`${cellX} ${cellY} text-gray-400`}>—</td>
                     </tr>

@@ -1,6 +1,10 @@
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
-import { getLoans, getInterestPerLakh } from '@/lib/actions/loans'
+import {
+  getLoans,
+  getInterestPerLakh,
+  getPendingInterestByLoan,
+} from '@/lib/actions/loans'
 import { LoansListTable, type LoansListRow } from '@/components/loans-list-table'
 import { computeLoanFinancials, type LoanTxnInput } from '@/lib/loan-math'
 import { RefreshButton } from '@/components/ui/refresh-button'
@@ -43,12 +47,15 @@ export default async function LoansListPage({
   const members = membersData ?? []
 
   const loanIds = loans.map((l) => l.id)
-  const { data: txnsRaw } = loanIds.length
-    ? await supabase
-        .from('transactions')
-        .select('loan_id, amount, transaction_type, interest_source, transaction_date')
-        .in('loan_id', loanIds)
-    : { data: [] as unknown[] }
+  const [{ data: txnsRaw }, pendingInterestByLoan] = await Promise.all([
+    loanIds.length
+      ? supabase
+          .from('transactions')
+          .select('loan_id, amount, transaction_type, interest_source, transaction_date')
+          .in('loan_id', loanIds)
+      : Promise.resolve({ data: [] as unknown[] }),
+    getPendingInterestByLoan(loanIds),
+  ])
 
   type TxnAgg = LoanTxnInput & { loan_id: string }
   const txns = (txnsRaw ?? []) as TxnAgg[]
@@ -63,6 +70,7 @@ export default async function LoansListPage({
 
   const tableRows: LoansListRow[] = loans.map((l) => {
     const f = computeLoanFinancials(l, txnsByLoan.get(l.id) ?? [], interestPerLakh)
+    const accrualPending = pendingInterestByLoan.get(l.id) ?? 0
     return {
       id: l.id,
       loan_number: l.loan_number,
@@ -70,8 +78,12 @@ export default async function LoansListPage({
       principal_amount: f.principal,
       start_date: l.start_date,
       status: l.status,
+      loan_type: l.loan_type,
       paid_interest: f.paidInterestTotal,
-      interest_due: f.interestDue,
+      // Interest due reflects the accrual ledger (loan_interest_accruals),
+      // not legacy on-the-fly math — keeps the list in lockstep with the
+      // Pending-interest panel on the detail page.
+      interest_due: f.isClosed ? 0 : accrualPending,
       balance: f.balance,
       detail_href: `/dashboard/loans/${encodeURIComponent(l.loan_number)}`,
     }

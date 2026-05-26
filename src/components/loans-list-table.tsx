@@ -20,6 +20,7 @@ export type LoansListRow = {
   principal_amount: number
   start_date: string
   status: 'active' | 'paid' | 'write_off'
+  loan_type: 'personal' | 'medical'
   paid_interest: number
   interest_due: number
   balance: number
@@ -32,6 +33,7 @@ type SortKey =
   | 'principal'
   | 'start'
   | 'status'
+  | 'type'
   | 'paid_interest'
   | 'interest_due'
   | 'balance'
@@ -51,6 +53,14 @@ const STATUS_RANK: Record<string, number> = {
   paid:      1,
   write_off: 2,
 }
+const TYPE_PILL: Record<string, string> = {
+  personal: 'bg-gray-50 text-gray-700 ring-gray-200',
+  medical:  'bg-violet-50 text-violet-700 ring-violet-200',
+}
+const TYPE_LABEL: Record<string, string> = {
+  personal: 'Personal',
+  medical:  'Medical',
+}
 
 function formatDate(iso: string | null): string {
   if (!iso) return '—'
@@ -58,7 +68,7 @@ function formatDate(iso: string | null): string {
   return `${String(d.getUTCDate()).padStart(2, '0')}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${d.getUTCFullYear()}`
 }
 
-const COLSPAN = 9
+const COLSPAN = 10
 
 export function LoansListTable({
   loans,
@@ -83,6 +93,7 @@ export function LoansListTable({
         String(l.principal_amount),
         formatDate(l.start_date),
         STATUS_LABEL[l.status] ?? l.status,
+        TYPE_LABEL[l.loan_type] ?? l.loan_type,
       ].join(' '),
     [],
   )
@@ -95,6 +106,7 @@ export function LoansListTable({
     if (col === 'principal')      return l.principal_amount
     if (col === 'start')          return new Date(l.start_date).getTime()
     if (col === 'status')         return STATUS_RANK[l.status] ?? 99
+    if (col === 'type')           return TYPE_LABEL[l.loan_type] ?? l.loan_type
     if (col === 'paid_interest')  return l.paid_interest
     if (col === 'interest_due')   return l.interest_due
     if (col === 'balance')        return l.balance
@@ -194,6 +206,7 @@ export function LoansListTable({
             <tr className="border-b border-gray-200 bg-gray-50/60">
               <SortableHeader col="loan_number"   label="Loan #"        sort={sort} onToggle={toggleSort} />
               <SortableHeader col="member"        label="Member"        sort={sort} onToggle={toggleSort} />
+              <SortableHeader col="type"          label="Type"          sort={sort} onToggle={toggleSort} />
               <SortableHeader col="principal"     label="Principal"     align="right" sort={sort} onToggle={toggleSort} />
               <SortableHeader col="start"         label="Start"         sort={sort} onToggle={toggleSort} />
               <SortableHeader col="status"        label="Status"        sort={sort} onToggle={toggleSort} />
@@ -229,6 +242,16 @@ export function LoansListTable({
                       </td>
                       <td className="px-4 py-3 font-medium text-gray-900">
                         {l.member_name ?? <span className="text-gray-400">—</span>}
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-3">
+                        <span
+                          className={
+                            'rounded-full px-2 py-0.5 text-xs font-medium ring-1 ' +
+                            (TYPE_PILL[l.loan_type] ?? TYPE_PILL.personal)
+                          }
+                        >
+                          {TYPE_LABEL[l.loan_type] ?? l.loan_type}
+                        </span>
                       </td>
                       <td className="whitespace-nowrap px-4 py-3 text-right tabular-nums text-gray-700">
                         {formatRupees(l.principal_amount)}

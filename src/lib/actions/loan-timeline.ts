@@ -1,23 +1,35 @@
 import type { LoanInterestAccrual } from './loan-interest'
 import type { LoanDetailTxn } from './loans'
 
+/** One concrete settlement of an accrual: a slice of a transaction's amount
+ *  applied to a single accrual row via `loan_interest_payments`. */
+export type AccrualSettlement = {
+  txnUuid: string
+  txnIdShort: string   // e.g. "20251210-04"
+  date: string         // transaction_date (YYYY-MM-DD)
+  amount: number       // amount_applied for this allocation
+  description: string | null
+}
+
 export type LoanTimelineRow =
   | {
       kind: 'accrual'
+      sno: number
       sortDate: string             // period_end (YYYY-MM-DD)
       accrual: LoanInterestAccrual
-      settledByTxnIds: string[]    // short txn ids like "20251210-04"; may be empty
+      settlements: AccrualSettlement[]
     }
   | {
       kind: 'transaction'
+      sno: number
       sortDate: string             // transaction_date (YYYY-MM-DD)
       txn: LoanDetailTxn
-      settledAccrualPeriods: string[]  // ["Oct 2025", "Nov 2025"] — only for interest payments
     }
 
 export type AccrualPayment = {
   accrualId: string
   transactionId: string  // transactions.id (UUID)
+  amount: number         // amount_applied for this allocation
 }
 
 /** "Oct 2025" for normal rows; "Opening balance" for opening-balance rows. */
@@ -42,51 +54,69 @@ export function buildLoanTimeline(
   /** Map from transactions.id (UUID) → short transaction_id (e.g. "20251210-04"). */
   txnShortIdByUuid: Map<string, string>,
 ): LoanTimelineRow[] {
-  const accrualById = new Map(accruals.map((a) => [a.id, a]))
-  const settledByAccrual = new Map<string, string[]>()
-  const settledByTxn = new Map<string, string[]>()
+  const txnById = new Map(transactions.map((t) => [t.id, t]))
+  const settlementsByAccrual = new Map<string, AccrualSettlement[]>()
+  const interestTxnsConsumed = new Set<string>()
 
   for (const p of payments) {
-    const short = txnShortIdByUuid.get(p.transactionId)
-    if (short) {
-      const list = settledByAccrual.get(p.accrualId) ?? []
-      list.push(short)
-      settledByAccrual.set(p.accrualId, list)
+    const txn = txnById.get(p.transactionId)
+    if (!txn) continue
+    interestTxnsConsumed.add(p.transactionId)
+    const settlement: AccrualSettlement = {
+      txnUuid: p.transactionId,
+      txnIdShort: txnShortIdByUuid.get(p.transactionId) ?? txn.transaction_id,
+      date: txn.transaction_date,
+      amount: p.amount,
+      description: txn.description,
     }
-    const acc = accrualById.get(p.accrualId)
-    if (acc) {
-      const list = settledByTxn.get(p.transactionId) ?? []
-      list.push(accrualPeriodLabel(acc))
-      settledByTxn.set(p.transactionId, list)
-    }
+    const list = settlementsByAccrual.get(p.accrualId) ?? []
+    list.push(settlement)
+    settlementsByAccrual.set(p.accrualId, list)
   }
 
-  const rows: LoanTimelineRow[] = []
+  // Stable order inside each settlement bucket: by date, then by short id.
+  for (const list of settlementsByAccrual.values()) {
+    list.sort((a, b) => {
+      if (a.date < b.date) return -1
+      if (a.date > b.date) return 1
+      return a.txnIdShort < b.txnIdShort ? -1 : a.txnIdShort > b.txnIdShort ? 1 : 0
+    })
+  }
+
+  type Pending = Omit<Extract<LoanTimelineRow, { kind: 'accrual' }>, 'sno'>
+                | Omit<Extract<LoanTimelineRow, { kind: 'transaction' }>, 'sno'>
+
+  const pending: Pending[] = []
   for (const a of accruals) {
-    rows.push({
+    pending.push({
       kind: 'accrual',
       sortDate: a.period_end,
       accrual: a,
-      settledByTxnIds: settledByAccrual.get(a.id) ?? [],
+      settlements: settlementsByAccrual.get(a.id) ?? [],
     })
   }
   for (const t of transactions) {
-    rows.push({
+    // Interest-payment transactions are folded into their accrual row(s).
+    // Only emit them standalone if they have NO junction allocation (e.g.
+    // legacy seed data imported before the accruals model existed).
+    const isInterestPayment =
+      t.transaction_type === 'interest' && t.interest_source === 'loans'
+    if (isInterestPayment && interestTxnsConsumed.has(t.id)) continue
+    pending.push({
       kind: 'transaction',
       sortDate: t.transaction_date,
       txn: t,
-      settledAccrualPeriods: settledByTxn.get(t.id) ?? [],
     })
   }
 
   // Sort: sortDate asc; on ties, accrual before transaction so an end-of-month
   // accrual appears above a same-day settlement transaction.
-  rows.sort((x, y) => {
+  pending.sort((x, y) => {
     if (x.sortDate < y.sortDate) return -1
     if (x.sortDate > y.sortDate) return 1
     if (x.kind === y.kind) return 0
     return x.kind === 'accrual' ? -1 : 1
   })
 
-  return rows
+  return pending.map((row, i) => ({ ...row, sno: i + 1 }) as LoanTimelineRow)
 }
