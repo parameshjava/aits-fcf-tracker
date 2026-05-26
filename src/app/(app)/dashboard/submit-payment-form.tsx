@@ -6,6 +6,7 @@ import { TRANSACTION_TYPES } from '@/lib/constants'
 import { submitPayment } from '@/lib/actions/payments'
 import { getActiveLoansWithBalance, type ActiveLoanOption } from '@/lib/actions/loans'
 import { formatRupees, todayISO } from '@/lib/format'
+import { AmountInput } from '@/components/amount-input'
 
 export function SubmitPaymentForm() {
   const [state, action, pending] = useActionState(
@@ -21,7 +22,11 @@ export function SubmitPaymentForm() {
 
   const [transactionType, setTransactionType] = useState<string>('')
   const [loanId, setLoanId] = useState<string>('')
-  const [amount, setAmount] = useState<string>('')
+  // Used to seed the AmountInput when an admin picks a loan. We bump a key
+  // on each prefill so the (uncontrolled) AmountInput remounts and picks
+  // up the new defaultValue — see handleLoanChange below.
+  const [prefillAmount, setPrefillAmount] = useState<string>('')
+  const [prefillKey, setPrefillKey] = useState(0)
   const [loans, setLoans] = useState<ActiveLoanOption[]>([])
   const [loansLoading, setLoansLoading] = useState(false)
 
@@ -52,7 +57,8 @@ export function SubmitPaymentForm() {
     if (picked) {
       // Prefill the full pending principal. The member can lower it for a
       // partial payment — that's the whole reason we surfaced this number.
-      setAmount(picked.balance > 0 ? String(picked.balance) : '')
+      setPrefillAmount(picked.balance > 0 ? String(picked.balance) : '')
+      setPrefillKey((k) => k + 1)
     }
   }
 
@@ -127,19 +133,16 @@ export function SubmitPaymentForm() {
               htmlFor="amount"
               className="block text-sm font-medium text-gray-700"
             >
-              Amount (₹)
+              Amount
             </label>
-            <input
+            <AmountInput
+              key={prefillKey}
               id="amount"
               name="amount"
-              type="number"
-              step="0.01"
-              min="0"
               required
-              value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-              className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              defaultValue={prefillAmount}
               placeholder="0.00"
+              className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
             />
             {isLoanRepayment && selectedLoan && (
               <p className="mt-1 text-xs text-gray-500">

@@ -7,6 +7,7 @@ import { updateTransaction } from '@/lib/actions/transactions'
 import { TRANSACTION_TYPES, type TransactionType } from '@/lib/constants'
 import { todayISO } from '@/lib/format'
 import { SearchableSelect } from '@/components/searchable-select'
+import { AmountInput } from '@/components/amount-input'
 
 type Member = { id: string; name: string }
 type LoanOption = {
@@ -97,12 +98,11 @@ export function EditTransactionForm({
 
         <div>
           <label htmlFor="amount" className="block text-xs font-medium text-gray-700">
-            Amount (₹)
+            Amount
           </label>
-          <input
+          <AmountInput
             id="amount"
             name="amount"
-            type="number"
             step="0.01"
             min="0"
             required

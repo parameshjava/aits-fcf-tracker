@@ -4,6 +4,7 @@ import { useActionState, useState } from 'react'
 import { approvePayment, rejectPayment } from '@/lib/actions/payments'
 import { formatRupees, todayISO } from '@/lib/format'
 import { BankBalanceUpdater } from '@/components/bank-balance-updater'
+import { AmountInput } from '@/components/amount-input'
 import { defaultDirectionForContribution } from '@/lib/balance-direction'
 import type { TransactionType } from '@/lib/constants'
 
@@ -133,15 +134,15 @@ export function PendingPaymentRow({
               </div>
               <div>
                 <label className="block text-xs font-medium text-gray-700">
-                  Amount (₹)
+                  Amount
                 </label>
-                <input
+                <AmountInput
                   name="amount"
-                  type="number"
                   step="0.01"
                   min="0"
                   defaultValue={payment.amount}
                   className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-2 py-1 text-xs focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  wordsClassName="mt-1 min-h-[1.1rem] text-[11px] italic text-gray-500"
                 />
               </div>
               <div className="sm:col-span-2">

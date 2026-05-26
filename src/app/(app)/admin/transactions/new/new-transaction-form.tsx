@@ -1,7 +1,6 @@
 'use client'
 
-import { useActionState, useEffect, useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useActionState, useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { createTransaction } from '@/lib/actions/transactions'
 import { TRANSACTION_TYPES } from '@/lib/constants'
@@ -9,6 +8,7 @@ import type { TransactionType } from '@/lib/constants'
 import { todayISO } from '@/lib/format'
 import { SearchableSelect } from '@/components/searchable-select'
 import { BankBalanceUpdater } from '@/components/bank-balance-updater'
+import { AmountInput } from '@/components/amount-input'
 import { defaultDirectionForContribution } from '@/lib/balance-direction'
 
 type Member = { id: string; name: string }
@@ -30,7 +30,11 @@ export function NewTransactionForm({
   members: Member[]
   loans: LoanOption[]
 }) {
-  const router = useRouter()
+  const formRef = useRef<HTMLFormElement>(null)
+  // Skip the success-effect on initial mount so a router-cached page that
+  // remembers an old { ok: true } from a previous submit doesn't immediately
+  // reset the form when the admin clicks "Add transaction" again.
+  const mountedRef = useRef(false)
   const [state, action, pending] = useActionState(
     async (_prev: unknown, formData: FormData) => {
       return await createTransaction(formData)
@@ -40,15 +44,28 @@ export function NewTransactionForm({
   const [type, setType] = useState<string>('')
   const [interestSource, setInterestSource] = useState<'loans' | 'bank'>('loans')
   const [memberId, setMemberId] = useState<string>('')
+  const [formKey, setFormKey] = useState(0)
 
-  // On success, fire a toast and bounce back to the admin landing.
+  // On success, fire a toast and reset the form in place so the admin can
+  // record another transaction without re-navigating. (The previous behaviour
+  // — router.push('/admin') — interacted badly with Next's client cache and
+  // bounced the user straight back to /admin when they re-opened this page.)
   useEffect(() => {
+    if (!mountedRef.current) {
+      mountedRef.current = true
+      return
+    }
     if (state?.ok) {
       toast.success(state.message ?? 'Transaction saved')
-      router.push('/admin')
-      router.refresh()
+      formRef.current?.reset()
+      // Reset controlled fields so the next entry starts from a clean slate.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setType('')
+      setInterestSource('loans')
+      setMemberId('')
+      setFormKey((k) => k + 1)
     }
-  }, [state, router])
+  }, [state])
 
   const needsLoan =
     TYPES_NEEDING_LOAN.has(type) ||
@@ -65,7 +82,7 @@ export function NewTransactionForm({
     : 'add'
 
   return (
-    <form action={action} className="space-y-4 rounded-lg border bg-white p-6">
+    <form key={formKey} ref={formRef} action={action} className="space-y-4 rounded-lg border bg-white p-6">
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <div>
           <label htmlFor="transaction_date" className="block text-sm font-medium text-gray-700">
@@ -83,12 +100,11 @@ export function NewTransactionForm({
 
         <div>
           <label htmlFor="amount" className="block text-sm font-medium text-gray-700">
-            Amount (₹)
+            Amount
           </label>
-          <input
+          <AmountInput
             id="amount"
             name="amount"
-            type="number"
             step="0.01"
             min="0"
             required

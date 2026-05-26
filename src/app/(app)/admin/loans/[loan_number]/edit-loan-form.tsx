@@ -3,6 +3,7 @@
 import { useActionState, useState } from 'react'
 import { updateLoan } from '@/lib/actions/loans'
 import { todayISO } from '@/lib/format'
+import { AmountInput } from '@/components/amount-input'
 
 type Props = {
   loanId: string
@@ -67,12 +68,11 @@ export function EditLoanForm({
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <div>
           <label htmlFor="principal_amount" className="block text-xs font-medium text-gray-700">
-            Principal (₹)
+            Principal
           </label>
-          <input
+          <AmountInput
             id="principal_amount"
             name="principal_amount"
-            type="number"
             step="0.01"
             min="0"
             defaultValue={principal}

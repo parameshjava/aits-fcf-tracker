@@ -8,6 +8,7 @@ import {
 } from '@/lib/actions/reference'
 import { formatRupees } from '@/lib/format'
 import { DeleteIconButton } from '@/components/ui/delete-icon-button'
+import { AmountInput } from '@/components/amount-input'
 
 function fmtDate(iso: string | null): string {
   if (!iso) return '—'
@@ -119,14 +120,16 @@ export function ReferenceHistoryEditor({
             <label htmlFor="value" className="block text-xs font-medium text-gray-700">
               Value
             </label>
-            <input
+            <AmountInput
               id="value"
               name="value"
-              type="number"
               step="0.01"
               required
+              showWords={isMoney}
+              showPrefix={isMoney}
               placeholder={isMoney ? '500000' : '25'}
               className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              wordsClassName="mt-1 min-h-[1.1rem] text-[11px] italic text-gray-500"
             />
           </div>
 

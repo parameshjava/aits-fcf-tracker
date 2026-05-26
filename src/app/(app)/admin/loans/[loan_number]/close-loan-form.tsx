@@ -3,6 +3,7 @@
 import { useActionState, useState } from 'react'
 import { closeLoan, reopenLoan } from '@/lib/actions/loans'
 import { formatRupees, todayISO } from '@/lib/format'
+import { AmountInput } from '@/components/amount-input'
 
 type Props = {
   loanId: string
@@ -157,18 +158,18 @@ export function CloseLoanForm({
           <>
             <div>
               <label htmlFor="bad_debt" className="block text-xs font-medium text-gray-700">
-                Principal write-off (₹)
+                Principal write-off
               </label>
-              <input
+              <AmountInput
                 id="bad_debt"
                 name="bad_debt"
-                type="number"
                 step="0.01"
                 min="0"
                 max={pendingPrincipal}
                 key={`bad_debt-${pendingPrincipal}`}
                 defaultValue={pendingPrincipal}
                 className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                wordsClassName="mt-1 min-h-[1.1rem] text-[11px] italic text-gray-500"
               />
               <p className="mt-1 text-[11px] text-gray-400">
                 Cannot exceed pending principal ({formatRupees(pendingPrincipal)}).
@@ -176,18 +177,18 @@ export function CloseLoanForm({
             </div>
             <div>
               <label htmlFor="interest_waived" className="block text-xs font-medium text-gray-700">
-                Interest waived (₹)
+                Interest waived
               </label>
-              <input
+              <AmountInput
                 id="interest_waived"
                 name="interest_waived"
-                type="number"
                 step="0.01"
                 min="0"
                 max={pendingInterest}
                 key={`interest_waived-${pendingInterest}`}
                 defaultValue={pendingInterest}
                 className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                wordsClassName="mt-1 min-h-[1.1rem] text-[11px] italic text-gray-500"
               />
               <p className="mt-1 text-[11px] text-gray-400">
                 Cannot exceed pending interest ({formatRupees(pendingInterest)}).

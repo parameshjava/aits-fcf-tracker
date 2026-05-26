@@ -33,3 +33,42 @@ export function formatRupeesCompact(value: number | string | null | undefined): 
   if (Math.abs(n) >= 1_000)       return `₹${(n / 1_000).toFixed(1)}K`
   return `₹${rupeeFormatter.format(n)}`
 }
+
+/**
+ * Strip everything except digits and a single decimal point from a user
+ * keystroke string. Preserves a trailing "." so the caller can keep typing
+ * the fractional part.
+ */
+export function sanitizeAmountInput(raw: string): string {
+  const cleaned = raw.replace(/[^\d.]/g, '')
+  const firstDot = cleaned.indexOf('.')
+  if (firstDot === -1) return cleaned
+  return cleaned.slice(0, firstDot + 1) + cleaned.slice(firstDot + 1).replace(/\./g, '')
+}
+
+/**
+ * Add Indian-style thousand separators ("Lakh" grouping) to a numeric
+ * string while preserving in-progress typing state (trailing "." or empty
+ * fractional digits).
+ *   "100000"   → "1,00,000"
+ *   "12500000" → "1,25,00,000"
+ *   "12345.6"  → "12,345.6"
+ *   "1234."    → "1,234."
+ */
+export function formatIndianGroups(raw: string): string {
+  if (!raw) return ''
+  const [intPart = '', decPart] = raw.split('.')
+
+  let intFormatted: string
+  if (intPart.length <= 3) {
+    intFormatted = intPart
+  } else {
+    const last3 = intPart.slice(-3)
+    const rest = intPart.slice(0, -3)
+    const restGrouped = rest.replace(/\B(?=(\d{2})+(?!\d))/g, ',')
+    intFormatted = `${restGrouped},${last3}`
+  }
+
+  if (decPart !== undefined) return `${intFormatted}.${decPart}`
+  return intFormatted
+}

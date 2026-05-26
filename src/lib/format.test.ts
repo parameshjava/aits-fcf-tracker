@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { formatRupees, formatRupeesCompact, todayISO } from './format'
+import {
+  formatIndianGroups,
+  formatRupees,
+  formatRupeesCompact,
+  sanitizeAmountInput,
+  todayISO,
+} from './format'
 
 describe('formatRupees', () => {
   it('formats whole rupees with the en-IN lakh grouping', () => {
@@ -66,5 +72,64 @@ describe('formatRupeesCompact', () => {
 describe('todayISO', () => {
   it('returns a YYYY-MM-DD string', () => {
     expect(todayISO()).toMatch(/^\d{4}-\d{2}-\d{2}$/)
+  })
+})
+
+describe('sanitizeAmountInput', () => {
+  it('strips letters and symbols', () => {
+    expect(sanitizeAmountInput('Rs 1,00,000')).toBe('100000')
+    expect(sanitizeAmountInput('₹50000')).toBe('50000')
+    expect(sanitizeAmountInput('abc')).toBe('')
+  })
+
+  it('keeps a single leading decimal point', () => {
+    expect(sanitizeAmountInput('1234.56')).toBe('1234.56')
+  })
+
+  it('collapses multiple decimal points', () => {
+    expect(sanitizeAmountInput('12.34.56')).toBe('12.3456')
+    expect(sanitizeAmountInput('1.2.3.4')).toBe('1.234')
+  })
+
+  it('preserves trailing decimal point while typing', () => {
+    expect(sanitizeAmountInput('1234.')).toBe('1234.')
+  })
+
+  it('returns empty for empty input', () => {
+    expect(sanitizeAmountInput('')).toBe('')
+  })
+})
+
+describe('formatIndianGroups', () => {
+  it('returns empty for empty input', () => {
+    expect(formatIndianGroups('')).toBe('')
+  })
+
+  it('passes through small numbers unchanged', () => {
+    expect(formatIndianGroups('5')).toBe('5')
+    expect(formatIndianGroups('100')).toBe('100')
+    expect(formatIndianGroups('999')).toBe('999')
+  })
+
+  it('groups thousands with one comma', () => {
+    expect(formatIndianGroups('1000')).toBe('1,000')
+    expect(formatIndianGroups('12345')).toBe('12,345')
+  })
+
+  it('uses Indian Lakh grouping (last 3 then groups of 2)', () => {
+    expect(formatIndianGroups('100000')).toBe('1,00,000')
+    expect(formatIndianGroups('1250000')).toBe('12,50,000')
+    expect(formatIndianGroups('12500000')).toBe('1,25,00,000')
+    expect(formatIndianGroups('112345678')).toBe('11,23,45,678')
+  })
+
+  it('preserves decimals', () => {
+    expect(formatIndianGroups('12345.6')).toBe('12,345.6')
+    expect(formatIndianGroups('100000.50')).toBe('1,00,000.50')
+  })
+
+  it('preserves trailing decimal point so users can keep typing', () => {
+    expect(formatIndianGroups('1234.')).toBe('1,234.')
+    expect(formatIndianGroups('100000.')).toBe('1,00,000.')
   })
 })

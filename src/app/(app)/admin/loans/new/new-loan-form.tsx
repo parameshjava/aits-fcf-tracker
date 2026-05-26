@@ -7,6 +7,7 @@ import { toast } from 'sonner'
 import { createLoan } from '@/lib/actions/loans'
 import { todayISO } from '@/lib/format'
 import { BankBalanceUpdater } from '@/components/bank-balance-updater'
+import { AmountInput } from '@/components/amount-input'
 import { LOAN_DISBURSEMENT_DEFAULT } from '@/lib/balance-direction'
 
 type Member = { id: string; name: string }
@@ -57,12 +58,11 @@ export function NewLoanForm({
 
         <div>
           <label htmlFor="principal_amount" className="block text-sm font-medium text-gray-700">
-            Principal (₹)
+            Principal
           </label>
-          <input
+          <AmountInput
             id="principal_amount"
             name="principal_amount"
-            type="number"
             step="0.01"
             min="0"
             required
