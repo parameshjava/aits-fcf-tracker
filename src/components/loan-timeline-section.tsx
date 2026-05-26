@@ -53,7 +53,7 @@ function accrualDescription(
       ? `${base} · Settled via ${settledByTxnIds.join(', ')}`
       : base
   }
-  const base = `${accrualPeriodLabel(accrual)} · ₹${Number(accrual.interest_rate_used).toLocaleString('en-IN')}/L on ${formatRupees(accrual.balance_basis)} pending`
+  const base = `${accrualPeriodLabel(accrual)} · ${formatRupees(accrual.interest_rate_used)}/L on ${formatRupees(accrual.balance_basis)} pending`
   return settledByTxnIds.length > 0
     ? `${base} · Settled via ${settledByTxnIds.join(', ')}`
     : base
