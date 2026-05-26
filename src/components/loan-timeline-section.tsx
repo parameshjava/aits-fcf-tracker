@@ -4,8 +4,6 @@ import type { LoanInterestAccrual } from '@/lib/actions/loan-interest'
 
 type Props = {
   timeline: LoanTimelineRow[]
-  /** Optional total-row count shown in the header (defaults to timeline.length). */
-  countOverride?: number
   /** "sm" matches the panel embedded inside expandable list rows;
    *  "md" matches the standalone detail pages with more breathing room. */
   size?: 'sm' | 'md'
@@ -80,8 +78,8 @@ function transactionTypeLabel(
   return type === 'interest' && source ? `${base} · ${source}` : base
 }
 
-export function LoanTimelineSection({ timeline, countOverride, size = 'sm' }: Props) {
-  const count = countOverride ?? timeline.length
+export function LoanTimelineSection({ timeline, size = 'sm' }: Props) {
+  const count = timeline.length
   const isMd = size === 'md'
   const cellY = isMd ? 'py-3' : 'py-2'
   const cellX = isMd ? 'px-4' : 'px-3'
