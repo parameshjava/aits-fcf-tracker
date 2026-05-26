@@ -60,6 +60,7 @@ If a migration fails partway:
   -- 011's loans_balances view: restore from migration 003.
   drop function if exists public.fn_apply_interest_payment;
   drop function if exists public.fn_accrue_loan_interest;
+  drop function if exists public.fn_compute_loan_interest_for(date);
   drop function if exists public.fn_compute_expected_interest;
   drop function if exists public.fn_waive_accruals_on_loan_close;
   drop function if exists public.fn_recompute_accrual_paid_state;
