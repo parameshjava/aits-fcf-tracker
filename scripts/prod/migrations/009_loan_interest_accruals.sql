@@ -20,7 +20,7 @@ create table if not exists public.loan_interest_accruals (
                         check (status in ('pending','partially_paid','paid','waived')),
   interest_rate_used  numeric not null,
   balance_basis       numeric(12,2) not null,
-  is_opening_balance  boolean not null default false,
+  is_opening_balance  boolean not null default false,         -- cutover seed (set true by migration 014)
   waiver_reason       text,
   recomputed_at       timestamptz,
   paid_at             timestamptz,
@@ -145,7 +145,7 @@ begin
         waiver_reason  = 'loan_closed',
         recomputed_at  = now()
     where loan_id = new.id
-      and status in ('pending', 'partially_paid');
+      and status = 'pending';
   end if;
   return new;
 end;
@@ -285,6 +285,10 @@ declare
   v_txn_id uuid;
   v_alloc jsonb;
 begin
+  if not public.is_admin() then
+    raise exception 'fn_apply_interest_payment: admin role required';
+  end if;
+
   -- Sum allocations
   select coalesce(sum((a->>'amount')::numeric), 0)
     into v_total
