@@ -673,7 +673,7 @@ function DonationEligibilityHeader({
         </Admonition>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5 xl:grid-cols-7">
         <Stat
           label="Available now"
           value={formatRupees(Math.max(availableNow, 0))}
@@ -724,6 +724,18 @@ function DonationEligibilityHeader({
             />
           )
         })()}
+        <Stat
+          label="Total donations"
+          value={formatRupees(summary.totalDonated)}
+          hint="lifetime paid out"
+          tone="gray"
+        />
+        <Stat
+          label="Total bad debts"
+          value={formatRupees(summary.totalBadDebt)}
+          hint="lifetime written off"
+          tone="gray"
+        />
       </div>
     </div>
   )
