@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  accrualPeriodLabel,
   buildLoanTimeline,
   type AccrualPayment,
   type LoanTimelineRow,
@@ -111,5 +112,30 @@ describe('buildLoanTimeline', () => {
     const rows = buildLoanTimeline([], [repay], [], new Map([['t-repay', '20251115-02']]))
     expect(rows).toHaveLength(1)
     expect(rows[0].kind === 'transaction' && rows[0].settledAccrualPeriods).toEqual([])
+  })
+
+  it('skips settledByTxnIds when payment txn UUID is absent from the lookup map', () => {
+    const a = accrual({ id: 'a-ghost' })
+    const payments: AccrualPayment[] = [{ accrualId: 'a-ghost', transactionId: 't-missing' }]
+    const rows = buildLoanTimeline([a], [], payments, new Map())
+    expect(rows).toHaveLength(1)
+    expect(rows[0].kind === 'accrual' && rows[0].settledByTxnIds).toEqual([])
+  })
+})
+
+describe('accrualPeriodLabel', () => {
+  it('returns "Opening balance" for an opening-balance accrual', () => {
+    const a = accrual({ is_opening_balance: true })
+    expect(accrualPeriodLabel(a)).toBe('Opening balance')
+  })
+
+  it('returns the formatted month label for a normal accrual with a valid period_end', () => {
+    const a = accrual({ period_end: '2025-10-31', is_opening_balance: false })
+    expect(accrualPeriodLabel(a)).toBe('Oct 2025')
+  })
+
+  it('falls back to the raw string when period_end is malformed', () => {
+    const a = accrual({ period_end: 'not-a-date', is_opening_balance: false })
+    expect(accrualPeriodLabel(a)).toBe('not-a-date')
   })
 })
