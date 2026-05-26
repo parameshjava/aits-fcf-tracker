@@ -368,20 +368,19 @@ export default async function DashboardPage({
 /**
  * Build the monthly-eligibility dataset for the selected year.
  *
- *   • Bottom segment (carryIn) = LIFETIME cumulative EARNED eligibility
- *     across all EOM rows whose `period_end` falls BEFORE this month. So
- *     January's carry is the lifetime total through end of the prior year,
- *     February's carry adds January's earned to that, etc. — no reset at
- *     year boundaries.
+ *   • Bottom segment (carryIn) = LIFETIME cumulative NET eligibility
+ *     (earned − donated − bad debts) across all EOM rows whose `period_end`
+ *     falls BEFORE this month. So January's carry is the lifetime net total
+ *     through end of the prior year, February's carry adds January's net
+ *     slice to that, etc. — no reset at year boundaries.
  *   • Top segment (earned) = this month's `amount_earned` (fresh accrual).
  *
  * For the current calendar year we stop at the current IST month so we
  * don't show empty future bars; past years still render Jan..Dec.
  *
- * We use "cumulative earned" rather than "net" (earned − donated − bad
- * debts) on purpose: the chart's intent is to communicate cumulative
- * eligibility built up, and a net view would hide eligibility for funds
- * with negative net positions.
+ * Note: carryIn is signed (NOT clamped). If donations + bad debts exceed
+ * earned eligibility, the orange segment renders below the X-axis. That
+ * matches the Total Eligibility KPI tile, which is also signed.
  */
 function buildEligibilityMonthlyData(
   rowsByMonth: Map<number, { earned: number; donated: number; badDebts: number }>,
@@ -390,12 +389,15 @@ function buildEligibilityMonthlyData(
   currentYear: number,
   currentMonthIdx: number,
 ): { month: string; carryIn: number; earned: number }[] {
-  // Lifetime cumulative EARNED across all EOM rows BEFORE Jan of `year`.
+  // Lifetime cumulative NET (earned − donated − bad debts) across all EOM
+  // rows BEFORE Jan of `year`.
   let runningCarry = 0
   for (const row of ledger) {
     const d = new Date(row.period_end)
     if (d.getUTCFullYear() < year) {
       runningCarry += Number(row.amount_earned)
+                    - Number(row.donations_in_period)
+                    - Number(row.bad_debts_in_period)
     }
   }
 
@@ -414,15 +416,17 @@ function buildEligibilityMonthlyData(
     }
     const slot = rowsByMonth.get(idx)
     const earned = slot?.earned ?? 0
+    const donated = slot?.donated ?? 0
+    const badDebts = slot?.badDebts ?? 0
+    // Push the bar BEFORE updating runningCarry — carryIn represents the
+    // value going INTO this month (lifetime net through end of prior month).
     out.push({
       month: MONTH_LABELS[idx],
-      // Carry coming INTO this month = lifetime cumulative earned through
-      // end of the prior month.
       carryIn: runningCarry,
       earned,
     })
-    // Roll lifetime carry forward by this month's earned only.
-    runningCarry += earned
+    // Roll lifetime carry forward by this month's net slice.
+    runningCarry += earned - donated - badDebts
   }
   return out
 }
@@ -708,12 +712,18 @@ function DonationEligibilityHeader({
           hint={corpusReached ? 'threshold reached' : `need ${formatRupees(remainingToThreshold)} more`}
           tone="gray"
         />
-        <Stat
-          label="Total eligibility"
-          value={formatRupees(summary.totalEarned)}
-          hint="lifetime earned"
-          tone="amber"
-        />
+        {(() => {
+          const totalEligibility =
+            summary.totalEarned - summary.totalDonated - summary.totalBadDebt
+          return (
+            <Stat
+              label="Total eligibility"
+              value={formatRupees(totalEligibility)}
+              hint="earned − donated − bad debts"
+              tone={totalEligibility < 0 ? 'rose' : 'amber'}
+            />
+          )
+        })()}
       </div>
     </div>
   )
