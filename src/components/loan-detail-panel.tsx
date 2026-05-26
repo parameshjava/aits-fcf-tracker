@@ -1,5 +1,6 @@
 import { formatRupees } from '@/lib/format'
 import type { LoanDetailData } from '@/lib/actions/loans'
+import { LoanTimelineSection } from '@/components/loan-timeline-section'
 
 type StatTone = 'blue' | 'gray' | 'indigo' | 'emerald'
 const STAT_TONE: Record<StatTone, string> = {
@@ -43,14 +44,6 @@ const STATUS_LABEL: Record<string, string> = {
   paid:      'Paid',
   write_off: 'Write off',
 }
-const TYPE_LABELS: Record<string, string> = {
-  contribution:   'Contribution',
-  interest:       'Interest',
-  loan_repayment: 'Loan repayment',
-  penalty:        'Penalty',
-  donation:       'Donation',
-  other:          'Other',
-}
 
 function formatDate(iso: string | null): string {
   if (!iso) return '—'
@@ -59,7 +52,7 @@ function formatDate(iso: string | null): string {
 }
 
 export function LoanDetailPanel({ data }: { data: LoanDetailData }) {
-  const { loan, transactions, interestPerLakh, financials } = data
+  const { loan, interestPerLakh, financials } = data
   const {
     principal,
     paidPrincipal,
@@ -161,61 +154,7 @@ export function LoanDetailPanel({ data }: { data: LoanDetailData }) {
         />
       </div>
 
-      <div>
-        <div className="mb-1.5 flex items-center justify-between">
-          <h4 className="text-xs font-semibold uppercase tracking-wider text-gray-500">
-            Transactions
-          </h4>
-          <p className="text-[11px] text-gray-400">{transactions.length} entries</p>
-        </div>
-        <div className="overflow-hidden rounded-lg border border-gray-200 bg-white">
-          <div className="overflow-x-auto">
-            <table className="min-w-full text-xs">
-              <thead>
-                <tr className="border-b border-gray-200 bg-gray-50/60">
-                  <th scope="col" className="px-3 py-2 text-left text-[10px] font-semibold uppercase tracking-wider text-gray-500">Date</th>
-                  <th scope="col" className="px-3 py-2 text-left text-[10px] font-semibold uppercase tracking-wider text-gray-500">Type</th>
-                  <th scope="col" className="px-3 py-2 text-left text-[10px] font-semibold uppercase tracking-wider text-gray-500">Txn ID</th>
-                  <th scope="col" className="px-3 py-2 text-left text-[10px] font-semibold uppercase tracking-wider text-gray-500">Description</th>
-                  <th scope="col" className="px-3 py-2 text-right text-[10px] font-semibold uppercase tracking-wider text-gray-500">Amount</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {transactions.length === 0 ? (
-                  <tr>
-                    <td colSpan={5} className="px-3 py-5 text-center text-xs text-gray-400">
-                      No transactions tagged to this loan yet.
-                    </td>
-                  </tr>
-                ) : (
-                  transactions.map((t) => {
-                    const base = TYPE_LABELS[t.transaction_type] ?? t.transaction_type
-                    const label =
-                      t.transaction_type === 'interest' && t.interest_source
-                        ? `${base} · ${t.interest_source}`
-                        : base
-                    return (
-                      <tr key={t.id} className="transition-colors hover:bg-gray-50">
-                        <td className="whitespace-nowrap px-3 py-2 text-gray-600">
-                          {formatDate(t.transaction_date)}
-                        </td>
-                        <td className="px-3 py-2 text-gray-700">{label}</td>
-                        <td className="whitespace-nowrap px-3 py-2 font-mono text-[11px] text-gray-500">
-                          {t.transaction_id}
-                        </td>
-                        <td className="px-3 py-2 text-gray-500">{t.description ?? '—'}</td>
-                        <td className="whitespace-nowrap px-3 py-2 text-right font-semibold tabular-nums text-gray-900">
-                          {formatRupees(t.amount)}
-                        </td>
-                      </tr>
-                    )
-                  })
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </div>
+      <LoanTimelineSection timeline={data.timeline} size="sm" />
     </div>
   )
 }
