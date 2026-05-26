@@ -399,12 +399,19 @@ function buildEligibilityMonthlyData(
     }
   }
 
-  // For the current calendar year, stop at the current IST month so we
-  // don't render empty bars for months that haven't happened yet.
-  const lastMonth = year === currentYear ? currentMonthIdx : MONTH_LABELS.length - 1
+  // For the current calendar year, real data only exists through the
+  // current IST month. Future months still get an X-axis label, but with
+  // zero-height bars (carryIn = 0, earned = 0) so the chart keeps a
+  // consistent 12-month width across years.
+  const lastDataMonth = year === currentYear ? currentMonthIdx : MONTH_LABELS.length - 1
 
   const out: { month: string; carryIn: number; earned: number }[] = []
-  for (let idx = 0; idx <= lastMonth; idx++) {
+  for (let idx = 0; idx <= 11; idx++) {
+    if (idx > lastDataMonth) {
+      // Future month in the current (or a future) year — zero-height placeholder.
+      out.push({ month: MONTH_LABELS[idx], carryIn: 0, earned: 0 })
+      continue
+    }
     const slot = rowsByMonth.get(idx)
     const earned = slot?.earned ?? 0
     out.push({
