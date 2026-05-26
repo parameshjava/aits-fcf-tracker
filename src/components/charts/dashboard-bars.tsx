@@ -124,7 +124,10 @@ export function DashboardBars({
                   offset={6}
                   className="fill-foreground"
                   fontSize={10}
-                  formatter={(v: number) => (v > 0 ? formatRupeesCompact(v) : '')}
+                  formatter={(v) => {
+                    const n = Number(v ?? 0)
+                    return n > 0 ? formatRupeesCompact(n) : ''
+                  }}
                 />
               )}
             </Bar>
@@ -245,7 +248,7 @@ export function MemberContributionBars({ data }: { data: MemberTotal[] }) {
             offset={6}
             className="fill-foreground"
             fontSize={10}
-            formatter={(v: number) => formatRupeesCompact(v)}
+            formatter={(v) => formatRupeesCompact(Number(v ?? 0))}
           />
         </Bar>
       </BarChart>
@@ -403,7 +406,10 @@ export function SectionBars({
               offset={6}
               className="fill-foreground"
               fontSize={10}
-              formatter={(v: number) => (v > 0 ? formatRupeesCompact(v) : '')}
+              formatter={(v) => {
+                const n = Number(v ?? 0)
+                return n > 0 ? formatRupeesCompact(n) : ''
+              }}
             />
           )}
         </Bar>
@@ -422,7 +428,10 @@ export function SectionBars({
               offset={6}
               className="fill-foreground"
               fontSize={10}
-              formatter={(v: number) => (v > 0 ? formatRupeesCompact(v) : '')}
+              formatter={(v) => {
+                const n = Number(v ?? 0)
+                return n > 0 ? formatRupeesCompact(n) : ''
+              }}
             />
           </Bar>
         )}
