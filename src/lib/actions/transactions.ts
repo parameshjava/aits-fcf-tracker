@@ -43,6 +43,18 @@ export async function createTransaction(
       (transactionType === 'interest' && interestSource === 'loans')
     const loanId = needsLoan && loanIdRaw && loanIdRaw.length > 0 ? loanIdRaw : null
 
+    if (
+      transactionType === 'interest' &&
+      interestSource === 'loans' &&
+      loanId !== null &&
+      loanId !== ''
+    ) {
+      return actionError(
+        'Loan interest payments must be recorded via the loan detail page → Pending interest panel.',
+        'transaction_type',
+      )
+    }
+
     // transaction_id is auto-filled by a Postgres BEFORE INSERT trigger
     // (YYYYMMDD-NNN) — we never send one from the app.
     const { error } = await supabase.from('transactions').insert({
