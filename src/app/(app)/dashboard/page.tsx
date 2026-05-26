@@ -131,26 +131,25 @@ export default async function DashboardPage({
   const eligibilityYears = aggregateEligibilityByYear(eligibilityLedger, thisYear)
 
   // 12-month stacked bar dataset for the selected year:
-  //   • earned  = `amount_earned` from the EOM ledger row in that month
-  //   • donated = `donations_in_period` from that same row
+  //   • carryIn = cumulative year-to-date net (earned − donated − bad debts)
+  //               from prior months in the SAME year, clamped to 0. Resets
+  //               every January so the running carry is local to the year.
+  //   • earned  = this month's `amount_earned` (fresh accrual)
   // Months without an EOM row (future months in the active year, or
   // pre-history months) render as zero bars so the axis always shows
   // Jan..Dec. `period_end` is a date-only ISO string, so we read it via
   // `getUTCMonth()` to stay stable across IST/UTC boundaries.
-  const eligibilityByMonth = new Map<number, { earned: number; donated: number }>()
+  const rowsByMonth = new Map<number, { earned: number; donated: number; badDebts: number }>()
   for (const row of eligibilityLedger) {
     const d = new Date(row.period_end)
     if (d.getUTCFullYear() !== year) continue
-    eligibilityByMonth.set(d.getUTCMonth(), {
+    rowsByMonth.set(d.getUTCMonth(), {
       earned: Number(row.amount_earned),
       donated: Number(row.donations_in_period),
+      badDebts: Number(row.bad_debts_in_period),
     })
   }
-  const eligibilityMonthlyData = MONTH_LABELS.map((name, idx) => ({
-    month: name,
-    earned: eligibilityByMonth.get(idx)?.earned ?? 0,
-    donated: eligibilityByMonth.get(idx)?.donated ?? 0,
-  }))
+  const eligibilityMonthlyData = buildEligibilityMonthlyData(rowsByMonth)
 
   // Drill-down: bar-segment click sets ?month=YYYY-MM&series=X. The view
   // does the filtering — we just hand it the params and render the result.
@@ -280,7 +279,7 @@ export default async function DashboardPage({
                   Eligibility by month — {year}
                 </h3>
                 <p className="text-xs text-gray-500">
-                  Earned this month vs donations paid this month
+                  Year-to-date carry coming in (orange) + this month&apos;s fresh accrual (blue)
                 </p>
               </div>
               <EligibilityMonthlyChart data={eligibilityMonthlyData} year={year} />
@@ -353,6 +352,34 @@ export default async function DashboardPage({
       )}
     </div>
   )
+}
+
+/**
+ * Build the 12-row dataset for the monthly eligibility chart.
+ * Bottom segment (carryIn) = clamped year-to-date net coming INTO month M.
+ * Top segment (earned)     = M's `amount_earned` (fresh accrual).
+ * Running net is tracked in a local accumulator inside this function — kept
+ * out of the render body to keep the React 19 immutability rule happy.
+ */
+function buildEligibilityMonthlyData(
+  rowsByMonth: Map<number, { earned: number; donated: number; badDebts: number }>,
+): { month: string; carryIn: number; earned: number }[] {
+  const out: { month: string; carryIn: number; earned: number }[] = []
+  let runningCarry = 0
+  for (let idx = 0; idx < MONTH_LABELS.length; idx++) {
+    const slot = rowsByMonth.get(idx)
+    const earned = slot?.earned ?? 0
+    out.push({
+      month: MONTH_LABELS[idx],
+      // Carry coming INTO this month (year-to-date, clamped to 0).
+      carryIn: Math.max(runningCarry, 0),
+      earned,
+    })
+    // Roll the cumulative net forward (un-clamped so an overspent prior
+    // month still nets against later earnings within the same year).
+    runningCarry += earned - (slot?.donated ?? 0) - (slot?.badDebts ?? 0)
+  }
+  return out
 }
 
 function toTxnRow(t: DashboardTxn): TxnRow {
