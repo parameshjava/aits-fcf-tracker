@@ -3,11 +3,8 @@ import { notFound, redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { formatRupees } from '@/lib/format'
 import { getLoanByNumber, getLoanDetail } from '@/lib/actions/loans'
-import {
-  getLoanInterestSchedule,
-  type LoanInterestAccrual,
-} from '@/lib/actions/loan-interest'
 import { EditLoanForm } from './edit-loan-form'
+import { LoanTimelineSection } from '@/components/loan-timeline-section'
 import { CloseLoanForm } from './close-loan-form'
 import { PendingInterestPanel } from './pending-interest-panel'
 
@@ -20,20 +17,6 @@ const STATUS_LABEL: Record<string, string> = {
   active:    'Active',
   paid:      'Paid',
   write_off: 'Write off',
-}
-
-const ACCRUAL_STATUS_PILL: Record<LoanInterestAccrual['status'], string> = {
-  pending:        'bg-amber-50 text-amber-700 ring-amber-200',
-  partially_paid: 'bg-amber-50 text-amber-700 ring-amber-200',
-  paid:           'bg-emerald-50 text-emerald-700 ring-emerald-200',
-  waived:         'bg-gray-100 text-gray-600 ring-gray-200',
-}
-
-const ACCRUAL_STATUS_LABEL: Record<LoanInterestAccrual['status'], string> = {
-  pending:        'Pending',
-  partially_paid: 'Partial',
-  paid:           'Paid',
-  waived:         'Waived',
 }
 
 function formatDate(iso: string | null): string {
@@ -64,11 +47,6 @@ export default async function AdminLoanManagePage({
   const detail = await getLoanDetail(loan.id)
   const pendingPrincipal = detail?.financials.balance ?? 0
   const pendingInterest = detail?.financials.interestDue ?? 0
-  const accruals = await getLoanInterestSchedule(loan.id)
-  // Show history newest-first; the panel itself filters to unsettled rows.
-  const historyAccruals = [...accruals].sort((a, b) =>
-    a.period_end < b.period_end ? 1 : a.period_end > b.period_end ? -1 : 0,
-  )
 
   return (
     <div className="space-y-6">
@@ -137,61 +115,13 @@ export default async function AdminLoanManagePage({
         notes={loan.notes}
       />
 
-      <PendingInterestPanel loanId={loan.id} accruals={accruals} />
+      <PendingInterestPanel loanId={loan.id} accruals={detail?.accruals ?? []} />
 
       <section className="rounded-2xl border border-gray-200/80 bg-white p-5">
-        <h3 className="text-sm font-semibold text-gray-900">Interest history</h3>
-        {historyAccruals.length === 0 ? (
-          <p className="mt-2 text-sm text-gray-500">
-            No interest accruals recorded yet.
-          </p>
-        ) : (
-          <div className="mt-3 overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="text-left text-[11px] uppercase tracking-wider text-gray-400">
-                <tr>
-                  <th className="py-2 pr-2">Period</th>
-                  <th className="py-2 pr-2">Status</th>
-                  <th className="py-2 pr-2">Due</th>
-                  <th className="py-2 pr-2">Paid</th>
-                  <th className="py-2 pr-2">Paid on</th>
-                  <th className="py-2 pr-2">Note</th>
-                </tr>
-              </thead>
-              <tbody>
-                {historyAccruals.map((a) => (
-                  <tr key={a.id} className="border-t border-gray-100">
-                    <td className="py-2 pr-2 text-gray-700">
-                      {a.is_opening_balance ? 'Opening balance' : a.period_end}
-                    </td>
-                    <td className="py-2 pr-2">
-                      <span
-                        className={
-                          'rounded-full px-2 py-0.5 text-[11px] font-medium ring-1 ' +
-                          ACCRUAL_STATUS_PILL[a.status]
-                        }
-                      >
-                        {ACCRUAL_STATUS_LABEL[a.status]}
-                      </span>
-                    </td>
-                    <td className="py-2 pr-2 text-gray-900">
-                      {formatRupees(a.amount_due)}
-                    </td>
-                    <td className="py-2 pr-2 text-gray-700">
-                      {formatRupees(a.paid_amount)}
-                    </td>
-                    <td className="py-2 pr-2 text-gray-700">
-                      {a.paid_at ? formatDate(a.paid_at) : '—'}
-                    </td>
-                    <td className="py-2 pr-2 text-gray-500">
-                      {a.waiver_reason ?? ''}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+        <h3 className="text-sm font-semibold text-gray-900">Timeline</h3>
+        <div className="mt-3">
+          <LoanTimelineSection timeline={detail?.timeline ?? []} size="md" />
+        </div>
       </section>
 
       <CloseLoanForm
