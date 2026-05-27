@@ -71,12 +71,29 @@ export function LoanPollModal({ pollId, pollQuestion, compact = false }: Props) 
         aria-label={compact ? `Open linked poll: ${pollQuestion}` : undefined}
         className={
           compact
-            ? 'inline-flex h-7 w-7 items-center justify-center rounded-full text-blue-700 ring-1 ring-blue-200 transition-colors hover:bg-blue-50 focus:outline-none focus-visible:bg-blue-50'
+            ? 'inline-flex h-8 w-8 items-center justify-center rounded-full transition-colors hover:bg-blue-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-300'
             : 'inline-flex max-w-[22rem] items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium text-blue-700 ring-1 ring-blue-200 transition-colors hover:bg-blue-50 focus:outline-none focus-visible:bg-blue-50'
         }
       >
-        <Vote className={compact ? 'h-3.5 w-3.5' : 'h-3 w-3 shrink-0'} aria-hidden />
-        {!compact && <span className="truncate">{pollQuestion}</span>}
+        {compact ? (
+          // Twemoji ballot-box-with-ballot (1f5f3) — colorful, vector,
+          // scales crisply at any size. License: CC-BY 4.0 (Twemoji /
+          // jdecked fork). Source committed at public/icons/poll.svg.
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src="/icons/poll.svg"
+            alt=""
+            width={20}
+            height={20}
+            className="h-5 w-5"
+            aria-hidden
+          />
+        ) : (
+          <>
+            <Vote className="h-3 w-3 shrink-0" aria-hidden />
+            <span className="truncate">{pollQuestion}</span>
+          </>
+        )}
       </button>
 
       <Dialog open={open} onOpenChange={setOpen}>
