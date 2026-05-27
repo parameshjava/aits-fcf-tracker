@@ -35,6 +35,7 @@ export function ActionItemsEditor({
   const editorRef = useRef<HTMLTextAreaElement | null>(null)
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- intentionally syncing dialog value when it opens
     if (open) setValue(initial ?? '')
   }, [open, initial])
 

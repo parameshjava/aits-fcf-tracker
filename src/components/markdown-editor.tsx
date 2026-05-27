@@ -162,6 +162,7 @@ export function MarkdownEditor({
                   onClick={() => insertMention(o.value)}
                   className="block w-full px-3 py-1.5 text-left hover:bg-indigo-50"
                   role="option"
+                  aria-selected={false}
                 >
                   <span className="font-medium text-gray-900">{o.label}</span>{' '}
                   <span className="text-gray-400">(@{o.value})</span>
