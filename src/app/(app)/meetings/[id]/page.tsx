@@ -1,9 +1,9 @@
 import { notFound, redirect } from 'next/navigation'
-import Link from 'next/link'
 import { getCurrentUser } from '@/lib/actions/auth'
 import { getMeeting } from '@/lib/actions/meetings-reads'
 import { createClient } from '@/lib/supabase/server'
 import { ActionItemsPanel } from '@/components/action-items-panel'
+import { LinkedPollModal } from '@/components/linked-poll-modal'
 import { ConsolidatedView } from './consolidated-view'
 
 async function resolveViewerMemberId(email: string | undefined): Promise<string | null> {
@@ -41,9 +41,7 @@ export default async function MeetingDetailPage(
               {meeting.linked_poll && (
                 <>
                   {' · linked poll: '}
-                  <Link href={`/polls/${meeting.linked_poll.id}`} className="text-blue-600 underline">
-                    {meeting.linked_poll.question}
-                  </Link>
+                  <LinkedPollModal poll={meeting.linked_poll} />
                 </>
               )}
             </div>
