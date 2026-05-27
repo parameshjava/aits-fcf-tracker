@@ -14,6 +14,7 @@ import { MarkdownView } from '@/components/markdown-view'
 import { MarkdownEditor, type MarkdownEditorMode } from '@/components/markdown-editor'
 import { saveAttendeeNotes } from '@/lib/actions/meetings'
 import type { MeetingDetail } from '@/lib/actions/meetings-reads'
+import { ExpandToggle } from '@/components/ui/expand-toggle'
 
 type Props = {
   meeting: MeetingDetail
@@ -58,7 +59,12 @@ export function ConsolidatedView({ meeting, viewerMemberId }: Props) {
           const isViewer = a.member_id === viewerMemberId
           return (
             <div key={a.member_id} className={'rounded-lg border bg-white ' + (hasNotes ? 'border-gray-200' : 'border-gray-200 opacity-70')}>
-              <div className="flex items-center justify-between px-4 py-3">
+              <div
+                className={
+                  'flex items-center justify-between px-4 py-3 ' +
+                  (hasNotes && isOpen ? 'bg-blue-50/40 ring-1 ring-inset ring-blue-100' : '')
+                }
+              >
                 <button
                   type="button"
                   disabled={!hasNotes}
@@ -88,10 +94,21 @@ export function ConsolidatedView({ meeting, viewerMemberId }: Props) {
                     Add my notes
                   </button>
                 )}
-                {hasNotes && <span className="ml-2 text-gray-400">{isOpen ? '▾' : '▸'}</span>}
+                {hasNotes && (
+                  <ExpandToggle
+                    isOpen={isOpen}
+                    onClick={() => setOpen((prev) => ({ ...prev, [a.member_id]: !prev[a.member_id] }))}
+                    controlsId={`meeting-section-${a.member_id}`}
+                    labelOpen={`Collapse notes for ${a.member_name}`}
+                    labelClosed={`Expand notes for ${a.member_name}`}
+                  />
+                )}
               </div>
               {hasNotes && isOpen && (
-                <div className="border-t border-gray-100 px-4 py-3">
+                <div
+                  id={`meeting-section-${a.member_id}`}
+                  className="border-l-2 border-l-blue-500 bg-gradient-to-b from-blue-50/50 to-white px-4 py-3"
+                >
                   <MarkdownView source={a.notes_md ?? ''} />
                 </div>
               )}

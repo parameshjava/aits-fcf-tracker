@@ -5,6 +5,7 @@ import { toast } from 'sonner'
 import { MarkdownEditor, type MarkdownEditorMode } from '@/components/markdown-editor'
 import { saveAttendeeNotes } from '@/lib/actions/meetings'
 import type { MeetingDetail } from '@/lib/actions/meetings-reads'
+import { ExpandToggle } from '@/components/ui/expand-toggle'
 
 type Props = {
   meeting: MeetingDetail
@@ -76,15 +77,17 @@ export function CapturePage({ meeting }: Props) {
                 (isActive ? 'border-blue-500 shadow-sm' : 'border-gray-200')
               }
             >
-              <button
-                type="button"
-                onClick={() => void expand(a.member_id)}
+              <div
                 className={
-                  'flex w-full items-center justify-between px-4 py-3 text-left ' +
-                  (isActive ? 'bg-blue-50' : 'bg-white hover:bg-gray-50')
+                  'flex items-center justify-between px-4 py-3 ' +
+                  (isActive ? 'bg-blue-50/40 ring-1 ring-inset ring-blue-100' : 'hover:bg-gray-50')
                 }
               >
-                <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => void expand(a.member_id)}
+                  className="flex flex-1 items-center gap-3 text-left"
+                >
                   <span
                     className={
                       'inline-flex h-5 min-w-5 items-center justify-center rounded-full px-2 text-[11px] font-bold ' +
@@ -101,12 +104,21 @@ export function CapturePage({ meeting }: Props) {
                   <span className="text-xs text-gray-500">
                     {hasNotes ? '✓ Notes saved' : isActive ? 'Capturing…' : 'Not yet captured'}
                   </span>
-                </div>
-                <span className="text-gray-400">{isActive ? '▾' : '▸'}</span>
-              </button>
+                </button>
+                <ExpandToggle
+                  isOpen={isActive}
+                  onClick={() => void expand(a.member_id)}
+                  controlsId={`meeting-attendee-${a.member_id}`}
+                  labelOpen={`Collapse notes for ${a.member_name}`}
+                  labelClosed={`Expand notes for ${a.member_name}`}
+                />
+              </div>
 
               {isActive && (
-                <div className="border-t border-gray-200 p-3">
+                <div
+                  id={`meeting-attendee-${a.member_id}`}
+                  className="border-l-2 border-l-blue-500 bg-gradient-to-b from-blue-50/50 to-white p-3"
+                >
                   <MarkdownEditor
                     value={draftByMember[a.member_id] ?? ''}
                     onChange={(next) =>
