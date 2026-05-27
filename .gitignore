@@ -40,3 +40,6 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 google-client-creds.json
+
+# brainstorm session mockups (kept locally, not committed)
+.superpowers/
