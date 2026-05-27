@@ -123,13 +123,6 @@ export function CapturePage({ meeting }: Props) {
                     {hasNotes ? '✓ Notes saved' : isActive ? 'Capturing…' : 'Not yet captured'}
                   </span>
                 </button>
-                {!isActive && (
-                  <RefreshButton
-                    label={`Refresh notes for ${a.member_name}`}
-                    size="sm"
-                    onRefresh={() => refreshMember(a.member_id, a.member_name)}
-                  />
-                )}
                 <ExpandToggle
                   isOpen={isActive}
                   onClick={() => void expand(a.member_id)}
@@ -152,6 +145,13 @@ export function CapturePage({ meeting }: Props) {
                     mode={mode}
                     onModeChange={(next) =>
                       setModeByMember((prev) => ({ ...prev, [a.member_id]: next }))
+                    }
+                    headerActions={
+                      <RefreshButton
+                        label={`Refresh notes for ${a.member_name}`}
+                        size="sm"
+                        onRefresh={() => refreshMember(a.member_id, a.member_name)}
+                      />
                     }
                   />
                   <div className="mt-2 flex justify-end gap-2">

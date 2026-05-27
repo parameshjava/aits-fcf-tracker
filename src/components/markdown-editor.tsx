@@ -2,7 +2,7 @@
 'use client'
 
 import dynamic from 'next/dynamic'
-import { useEffect, useRef, useState, type MutableRefObject, type KeyboardEvent } from 'react'
+import { useEffect, useRef, useState, type KeyboardEvent, type MutableRefObject, type ReactNode } from 'react'
 
 const MDEditor = dynamic(() => import('@uiw/react-md-editor'), { ssr: false })
 
@@ -27,6 +27,12 @@ type Props = {
   minHeight?: number
   mentions?: MentionConfig
   textareaRef?: MutableRefObject<HTMLTextAreaElement | null>
+  /**
+   * Optional UI rendered in the editor's header bar, between the
+   * "Markdown supported" label and the Write/Split/Read mode toggle.
+   * Useful for per-editor affordances like a refresh button.
+   */
+  headerActions?: ReactNode
 }
 
 function getCaretCoordinates(
@@ -83,6 +89,7 @@ export function MarkdownEditor({
   minHeight = 220,
   mentions,
   textareaRef,
+  headerActions,
 }: Props) {
   const [mentionState, setMentionState] = useState<{
     open: boolean
@@ -202,9 +209,11 @@ export function MarkdownEditor({
 
   return (
     <div ref={wrapperRef} data-color-mode="light" className="relative rounded-md border border-gray-200">
-      <div className="flex items-center justify-between border-b border-gray-200 px-3 py-1.5 text-xs">
+      <div className="flex items-center justify-between gap-2 border-b border-gray-200 px-3 py-1.5 text-xs">
         <span className="text-gray-500">Markdown supported · GitHub flavored</span>
-        <div className="inline-flex overflow-hidden rounded-md border border-gray-200">
+        <div className="flex items-center gap-2">
+          {headerActions}
+          <div className="inline-flex overflow-hidden rounded-md border border-gray-200">
           {(['write', 'split', 'read'] as MarkdownEditorMode[]).map((m) => {
             const active = m === mode
             return (
@@ -224,6 +233,7 @@ export function MarkdownEditor({
               </button>
             )
           })}
+          </div>
         </div>
       </div>
       <MDEditor
