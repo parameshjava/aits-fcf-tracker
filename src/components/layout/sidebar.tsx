@@ -55,6 +55,8 @@ export type SidebarUser = {
   isAdmin: boolean
   /** Count of open polls the user hasn't voted in (shown as a badge). */
   openPollsBadge?: number
+  /** Count of open meetings the user hasn't captured notes for (shown as a badge). */
+  openMeetingsBadge?: number
 }
 
 // Emoji icons — naturally multicolor regardless of the surrounding text
@@ -71,6 +73,7 @@ const mainGroup: NavGroup = {
     { label: 'Dashboard', href: '/dashboard',         icon: <Emoji char="📊" label="Dashboard" /> },
     { label: 'Members',   href: '/dashboard/members', icon: <Emoji char="👥" label="Members" /> },
     { label: 'Polls',     href: '/polls',             icon: <Emoji char="🗳️" label="Polls" /> },
+    { label: 'Meetings',  href: '/meetings',           icon: <Emoji char="📝" label="Meetings" /> },
   ],
 }
 
@@ -103,6 +106,8 @@ const adminGroup: NavGroup = {
     { label: 'Bank Accounts',       href: '/admin/bank-accounts',    icon: <Emoji char="💳" label="Bank Accounts" /> },
     { label: 'Reference Values',    href: '/admin/reference',        icon: <Emoji char="⚙️" label="Reference Values" /> },
     { label: 'New Poll',            href: '/admin/polls/new',        icon: <Emoji char="🗳️" label="New Poll" /> },
+    { label: 'Manage Meetings',     href: '/admin/meetings',          icon: <Emoji char="📋" label="Manage Meetings" />, exact: true },
+    { label: 'New Meeting',         href: '/admin/meetings/new',      icon: <Emoji char="📝" label="New Meeting" /> },
     { label: 'System',              href: '/admin/system/accruals',  icon: <Emoji char="🛠️" label="System" /> },
   ],
 }
@@ -420,11 +425,15 @@ export function Sidebar({ user }: { user: SidebarUser }) {
   const groups: NavGroup[] = [
     {
       ...mainGroup,
-      items: mainGroup.items.map((item) =>
-        item.href === '/polls' && user.openPollsBadge && user.openPollsBadge > 0
-          ? { ...item, badge: user.openPollsBadge }
-          : item,
-      ),
+      items: mainGroup.items.map((item) => {
+        if (item.href === '/polls' && user.openPollsBadge && user.openPollsBadge > 0) {
+          return { ...item, badge: user.openPollsBadge }
+        }
+        if (item.href === '/meetings' && user.openMeetingsBadge && user.openMeetingsBadge > 0) {
+          return { ...item, badge: user.openMeetingsBadge }
+        }
+        return item
+      }),
     },
     transactionsGroup,
     rulesGroup,

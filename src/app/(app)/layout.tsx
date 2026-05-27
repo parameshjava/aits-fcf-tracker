@@ -4,6 +4,7 @@ import { Sidebar, type SidebarUser } from '@/components/layout/sidebar'
 import { TopBar } from '@/components/layout/top-bar'
 import { Toaster } from '@/components/ui/sonner'
 import { getOpenPollsBadgeCount } from '@/lib/actions/polls'
+import { getMyOpenUncapturedMeetingCount } from '@/lib/actions/meetings-reads'
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient()
@@ -16,12 +17,19 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     .eq('id', user.id)
     .single()
 
-  // Best-effort sidebar badge — never block the layout on a polls query.
+  // Best-effort sidebar badges — never block the layout on these queries.
   let openPollsBadge = 0
   try {
     openPollsBadge = await getOpenPollsBadgeCount()
   } catch {
     openPollsBadge = 0
+  }
+
+  let openMeetingsBadge = 0
+  try {
+    openMeetingsBadge = await getMyOpenUncapturedMeetingCount()
+  } catch {
+    openMeetingsBadge = 0
   }
 
   const metadata = (user.user_metadata ?? {}) as Record<string, unknown>
@@ -44,6 +52,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     fullName: displayName,
     isAdmin: profile?.role === 'admin',
     openPollsBadge,
+    openMeetingsBadge,
   }
 
   return (
