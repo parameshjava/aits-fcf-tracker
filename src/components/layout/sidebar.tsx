@@ -73,7 +73,7 @@ const mainGroup: NavGroup = {
     { label: 'Dashboard', href: '/dashboard',         icon: <Emoji char="📊" label="Dashboard" /> },
     { label: 'Members',   href: '/dashboard/members', icon: <Emoji char="👥" label="Members" /> },
     { label: 'Polls',     href: '/polls',             icon: <Emoji char="🗳️" label="Polls" /> },
-    { label: 'Meetings',  href: '/meetings',           icon: <Emoji char="📝" label="Meetings" /> },
+    { label: 'Meetings',  href: '/meetings',           icon: <Emoji char="📅" label="Meetings" /> },
   ],
 }
 
@@ -107,7 +107,7 @@ const adminGroup: NavGroup = {
     { label: 'Reference Values',    href: '/admin/reference',        icon: <Emoji char="⚙️" label="Reference Values" /> },
     { label: 'New Poll',            href: '/admin/polls/new',        icon: <Emoji char="🗳️" label="New Poll" /> },
     { label: 'Manage Meetings',     href: '/admin/meetings',          icon: <Emoji char="📋" label="Manage Meetings" />, exact: true },
-    { label: 'New Meeting',         href: '/admin/meetings/new',      icon: <Emoji char="📝" label="New Meeting" /> },
+    { label: 'New Meeting',         href: '/admin/meetings/new',      icon: <Emoji char="📅" label="New Meeting" /> },
     { label: 'System',              href: '/admin/system/accruals',  icon: <Emoji char="🛠️" label="System" /> },
   ],
 }
