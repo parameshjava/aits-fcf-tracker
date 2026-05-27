@@ -18,6 +18,8 @@ type NavItem = {
   icon: React.ReactNode
   /** Match the path exactly, instead of treating it as a prefix. */
   exact?: boolean
+  /** Optional small badge — shown on the right of the row. */
+  badge?: number
 }
 
 type NavGroup = {
@@ -51,6 +53,8 @@ export type SidebarUser = {
   email: string
   fullName: string | null
   isAdmin: boolean
+  /** Count of open polls the user hasn't voted in (shown as a badge). */
+  openPollsBadge?: number
 }
 
 // Emoji icons — naturally multicolor regardless of the surrounding text
@@ -66,6 +70,7 @@ const mainGroup: NavGroup = {
   items: [
     { label: 'Dashboard', href: '/dashboard',         icon: <Emoji char="📊" label="Dashboard" /> },
     { label: 'Members',   href: '/dashboard/members', icon: <Emoji char="👥" label="Members" /> },
+    { label: 'Polls',     href: '/polls',             icon: <Emoji char="🗳️" label="Polls" /> },
   ],
 }
 
@@ -97,6 +102,7 @@ const adminGroup: NavGroup = {
     { label: 'Pending Payments',    href: '/admin/pending',          icon: <Emoji char="📥" label="Pending Payments" /> },
     { label: 'Bank Accounts',       href: '/admin/bank-accounts',    icon: <Emoji char="💳" label="Bank Accounts" /> },
     { label: 'Reference Values',    href: '/admin/reference',        icon: <Emoji char="⚙️" label="Reference Values" /> },
+    { label: 'New Poll',            href: '/admin/polls/new',        icon: <Emoji char="🗳️" label="New Poll" /> },
     { label: 'System',              href: '/admin/system/accruals',  icon: <Emoji char="🛠️" label="System" /> },
   ],
 }
@@ -139,8 +145,23 @@ function NavItemLink({
     >
       {item.icon}
       {!collapsed && (
-        <span className="truncate text-[13px] font-medium tracking-wide">
-          {item.label}
+        <span className="flex flex-1 items-center justify-between gap-2 truncate">
+          <span className="truncate text-[13px] font-medium tracking-wide">
+            {item.label}
+          </span>
+          {item.badge && item.badge > 0 ? (
+            <span
+              className={
+                'inline-flex min-w-[20px] items-center justify-center rounded-full px-1.5 py-0.5 text-[10px] font-semibold ' +
+                (active
+                  ? 'bg-white/30 text-white'
+                  : 'bg-amber-400 text-orange-950')
+              }
+              aria-label={`${item.badge} new`}
+            >
+              {item.badge}
+            </span>
+          ) : null}
         </span>
       )}
     </Link>
@@ -397,7 +418,14 @@ export function Sidebar({ user }: { user: SidebarUser }) {
   }
 
   const groups: NavGroup[] = [
-    mainGroup,
+    {
+      ...mainGroup,
+      items: mainGroup.items.map((item) =>
+        item.href === '/polls' && user.openPollsBadge && user.openPollsBadge > 0
+          ? { ...item, badge: user.openPollsBadge }
+          : item,
+      ),
+    },
     transactionsGroup,
     rulesGroup,
     ...(user.isAdmin ? [adminGroup] : []),

@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import { Sidebar, type SidebarUser } from '@/components/layout/sidebar'
 import { TopBar } from '@/components/layout/top-bar'
 import { Toaster } from '@/components/ui/sonner'
+import { getOpenPollsBadgeCount } from '@/lib/actions/polls'
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient()
@@ -14,6 +15,14 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     .select('full_name, role')
     .eq('id', user.id)
     .single()
+
+  // Best-effort sidebar badge — never block the layout on a polls query.
+  let openPollsBadge = 0
+  try {
+    openPollsBadge = await getOpenPollsBadgeCount()
+  } catch {
+    openPollsBadge = 0
+  }
 
   const metadata = (user.user_metadata ?? {}) as Record<string, unknown>
   const avatarUrl =
@@ -34,6 +43,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     email: user.email ?? '',
     fullName: displayName,
     isAdmin: profile?.role === 'admin',
+    openPollsBadge,
   }
 
   return (

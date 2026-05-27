@@ -43,52 +43,52 @@ Add a WhatsApp-style polling feature to FCF Tracker so admins can ask the member
 All tables live in `public.*` with RLS enabled.
 
 ### `polls`
-| Column | Type | Notes |
-| :-- | :-- | :-- |
-| `id` | uuid PK | `gen_random_uuid()` default |
-| `question` | text NOT NULL | trimmed, length 3..500 |
-| `description` | text NULL | optional context, length ≤ 2000 |
-| `kind` | text NOT NULL CHECK in (`single`, `multi`) | |
-| `max_selections` | int NULL | only when `kind='multi'`; ≥ 1 and ≤ `count(poll_options)` (validated in action layer) |
-| `allow_other` | boolean NOT NULL DEFAULT false | |
-| `visibility` | text NOT NULL CHECK in (`sensitive`, `public`) | |
-| `status` | text NOT NULL CHECK in (`open`, `closed`) DEFAULT `open` | |
-| `created_by` | uuid NOT NULL REFERENCES members(id) | |
-| `created_at` | timestamptz NOT NULL DEFAULT now() | |
-| `closes_at` | timestamptz NOT NULL | must be > created_at; admin sets at create (default +7 days) |
-| `closed_at` | timestamptz NULL | set when admin clicks Close |
-| `closed_by` | uuid NULL REFERENCES members(id) | |
+| Column           | Type                                                     | Notes                                                                                 |
+| :--------------- | :------------------------------------------------------- | :------------------------------------------------------------------------------------ |
+| `id`             | uuid PK                                                  | `gen_random_uuid()` default                                                           |
+| `question`       | text NOT NULL                                            | trimmed, length 3..500                                                                |
+| `description`    | text NULL                                                | optional context, length ≤ 2000                                                       |
+| `kind`           | text NOT NULL CHECK in (`single`, `multi`)               |                                                                                       |
+| `max_selections` | int NULL                                                 | only when `kind='multi'`; ≥ 1 and ≤ `count(poll_options)` (validated in action layer) |
+| `allow_other`    | boolean NOT NULL DEFAULT false                           |                                                                                       |
+| `visibility`     | text NOT NULL CHECK in (`sensitive`, `public`)           |                                                                                       |
+| `status`         | text NOT NULL CHECK in (`open`, `closed`) DEFAULT `open` |                                                                                       |
+| `created_by`     | uuid NOT NULL REFERENCES members(id)                     |                                                                                       |
+| `created_at`     | timestamptz NOT NULL DEFAULT now()                       |                                                                                       |
+| `closes_at`      | timestamptz NOT NULL                                     | must be > created_at; admin sets at create (default +7 days)                          |
+| `closed_at`      | timestamptz NULL                                         | set when admin clicks Close                                                           |
+| `closed_by`      | uuid NULL REFERENCES members(id)                         |                                                                                       |
 
 Constraint: `(kind='single' AND max_selections IS NULL) OR (kind='multi')`.
 
 ### `poll_options`
-| Column | Type | Notes |
-| :-- | :-- | :-- |
-| `id` | uuid PK | |
-| `poll_id` | uuid NOT NULL REFERENCES polls(id) ON DELETE CASCADE | |
-| `label` | text NOT NULL | trimmed, length 1..200 |
-| `position` | int NOT NULL | for stable display order; admin-controlled at create |
+| Column     | Type                                                 | Notes                                                |
+| :--------- | :--------------------------------------------------- | :--------------------------------------------------- |
+| `id`       | uuid PK                                              |                                                      |
+| `poll_id`  | uuid NOT NULL REFERENCES polls(id) ON DELETE CASCADE |                                                      |
+| `label`    | text NOT NULL                                        | trimmed, length 1..200                               |
+| `position` | int NOT NULL                                         | for stable display order; admin-controlled at create |
 
 Unique: `(poll_id, position)`.
 
 ### `poll_votes`
-| Column | Type | Notes |
-| :-- | :-- | :-- |
-| `id` | uuid PK | |
-| `poll_id` | uuid NOT NULL REFERENCES polls(id) ON DELETE CASCADE | |
-| `voter_id` | uuid NOT NULL REFERENCES members(id) | |
-| `other_text` | text NULL | trimmed, length 1..280 when present |
-| `created_at` | timestamptz NOT NULL DEFAULT now() | |
-| `updated_at` | timestamptz NOT NULL DEFAULT now() | bumped on update via trigger |
+| Column       | Type                                                 | Notes                               |
+| :----------- | :--------------------------------------------------- | :---------------------------------- |
+| `id`         | uuid PK                                              |                                     |
+| `poll_id`    | uuid NOT NULL REFERENCES polls(id) ON DELETE CASCADE |                                     |
+| `voter_id`   | uuid NOT NULL REFERENCES members(id)                 |                                     |
+| `other_text` | text NULL                                            | trimmed, length 1..280 when present |
+| `created_at` | timestamptz NOT NULL DEFAULT now()                   |                                     |
+| `updated_at` | timestamptz NOT NULL DEFAULT now()                   | bumped on update via trigger        |
 
 Unique: `(poll_id, voter_id)`.
 Defense-in-depth constraint: every `poll_votes` row must have ≥1 row in `poll_vote_options` OR a non-empty `other_text`. Enforced via a Postgres `CONSTRAINT TRIGGER ... DEFERRABLE INITIALLY DEFERRED` on `poll_votes` (fires at transaction commit, so the option-link inserts in the same transaction satisfy it). The server action also validates this before issuing the SQL — the trigger is a safety net.
 
 ### `poll_vote_options`
-| Column | Type | Notes |
-| :-- | :-- | :-- |
-| `vote_id` | uuid NOT NULL REFERENCES poll_votes(id) ON DELETE CASCADE | |
-| `option_id` | uuid NOT NULL REFERENCES poll_options(id) ON DELETE CASCADE | |
+| Column      | Type                                                        | Notes |
+| :---------- | :---------------------------------------------------------- | :---- |
+| `vote_id`   | uuid NOT NULL REFERENCES poll_votes(id) ON DELETE CASCADE   |       |
+| `option_id` | uuid NOT NULL REFERENCES poll_options(id) ON DELETE CASCADE |       |
 
 Primary key: `(vote_id, option_id)`.
 
@@ -196,14 +196,12 @@ List view for admins — every poll the admin created, in any state, with quick 
 
 ## Migrations
 
-New SQL files under `scripts/prod/migrations/`:
+New SQL files under `scripts/prod/migrations/` (numbered after the existing 020 to avoid clashes with prior work):
 
-1. `009_polls_schema.sql` — tables, indexes, constraints.
-2. `010_polls_triggers.sql` — `updated_at` bump on `poll_votes`; `CONSTRAINT TRIGGER ... DEFERRABLE INITIALLY DEFERRED` enforcing "≥1 option link or other_text".
-3. `011_polls_views.sql` — `polls_effective`, `poll_participation`, `poll_results_public`, `poll_other_responses`.
-4. `012_polls_rls.sql` — RLS enables + policies.
-
-Numbering may shift if other migrations land first; the order above is what matters.
+1. `021_polls_schema.sql` — tables, indexes, constraints.
+2. `022_polls_triggers.sql` — `updated_at` bump on `poll_votes`; `CONSTRAINT TRIGGER ... DEFERRABLE INITIALLY DEFERRED` enforcing "≥1 option link or other_text"; helper functions (`current_member_id`, `poll_is_open`, `poll_is_visible_to_voters`); SECURITY DEFINER RPCs (`create_poll`, `cast_vote`, `close_poll`).
+3. `023_polls_views.sql` — `polls_effective`, `poll_voter_counts`, `poll_option_counts`, `poll_other_count` (all `security_invoker = off` so members can read aggregates over RLS-restricted base tables).
+4. `024_polls_rls.sql` — RLS enables + policies.
 
 ## Testing
 
