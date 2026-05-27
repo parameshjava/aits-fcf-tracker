@@ -1,23 +1,41 @@
 'use client'
 
 import { useState, useTransition } from 'react'
+import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
-import { MarkdownEditor, type MarkdownEditorMode } from '@/components/markdown-editor'
-import { saveAttendeeNotes } from '@/lib/actions/meetings'
-import type { MeetingDetail } from '@/lib/actions/meetings-reads'
 import { ExpandToggle } from '@/components/ui/expand-toggle'
+import { RefreshButton } from '@/components/ui/refresh-button'
+import { MarkdownEditor, type MarkdownEditorMode } from '@/components/markdown-editor'
+import { refreshAttendeeNotes, saveAttendeeNotes } from '@/lib/actions/meetings'
+import type { MeetingDetail } from '@/lib/actions/meetings-reads'
 
 type Props = {
   meeting: MeetingDetail
 }
 
 export function CapturePage({ meeting }: Props) {
+  const router = useRouter()
   const [activeMemberId, setActiveMemberId] = useState<string | null>(null)
   const [draftByMember, setDraftByMember] = useState<Record<string, string>>(
     Object.fromEntries(meeting.attendees.map((a) => [a.member_id, a.notes_md ?? ''])),
   )
   const [modeByMember, setModeByMember] = useState<Record<string, MarkdownEditorMode>>({})
   const [pending, startTransition] = useTransition()
+
+  async function refreshMember(memberId: string, memberName: string) {
+    const fd = new FormData()
+    fd.set('meeting_id', meeting.id)
+    fd.set('member_id', memberId)
+    const res = await refreshAttendeeNotes(fd)
+    if (res.ok) {
+      const latest = res.data?.notes_md ?? ''
+      setDraftByMember((prev) => ({ ...prev, [memberId]: latest }))
+      toast.success(`Refreshed ${memberName}'s notes`)
+      router.refresh()
+    } else {
+      toast.error(res.error)
+    }
+  }
 
   const captured = meeting.attendees.filter((a) => a.notes_md != null).length
   const total = meeting.attendees.length
@@ -105,6 +123,13 @@ export function CapturePage({ meeting }: Props) {
                     {hasNotes ? '✓ Notes saved' : isActive ? 'Capturing…' : 'Not yet captured'}
                   </span>
                 </button>
+                {!isActive && (
+                  <RefreshButton
+                    label={`Refresh notes for ${a.member_name}`}
+                    size="sm"
+                    onRefresh={() => refreshMember(a.member_id, a.member_name)}
+                  />
+                )}
                 <ExpandToggle
                   isOpen={isActive}
                   onClick={() => void expand(a.member_id)}

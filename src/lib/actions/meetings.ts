@@ -354,3 +354,35 @@ export async function toggleActionItem(
     return actionOk({ meetingId: id })
   })
 }
+
+/**
+ * Re-read a single attendee's latest notes_md. Used by the per-row refresh
+ * button on the admin capture page — admins can pick up notes that an
+ * attendee wrote from their own device without reloading the whole meeting.
+ *
+ * Invalidates the meeting cache so subsequent server renders see fresh data.
+ */
+export async function refreshAttendeeNotes(
+  formData: FormData,
+): Promise<ActionResult<{ notes_md: string | null }>> {
+  return runAction('refreshAttendeeNotes', async () => {
+    const user = await getCurrentUser()
+    if (!user) return actionError('Unauthorized')
+
+    const meetingId = String(formData.get('meeting_id') ?? '').trim()
+    const memberId  = String(formData.get('member_id')  ?? '').trim()
+    if (!meetingId || !memberId) return actionError('Missing ids')
+
+    const supabase = await createClient()
+    const { data, error } = await supabase
+      .from('meeting_attendees')
+      .select('notes_md')
+      .eq('meeting_id', meetingId)
+      .eq('member_id', memberId)
+      .maybeSingle()
+    if (error) return actionError(error.message)
+
+    invalidate(meetingId)
+    return actionOk({ notes_md: (data?.notes_md as string | null) ?? null })
+  })
+}
