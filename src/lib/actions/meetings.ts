@@ -15,6 +15,7 @@ import {
   validateNotes,
 } from '@/lib/meetings-validation'
 import { seededShuffle } from '@/lib/shuffle'
+import { toggleCheckboxAt } from '@/lib/action-items'
 
 async function getCurrentMemberId(): Promise<string | null> {
   const user = await getCurrentUser()
@@ -283,5 +284,73 @@ export async function reopenMeeting(
 
     invalidate(id)
     return actionOk({ meetingId: id }, 'Meeting reopened')
+  })
+}
+
+export async function updateActionItems(
+  formData: FormData,
+): Promise<ActionResult<{ meetingId: string }>> {
+  return runAction('updateActionItems', async () => {
+    const user = await getCurrentUser()
+    if (!user || user.profile?.role !== 'admin') return actionError('Unauthorized')
+
+    const id = String(formData.get('id') ?? '').trim()
+    if (!id) return actionError('Missing meeting id')
+
+    const raw = formData.get('action_items_md')
+    const text = raw == null ? '' : String(raw)
+    if (text.length > 10_000) return actionError('Action items are too long (max 10000 chars)')
+
+    const value = text.trim().length === 0 ? null : text
+
+    const supabase = await createClient()
+    const { error } = await supabase
+      .from('meetings')
+      .update({ action_items_md: value })
+      .eq('id', id)
+    if (error) return actionError(error.message)
+
+    invalidate(id)
+    return actionOk({ meetingId: id }, 'Action items saved')
+  })
+}
+
+export async function toggleActionItem(
+  formData: FormData,
+): Promise<ActionResult<{ meetingId: string }>> {
+  return runAction('toggleActionItem', async () => {
+    const user = await getCurrentUser()
+    if (!user) return actionError('Unauthorized')
+
+    const id = String(formData.get('id') ?? '').trim()
+    const lineIndex = Number(formData.get('line_index'))
+    const checked = String(formData.get('checked') ?? '') === 'true'
+    if (!id || !Number.isInteger(lineIndex)) return actionError('Invalid request')
+
+    const supabase = await createClient()
+    const { data: m, error: mErr } = await supabase
+      .from('meetings')
+      .select('status, action_items_md')
+      .eq('id', id)
+      .maybeSingle()
+    if (mErr) return actionError(mErr.message)
+    if (!m) return actionError('Meeting not found')
+    if (m.status !== 'open') return actionError('This meeting is closed')
+
+    const result = toggleCheckboxAt(m.action_items_md ?? '', lineIndex, checked)
+    if (!result.ok) return actionError(result.error)
+
+    if (result.value === m.action_items_md) {
+      return actionOk({ meetingId: id })
+    }
+
+    const { error } = await supabase
+      .from('meetings')
+      .update({ action_items_md: result.value })
+      .eq('id', id)
+    if (error) return actionError(error.message)
+
+    invalidate(id)
+    return actionOk({ meetingId: id })
   })
 }
