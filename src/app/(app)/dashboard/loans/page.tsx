@@ -6,25 +6,22 @@ import {
   getPendingInterestByLoan,
 } from '@/lib/actions/loans'
 import { LoansListTable, type LoansListRow } from '@/components/loans-list-table'
+import { LoansTabs, type LoansTabKey } from '@/components/loans-tabs'
 import { computeLoanFinancials, type LoanTxnInput } from '@/lib/loan-math'
 import { RefreshButton } from '@/components/ui/refresh-button'
 import { LoansFilters } from './loans-filters'
-
-type StatusKey = 'active' | 'paid' | 'write_off'
 
 export default async function LoansListPage({
   searchParams,
 }: {
   searchParams: Promise<{
     members?: string
-    statuses?: string
+    tab?: string
   }>
 }) {
   const params = await searchParams
   const memberFilter = params.members ? params.members.split(',').filter(Boolean) : []
-  const statusFilter: StatusKey[] = params.statuses
-    ? (params.statuses.split(',').filter(Boolean) as StatusKey[])
-    : []
+  const initialTab: LoansTabKey = params.tab === 'past' ? 'past' : 'active'
 
   const supabase = await createClient()
   const interestPerLakh = await getInterestPerLakh()
@@ -33,9 +30,6 @@ export default async function LoansListPage({
   const loans = allLoans.filter((l) => {
     if (memberFilter.length > 0) {
       if (!l.member_id || !memberFilter.includes(l.member_id)) return false
-    }
-    if (statusFilter.length > 0) {
-      if (!statusFilter.includes(l.status as StatusKey)) return false
     }
     return true
   })
@@ -77,6 +71,7 @@ export default async function LoansListPage({
       member_name: l.member?.name ?? null,
       principal_amount: f.principal,
       start_date: l.start_date,
+      end_date: l.end_date,
       status: l.status,
       loan_type: l.loan_type,
       paid_interest: f.paidInterestTotal,
@@ -88,6 +83,9 @@ export default async function LoansListPage({
       detail_href: `/dashboard/loans/${encodeURIComponent(l.loan_number)}`,
     }
   })
+
+  const activeRows = tableRows.filter((r) => r.status === 'active')
+  const pastRows = tableRows.filter((r) => r.status !== 'active')
 
   return (
     <div className="space-y-6">
@@ -107,13 +105,17 @@ export default async function LoansListPage({
         <RefreshButton label="Refresh loans list" />
       </div>
 
-      <LoansFilters
-        members={members}
-        defaultMemberIds={memberFilter}
-        defaultStatuses={statusFilter}
-      />
+      <LoansFilters members={members} defaultMemberIds={memberFilter} />
 
-      <LoansListTable loans={tableRows} expandable />
+      <LoansTabs
+        initialTab={initialTab}
+        activeCount={activeRows.length}
+        pastCount={pastRows.length}
+        activeTable={
+          <LoansListTable loans={activeRows} expandable mode="active" />
+        }
+        pastTable={<LoansListTable loans={pastRows} expandable mode="past" />}
+      />
     </div>
   )
 }

@@ -76,8 +76,8 @@ export function useTableFilter<T>(
 
 type ThAlign = 'left' | 'right' | 'center'
 
-const baseTh =
-  'group cursor-pointer select-none px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500 hover:text-gray-800 transition-colors'
+const baseThNoPadding =
+  'group cursor-pointer select-none whitespace-nowrap text-[11px] font-semibold uppercase tracking-wider text-gray-500 hover:text-gray-800 transition-colors'
 
 export function SortableHeader<K extends string>({
   col,
@@ -86,6 +86,7 @@ export function SortableHeader<K extends string>({
   sort,
   onToggle,
   className,
+  compact = false,
 }: {
   col: K
   label: string
@@ -93,6 +94,8 @@ export function SortableHeader<K extends string>({
   sort: SortState<K>
   onToggle: (col: K) => void
   className?: string
+  /** Tighter cell padding (`px-3 py-2.5`) for dense, many-column tables. */
+  compact?: boolean
 }) {
   const isActive = sort?.col === col
   const arrow = !isActive ? '↕' : sort?.dir === 'asc' ? '↑' : '↓'
@@ -102,7 +105,8 @@ export function SortableHeader<K extends string>({
       scope="col"
       onClick={() => onToggle(col)}
       className={
-        baseTh +
+        baseThNoPadding +
+        (compact ? ' px-3 py-2.5' : ' px-4 py-3') +
         (align === 'right' ? ' text-right' : align === 'center' ? ' text-center' : ' text-left') +
         (isActive ? ' text-gray-900' : '') +
         (className ? ' ' + className : '')

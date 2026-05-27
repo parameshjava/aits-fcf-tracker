@@ -7,9 +7,16 @@ import {
   getPendingInterestByLoan,
 } from '@/lib/actions/loans'
 import { LoansListTable, type LoansListRow } from '@/components/loans-list-table'
+import { LoansTabs, type LoansTabKey } from '@/components/loans-tabs'
 import { computeLoanFinancials, type LoanTxnInput } from '@/lib/loan-math'
 
-export default async function AdminLoansListPage() {
+export default async function AdminLoansListPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ tab?: string }>
+}) {
+  const params = await searchParams
+  const initialTab: LoansTabKey = params.tab === 'past' ? 'past' : 'active'
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/auth/login')
@@ -57,6 +64,7 @@ export default async function AdminLoansListPage() {
       member_name: l.member?.name ?? null,
       principal_amount: f.principal,
       start_date: l.start_date,
+      end_date: l.end_date,
       status: l.status,
       loan_type: l.loan_type,
       paid_interest: f.paidInterestTotal,
@@ -68,6 +76,19 @@ export default async function AdminLoansListPage() {
       detail_href: `/admin/loans/${encodeURIComponent(l.loan_number)}`,
     }
   })
+
+  const activeRows = tableRows.filter((r) => r.status === 'active')
+  const pastRows = tableRows.filter((r) => r.status !== 'active')
+
+  const emptyMessage = (
+    <>
+      No loans yet. Use{' '}
+      <Link href="/admin/loans/new" className="text-blue-600 hover:underline">
+        + New loan
+      </Link>
+      .
+    </>
+  )
 
   return (
     <div className="space-y-6">
@@ -88,17 +109,25 @@ export default async function AdminLoansListPage() {
         </Link>
       </div>
 
-      <LoansListTable
-        loans={tableRows}
-        linkLabel="Manage →"
-        emptyMessage={
-          <>
-            No loans yet. Use{' '}
-            <Link href="/admin/loans/new" className="text-blue-600 hover:underline">
-              + New loan
-            </Link>
-            .
-          </>
+      <LoansTabs
+        initialTab={initialTab}
+        activeCount={activeRows.length}
+        pastCount={pastRows.length}
+        activeTable={
+          <LoansListTable
+            loans={activeRows}
+            linkLabel="Manage →"
+            mode="active"
+            emptyMessage={emptyMessage}
+          />
+        }
+        pastTable={
+          <LoansListTable
+            loans={pastRows}
+            linkLabel="Manage →"
+            mode="past"
+            emptyMessage="No past loans yet."
+          />
         }
       />
     </div>

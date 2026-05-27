@@ -19,6 +19,8 @@ export type LoansListRow = {
   member_name: string | null
   principal_amount: number
   start_date: string
+  /** Loan closure date — only relevant for the "past" tab (paid / write_off). */
+  end_date?: string | null
   status: 'active' | 'paid' | 'write_off'
   loan_type: 'personal' | 'medical'
   paid_interest: number
@@ -32,6 +34,7 @@ type SortKey =
   | 'member'
   | 'principal'
   | 'start'
+  | 'end'
   | 'status'
   | 'type'
   | 'paid_interest'
@@ -68,13 +71,12 @@ function formatDate(iso: string | null): string {
   return `${String(d.getUTCDate()).padStart(2, '0')}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${d.getUTCFullYear()}`
 }
 
-const COLSPAN = 10
-
 export function LoansListTable({
   loans,
   linkLabel = 'View →',
   emptyMessage,
   expandable = false,
+  mode,
 }: {
   loans: LoansListRow[]
   /** Action link text per row — "View →" (read-only) or "Manage →" (admin). */
@@ -84,7 +86,12 @@ export function LoansListTable({
   /** When true, replaces the per-row link with an inline accordion that
    *  fetches loan detail once and caches it for instant re-expansion. */
   expandable?: boolean
+  /** "past" adds an End date column after Start and assumes all rows are
+   *  closed loans (paid / write_off). Omit for the default mixed view. */
+  mode?: 'active' | 'past'
 }) {
+  const showEndDate = mode === 'past'
+  const colspan = showEndDate ? 11 : 10
   const stringify = useCallback(
     (l: LoansListRow) =>
       [
@@ -105,6 +112,7 @@ export function LoansListTable({
     if (col === 'member')         return l.member_name ?? ''
     if (col === 'principal')      return l.principal_amount
     if (col === 'start')          return new Date(l.start_date).getTime()
+    if (col === 'end')            return l.end_date ? new Date(l.end_date).getTime() : 0
     if (col === 'status')         return STATUS_RANK[l.status] ?? 99
     if (col === 'type')           return TYPE_LABEL[l.loan_type] ?? l.loan_type
     if (col === 'paid_interest')  return l.paid_interest
@@ -204,22 +212,25 @@ export function LoansListTable({
         <table className="sticky-thead min-w-full text-sm">
           <thead>
             <tr className="border-b border-gray-200 bg-gray-50/60">
-              <SortableHeader col="loan_number"   label="Loan #"        sort={sort} onToggle={toggleSort} />
-              <SortableHeader col="member"        label="Member"        sort={sort} onToggle={toggleSort} />
-              <SortableHeader col="type"          label="Type"          sort={sort} onToggle={toggleSort} />
-              <SortableHeader col="principal"     label="Principal"     align="right" sort={sort} onToggle={toggleSort} />
-              <SortableHeader col="start"         label="Start"         sort={sort} onToggle={toggleSort} />
-              <SortableHeader col="status"        label="Status"        sort={sort} onToggle={toggleSort} />
-              <SortableHeader col="paid_interest" label="Interest paid" align="right" sort={sort} onToggle={toggleSort} />
-              <SortableHeader col="interest_due"  label="Interest due"  align="right" sort={sort} onToggle={toggleSort} />
-              <SortableHeader col="balance"       label="Pending"       align="right" sort={sort} onToggle={toggleSort} />
-              <th scope="col" className="px-4 py-3" />
+              <SortableHeader compact col="loan_number"   label="Loan #"        sort={sort} onToggle={toggleSort} />
+              <SortableHeader compact col="member"        label="Member"        sort={sort} onToggle={toggleSort} />
+              <SortableHeader compact col="type"          label="Type"          sort={sort} onToggle={toggleSort} />
+              <SortableHeader compact col="principal"     label="Principal"     align="right" sort={sort} onToggle={toggleSort} />
+              <SortableHeader compact col="start"         label="Start date"    sort={sort} onToggle={toggleSort} />
+              {showEndDate && (
+                <SortableHeader compact col="end"         label="End date"      sort={sort} onToggle={toggleSort} />
+              )}
+              <SortableHeader compact col="status"        label="Status"        sort={sort} onToggle={toggleSort} />
+              <SortableHeader compact col="paid_interest" label="Interest paid" align="right" sort={sort} onToggle={toggleSort} />
+              <SortableHeader compact col="interest_due"  label="Interest due"  align="right" sort={sort} onToggle={toggleSort} />
+              <SortableHeader compact col="balance"       label="Outstanding"   align="right" sort={sort} onToggle={toggleSort} />
+              <th scope="col" className="px-3 py-2.5" />
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
             {sorted.length === 0 ? (
               <tr>
-                <td colSpan={COLSPAN} className="px-4 py-12 text-center text-sm text-gray-400">
+                <td colSpan={colspan} className="px-4 py-12 text-center text-sm text-gray-400">
                   {query ? `No matches for "${query}"` : (emptyMessage ?? 'No loans yet.')}
                 </td>
               </tr>
@@ -237,13 +248,13 @@ export function LoansListTable({
                 return (
                   <Fragment key={l.id}>
                     <tr className={`${rowBaseClasses} ${rowOpenClasses}`}>
-                      <td className="whitespace-nowrap px-4 py-3 font-mono text-xs text-gray-700">
+                      <td className="whitespace-nowrap px-3 py-2.5 font-mono text-xs text-gray-700">
                         {l.loan_number}
                       </td>
-                      <td className="px-4 py-3 font-medium text-gray-900">
+                      <td className="px-3 py-2.5 font-medium text-gray-900">
                         {l.member_name ?? <span className="text-gray-400">—</span>}
                       </td>
-                      <td className="whitespace-nowrap px-4 py-3">
+                      <td className="whitespace-nowrap px-3 py-2.5">
                         <span
                           className={
                             'rounded-full px-2 py-0.5 text-xs font-medium ring-1 ' +
@@ -253,28 +264,33 @@ export function LoansListTable({
                           {TYPE_LABEL[l.loan_type] ?? l.loan_type}
                         </span>
                       </td>
-                      <td className="whitespace-nowrap px-4 py-3 text-right tabular-nums text-gray-700">
+                      <td className="whitespace-nowrap px-3 py-2.5 text-right tabular-nums text-gray-700">
                         {formatRupees(l.principal_amount)}
                       </td>
-                      <td className="whitespace-nowrap px-4 py-3 text-gray-600">
+                      <td className="whitespace-nowrap px-3 py-2.5 text-gray-600">
                         {formatDate(l.start_date)}
                       </td>
-                      <td className="px-4 py-3">
+                      {showEndDate && (
+                        <td className="whitespace-nowrap px-3 py-2.5 text-gray-600">
+                          {formatDate(l.end_date ?? null)}
+                        </td>
+                      )}
+                      <td className="whitespace-nowrap px-3 py-2.5">
                         <span
                           className={
-                            'rounded-full px-2 py-0.5 text-xs font-medium ring-1 ' +
+                            'inline-block whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium ring-1 ' +
                             (STATUS_PILL[l.status] ?? STATUS_PILL.active)
                           }
                         >
                           {STATUS_LABEL[l.status] ?? l.status}
                         </span>
                       </td>
-                      <td className="whitespace-nowrap px-4 py-3 text-right tabular-nums text-gray-700">
+                      <td className="whitespace-nowrap px-3 py-2.5 text-right tabular-nums text-gray-700">
                         {formatRupees(l.paid_interest)}
                       </td>
                       <td
                         className={
-                          'whitespace-nowrap px-4 py-3 text-right tabular-nums ' +
+                          'whitespace-nowrap px-3 py-2.5 text-right tabular-nums ' +
                           (isClosedLoan
                             ? 'text-gray-400'
                             : l.interest_due > 0
@@ -284,10 +300,10 @@ export function LoansListTable({
                       >
                         {isClosedLoan ? '—' : formatRupees(l.interest_due)}
                       </td>
-                      <td className="whitespace-nowrap px-4 py-3 text-right font-semibold tabular-nums text-gray-900">
+                      <td className="whitespace-nowrap px-3 py-2.5 text-right font-semibold tabular-nums text-gray-900">
                         {formatRupees(l.balance)}
                       </td>
-                      <td className="whitespace-nowrap px-4 py-3 text-right">
+                      <td className="whitespace-nowrap px-3 py-2.5 text-right">
                         {expandable ? (
                           <ExpandToggle
                             isOpen={isOpen}
@@ -311,7 +327,7 @@ export function LoansListTable({
                         id={`loan-detail-${l.id}`}
                         className="border-l-2 border-l-blue-500 bg-gradient-to-b from-blue-50/50 to-white"
                       >
-                        <td colSpan={COLSPAN} className="p-0">
+                        <td colSpan={colspan} className="p-0">
                           {isLoading ? (
                             <div className="flex items-center gap-2 p-6 text-sm text-gray-500">
                               <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-gray-300 border-t-blue-600" />

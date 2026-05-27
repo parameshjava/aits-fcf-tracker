@@ -1,51 +1,37 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { useRouter, usePathname } from 'next/navigation'
+import { useRouter, usePathname, useSearchParams } from 'next/navigation'
 
 export type MemberOption = { id: string; name: string }
-
-type StatusKey = 'active' | 'paid' | 'write_off'
-
-const STATUS_OPTIONS: { id: StatusKey; name: string }[] = [
-  { id: 'active',    name: 'Active' },
-  { id: 'paid',      name: 'Paid' },
-  { id: 'write_off', name: 'Write off' },
-]
 
 type Props = {
   members: MemberOption[]
   defaultMemberIds: string[]
-  defaultStatuses: StatusKey[]
 }
 
-export function LoansFilters({
-  members,
-  defaultMemberIds,
-  defaultStatuses,
-}: Props) {
+export function LoansFilters({ members, defaultMemberIds }: Props) {
   const router = useRouter()
   const pathname = usePathname()
+  const searchParams = useSearchParams()
 
   const [memberIds, setMemberIds] = useState<string[]>(defaultMemberIds)
-  const [statuses, setStatuses] = useState<StatusKey[]>(defaultStatuses)
 
-  function push(updates: Partial<{ members: string[]; statuses: StatusKey[] }>) {
-    const next = {
-      members: updates.members ?? memberIds,
-      statuses: updates.statuses ?? statuses,
-    }
-    const sp = new URLSearchParams()
-    if (next.members.length > 0) sp.set('members', next.members.join(','))
-    if (next.statuses.length > 0) sp.set('statuses', next.statuses.join(','))
+  function push(nextMembers: string[]) {
+    const sp = new URLSearchParams(searchParams?.toString() ?? '')
+    if (nextMembers.length > 0) sp.set('members', nextMembers.join(','))
+    else sp.delete('members')
     const qs = sp.toString()
     router.push(qs ? `${pathname}?${qs}` : pathname)
   }
 
   function resetAll() {
     setMemberIds([])
-    setStatuses([])
-    router.push(pathname)
+    // Preserve the active tab (and any other params) while clearing members.
+    const sp = new URLSearchParams(searchParams?.toString() ?? '')
+    sp.delete('members')
+    const qs = sp.toString()
+    router.push(qs ? `${pathname}?${qs}` : pathname)
   }
 
   const memberLabel =
@@ -55,16 +41,9 @@ export function LoansFilters({
         ? members.find((m) => m.id === memberIds[0])?.name ?? '1 member'
         : `${memberIds.length} members`
 
-  const statusLabel =
-    statuses.length === 0
-      ? 'All statuses'
-      : statuses.length === 1
-        ? STATUS_OPTIONS.find((s) => s.id === statuses[0])?.name ?? '1 status'
-        : `${statuses.length} statuses`
-
   return (
     <div className="rounded-2xl border border-gray-200/80 bg-white p-3 sm:p-4">
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_auto] lg:items-end">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_auto] sm:items-end">
         <div>
           <label className="mb-1 block text-xs font-medium uppercase tracking-wider text-gray-500">
             Member
@@ -75,22 +54,7 @@ export function LoansFilters({
             label={memberLabel}
             onChange={(next) => {
               setMemberIds(next)
-              push({ members: next })
-            }}
-          />
-        </div>
-
-        <div>
-          <label className="mb-1 block text-xs font-medium uppercase tracking-wider text-gray-500">
-            Status
-          </label>
-          <MultiSelect
-            options={STATUS_OPTIONS}
-            selected={statuses}
-            label={statusLabel}
-            onChange={(next) => {
-              setStatuses(next as StatusKey[])
-              push({ statuses: next as StatusKey[] })
+              push(next)
             }}
           />
         </div>
