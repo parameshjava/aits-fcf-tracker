@@ -56,6 +56,11 @@ create unique index if not exists transactions_poll_id_unique
 -- poll_id directly so the donations page can render them as separate
 -- columns. Non-donation sections see no behaviour change — their rows
 -- never had beneficiary_name or poll_id set.
+--
+-- `create or replace view` requires existing columns to stay in their
+-- original positions; new columns can only be APPENDED at the end. The
+-- columns from the migration-008 shape are kept in order; `poll_id` and
+-- `beneficiary_name` are added at the tail.
 create or replace view public.dashboard_transactions as
 select
   t.id,
@@ -67,11 +72,11 @@ select
   t.description,
   t.member_id,
   t.loan_id,
-  t.poll_id,
-  t.beneficiary_name,
   t.created_at,
   m.name as member_name,
-  m.slug as member_slug
+  m.slug as member_slug,
+  t.poll_id,
+  t.beneficiary_name
 from public.transactions t
 left join public.members m on m.id = t.member_id;
 
