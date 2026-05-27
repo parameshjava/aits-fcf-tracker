@@ -110,6 +110,19 @@ export default async function AdminPage() {
           </div>
           <span className="text-2xl text-green-600">&rarr;</span>
         </Link>
+
+        <Link
+          href="/admin/polls/new"
+          className="flex items-center justify-between rounded-lg border bg-white p-5 transition hover:border-purple-300"
+        >
+          <div>
+            <h3 className="font-semibold text-gray-900">Create poll</h3>
+            <p className="text-sm text-gray-500">
+              Ask the membership for input
+            </p>
+          </div>
+          <span className="text-2xl text-purple-600">🗳️</span>
+        </Link>
       </div>
 
       <div className="rounded-lg border bg-white p-5">

@@ -60,6 +60,18 @@ const ROUTES: Record<string, RouteMeta> = {
     title: 'Bank accounts',
     crumbs: [{ label: 'Admin', href: '/admin' }, { label: 'Bank accounts' }],
   },
+  '/polls': {
+    title: 'Polls',
+    crumbs: [{ label: 'Polls' }],
+  },
+  '/admin/polls/new': {
+    title: 'New poll',
+    crumbs: [
+      { label: 'Admin', href: '/admin' },
+      { label: 'Polls', href: '/polls' },
+      { label: 'New' },
+    ],
+  },
 }
 
 export function resolveBreadcrumb(pathname: string): RouteMeta {
