@@ -87,8 +87,17 @@ export function MarkdownEditor({
   const [mentionState, setMentionState] = useState<{
     open: boolean
     query: string
+    selectedIndex: number
     anchor: { top: number; left: number } | null
-  }>({ open: false, query: '', anchor: null })
+  }>({ open: false, query: '', selectedIndex: 0, anchor: null })
+
+  const filtered = mentions
+    ? mentions.options.filter((o) =>
+        mentionState.query.length === 0
+          ? true
+          : o.label.toLowerCase().includes(mentionState.query.toLowerCase()),
+      )
+    : []
 
   // We capture a ref to the rendered <textarea> via a small post-mount effect.
   // @uiw/react-md-editor renders a real textarea, so a generic querySelector
@@ -112,26 +121,58 @@ export function MarkdownEditor({
       setMentionState({
         open: true,
         query: '',
+        selectedIndex: 0,
         anchor: { top: coords.top + 2, left },
       })
       return
     }
 
     if (mentionState.open) {
-      if (e.key === 'Escape' || e.key === ' ' || e.key === 'Enter' || e.key === '@') {
+      if (e.key === 'Enter') {
+        const pick = filtered[mentionState.selectedIndex] ?? filtered[0]
+        if (pick) {
+          e.preventDefault()
+          insertMention(pick.value)
+        } else {
+          setMentionState((s) => ({ ...s, open: false }))
+        }
+        return
+      }
+      if (e.key === 'ArrowDown') {
+        e.preventDefault()
+        setMentionState((s) => ({
+          ...s,
+          selectedIndex: Math.min(s.selectedIndex + 1, Math.max(filtered.length - 1, 0)),
+        }))
+        return
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault()
+        setMentionState((s) => ({ ...s, selectedIndex: Math.max(s.selectedIndex - 1, 0) }))
+        return
+      }
+      if (e.key === 'Tab') {
+        const pick = filtered[mentionState.selectedIndex] ?? filtered[0]
+        if (pick) {
+          e.preventDefault()
+          insertMention(pick.value)
+          return
+        }
+      }
+      if (e.key === 'Escape' || e.key === ' ' || e.key === '@') {
         setMentionState((s) => ({ ...s, open: false }))
         return
       }
       if (e.key === 'Backspace') {
         setMentionState((s) =>
           s.query.length > 0
-            ? { ...s, query: s.query.slice(0, -1) }
+            ? { ...s, query: s.query.slice(0, -1), selectedIndex: 0 }
             : { ...s, open: false },
         )
         return
       }
       if (e.key.length === 1 && /[a-zA-Z0-9\-]/.test(e.key)) {
-        setMentionState((s) => ({ ...s, query: s.query + e.key }))
+        setMentionState((s) => ({ ...s, query: s.query + e.key, selectedIndex: 0 }))
         return
       }
     }
@@ -156,16 +197,8 @@ export function MarkdownEditor({
         } catch { /* ignore */ }
       })
     }
-    setMentionState({ open: false, query: '', anchor: null })
+    setMentionState({ open: false, query: '', selectedIndex: 0, anchor: null })
   }
-
-  const filtered = mentions
-    ? mentions.options.filter((o) =>
-        mentionState.query.length === 0
-          ? true
-          : o.label.toLowerCase().includes(mentionState.query.toLowerCase()),
-      )
-    : []
 
   return (
     <div ref={wrapperRef} data-color-mode="light" className="relative rounded-md border border-gray-200">
@@ -219,19 +252,26 @@ export function MarkdownEditor({
             {filtered.length === 0 ? (
               <div className="px-3 py-2 text-gray-400">No matches</div>
             ) : (
-              filtered.map((o) => (
-                <button
-                  type="button"
-                  key={o.value}
-                  onClick={() => insertMention(o.value)}
-                  className="block w-full px-3 py-1.5 text-left hover:bg-indigo-50"
-                  role="option"
-                  aria-selected={false}
-                >
-                  <span className="font-medium text-gray-900">{o.label}</span>{' '}
-                  <span className="text-gray-400">(@{o.value})</span>
-                </button>
-              ))
+              filtered.map((o, i) => {
+                const isSelected = i === mentionState.selectedIndex
+                return (
+                  <button
+                    type="button"
+                    key={o.value}
+                    onMouseDown={(e) => { e.preventDefault(); insertMention(o.value) }}
+                    onMouseEnter={() => setMentionState((s) => ({ ...s, selectedIndex: i }))}
+                    className={
+                      'block w-full px-3 py-1.5 text-left ' +
+                      (isSelected ? 'bg-indigo-50' : 'hover:bg-indigo-50')
+                    }
+                    role="option"
+                    aria-selected={isSelected}
+                  >
+                    <span className="font-medium text-gray-900">{o.label}</span>{' '}
+                    <span className="text-gray-400">(@{o.value})</span>
+                  </button>
+                )
+              })
             )}
           </div>
         </div>

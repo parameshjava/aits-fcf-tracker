@@ -2,6 +2,7 @@
 
 import { useState, useTransition, type MouseEvent } from 'react'
 import { toast } from 'sonner'
+import { Button } from '@/components/ui/button'
 import { MarkdownView } from '@/components/markdown-view'
 import { ActionItemsEditor, type MentionOption } from '@/components/action-items-editor'
 import { countActionItems } from '@/lib/action-items'
@@ -69,12 +70,14 @@ export function ActionItemsPanel({
           </span>
         </h2>
         {isAdmin && meetingStatus === 'open' && (
-          <button
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
             onClick={() => setEditing((prev) => !prev)}
-            className="rounded-md border border-gray-300 px-3 py-1 text-xs font-medium text-gray-600 hover:bg-gray-50"
           >
             {editing ? 'Cancel' : (source ? 'Edit list' : 'Add list')}
-          </button>
+          </Button>
         )}
       </div>
 

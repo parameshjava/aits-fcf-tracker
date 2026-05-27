@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
+import { Button } from '@/components/ui/button'
 import { MarkdownEditor, type MarkdownEditorMode } from '@/components/markdown-editor'
 import { updateActionItems } from '@/lib/actions/meetings'
 
@@ -74,13 +75,9 @@ export function ActionItemsEditor({
   return (
     <div className="border-t border-gray-100 px-4 py-3 space-y-2">
       <div className="flex justify-start">
-        <button
-          type="button"
-          onClick={addItem}
-          className="rounded-md border border-dashed border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50"
-        >
+        <Button type="button" variant="outline" size="xs" onClick={addItem}>
           + Add item
-        </button>
+        </Button>
       </div>
       <MarkdownEditor
         value={value}
@@ -95,21 +92,12 @@ export function ActionItemsEditor({
         Tip: type <code>@</code> to assign an item to a member.
       </p>
       <div className="flex justify-end gap-2 pt-1">
-        <button
-          type="button"
-          onClick={onClose}
-          className="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
-        >
+        <Button type="button" variant="outline" onClick={onClose}>
           Cancel
-        </button>
-        <button
-          type="button"
-          onClick={save}
-          disabled={pending}
-          className="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
-        >
+        </Button>
+        <Button type="button" onClick={save} disabled={pending}>
           {pending ? 'Saving…' : 'Save'}
-        </button>
+        </Button>
       </div>
     </div>
   )
