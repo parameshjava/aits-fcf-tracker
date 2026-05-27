@@ -71,7 +71,7 @@ export function ActionItemsPanel({
         {isAdmin && meetingStatus === 'open' && (
           <button
             onClick={() => setEditing((prev) => !prev)}
-            className="rounded-md border border-gray-200 bg-white px-2.5 py-1 text-xs hover:bg-gray-50"
+            className="rounded-md border border-gray-300 px-3 py-1 text-xs font-medium text-gray-600 hover:bg-gray-50"
           >
             {editing ? 'Cancel' : (source ? 'Edit list' : 'Add list')}
           </button>
@@ -80,7 +80,7 @@ export function ActionItemsPanel({
 
       {!editing && (
         <div className="px-4 py-3" onClickCapture={onCheckboxClick}>
-          {!source || total === 0 ? (
+          {!source ? (
             <p className="py-2 text-xs text-gray-400">No action items yet.</p>
           ) : (
             <MarkdownView source={source} mentions={{ slugToName }} />

@@ -45,10 +45,21 @@ export function ActionItemsEditor({
   }
 
   function save() {
+    // Auto-wrap any non-empty line that isn't already a checkbox item with
+    // "- [ ] ", so typing plain text still produces a usable checklist.
+    const normalized = value
+      .split('\n')
+      .map((line) => {
+        if (line.trim().length === 0) return line
+        if (/^\s*[-*]\s+\[( |x|X)\]/.test(line)) return line
+        return `- [ ] ${line.trim()}`
+      })
+      .join('\n')
+
     startTransition(async () => {
       const fd = new FormData()
       fd.set('id', meetingId)
-      fd.set('action_items_md', value)
+      fd.set('action_items_md', normalized)
       const res = await updateActionItems(fd)
       if (res.ok) {
         toast.success(res.message ?? 'Action items saved')
@@ -66,7 +77,7 @@ export function ActionItemsEditor({
         <button
           type="button"
           onClick={addItem}
-          className="rounded-md border border-gray-200 bg-white px-2.5 py-1 text-xs hover:bg-gray-50"
+          className="rounded-md border border-dashed border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50"
         >
           + Add item
         </button>
@@ -87,7 +98,7 @@ export function ActionItemsEditor({
         <button
           type="button"
           onClick={onClose}
-          className="rounded-md border border-gray-200 bg-white px-3 py-1.5 text-sm hover:bg-gray-50"
+          className="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
         >
           Cancel
         </button>
@@ -95,7 +106,7 @@ export function ActionItemsEditor({
           type="button"
           onClick={save}
           disabled={pending}
-          className="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
+          className="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
         >
           {pending ? 'Saving…' : 'Save'}
         </button>
