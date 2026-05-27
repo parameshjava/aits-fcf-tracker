@@ -1,14 +1,20 @@
-import type { LoanPollPickerOption } from '@/lib/actions/loans'
 import type { SelectOption } from '@/components/searchable-select'
 
 const MAX_LABEL_CHARS = 80
 
+type PollPickerInput = {
+  id: string
+  question: string
+  status: 'open' | 'closed'
+  closes_at: string
+}
+
 /** Shape raw poll picker rows into `SearchableSelect` options.
  *  Open polls render with a `[Open]` prefix; closed polls use a `[Closed]`
  *  prefix. Long questions are truncated so the trigger button stays a
- *  single line. */
+ *  single line. Shared by loan and donation pickers. */
 export function buildPollPickerOptions(
-  polls: LoanPollPickerOption[],
+  polls: PollPickerInput[],
 ): SelectOption[] {
   return polls.map((p) => {
     const status =

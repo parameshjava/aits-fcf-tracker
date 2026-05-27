@@ -3,11 +3,15 @@
 import { useActionState, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { updateTransaction } from '@/lib/actions/transactions'
+import {
+  updateTransaction,
+  type DonationPollPickerOption,
+} from '@/lib/actions/transactions'
 import { TRANSACTION_TYPES, type TransactionType } from '@/lib/constants'
 import { todayISO } from '@/lib/format'
 import { SearchableSelect } from '@/components/searchable-select'
 import { AmountInput } from '@/components/amount-input'
+import { buildPollPickerOptions } from '@/lib/loan-poll-picker'
 
 type Member = { id: string; name: string }
 type LoanOption = {
@@ -27,6 +31,8 @@ type Txn = {
   interest_source: 'loans' | 'bank' | null
   member_id: string | null
   loan_id: string | null
+  beneficiary_name: string | null
+  poll_id: string | null
   description: string | null
 }
 
@@ -36,10 +42,12 @@ export function EditTransactionForm({
   txn,
   members,
   loans,
+  polls,
 }: {
   txn: Txn
   members: Member[]
   loans: LoanOption[]
+  polls: DonationPollPickerOption[]
 }) {
   const router = useRouter()
   const [state, action, pending] = useActionState(
@@ -52,6 +60,9 @@ export function EditTransactionForm({
     txn.interest_source === 'bank' ? 'bank' : 'loans',
   )
   const [memberId, setMemberId] = useState<string>(txn.member_id ?? '')
+  const [pollId, setPollId] = useState<string>(txn.poll_id ?? '')
+  const pollOptions = buildPollPickerOptions(polls)
+  const isDonation = type === 'donation'
 
   useEffect(() => {
     if (state?.ok) {
@@ -133,7 +144,10 @@ export function EditTransactionForm({
 
         <div>
           <label className="block text-xs font-medium text-gray-700">
-            Member <span className="font-normal text-gray-400">(optional)</span>
+            {isDonation ? 'Referred by' : 'Member'}{' '}
+            <span className="font-normal text-gray-400">
+              {isDonation ? '(optional · referring fund member)' : '(optional)'}
+            </span>
           </label>
           <div className="mt-1">
             <SearchableSelect
@@ -141,11 +155,47 @@ export function EditTransactionForm({
               options={members}
               value={memberId}
               onChange={setMemberId}
-              emptyOption="— No member —"
+              emptyOption={isDonation ? '— No referrer —' : '— No member —'}
               placeholder="Search members…"
             />
           </div>
         </div>
+
+        {isDonation && (
+          <>
+            <div className="sm:col-span-2">
+              <label htmlFor="beneficiary_name" className="block text-xs font-medium text-gray-700">
+                Beneficiary{' '}
+                <span className="font-normal text-gray-400">(optional · who receives this donation)</span>
+              </label>
+              <input
+                id="beneficiary_name"
+                name="beneficiary_name"
+                type="text"
+                defaultValue={txn.beneficiary_name ?? ''}
+                className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                placeholder="e.g. Naidruva"
+              />
+            </div>
+
+            <div className="sm:col-span-2">
+              <label className="block text-xs font-medium text-gray-700">
+                Approval poll{' '}
+                <span className="font-normal text-gray-400">(optional · authorising poll)</span>
+              </label>
+              <div className="mt-1">
+                <SearchableSelect
+                  name="poll_id"
+                  options={pollOptions}
+                  value={pollId}
+                  onChange={setPollId}
+                  placeholder="No poll attached"
+                  emptyOption="No poll attached"
+                />
+              </div>
+            </div>
+          </>
+        )}
 
         {type === 'interest' && (
           <div className="sm:col-span-2">

@@ -174,7 +174,7 @@ Authoritative DDL: `scripts/prod/migrations/`. RLS is **enabled** on every `publ
 | `members`            | 22 canonical contributors (slug + email unique). Independent of auth — backfilled from Excel.          |
 | `member_contacts`    | Multi-phone / multi-email per member. `is_primary` partial-unique per `(member_id, kind)`.             |
 | `loans`              | First-class loans. `loan_number` auto-generated `YYYYMM-NNN`. Includes `interest_waiver_months`, `interest_waived`, `bad_debt`. |
-| `transactions`       | All money movements. `transaction_id` auto `YYYYMMDD-NNN` (global seq). `transaction_type` enum (see Golden rules). References `member_id` and optionally `loan_id`. |
+| `transactions`       | All money movements. `transaction_id` auto `YYYYMMDD-NNN` (global seq). `transaction_type` enum (see Golden rules). References `member_id`, optionally `loan_id`, optionally `poll_id` (donations only — 1:1 enforced by partial unique index, mirrors `loans.poll_id`). On donation rows `member_id` is the **referring** fund member; the recipient lives in `beneficiary_name` (text). |
 | `pending_payments`   | User-submitted, awaiting admin verification → approves into `transactions`. Mirrors the txn columns plus `submitted_by`, `reviewed_by`, `admin_notes`. |
 | `bank_accounts`      | Per-member bank account details. `account_type` ∈ {savings, current, fixed_deposit, recurring, other}. |
 | `reference`          | Global key/value config (current value). Drives `interest_per_lakh`, `bank_balance`, `corpus_threshold`, `donation_eligibility_pct`. |

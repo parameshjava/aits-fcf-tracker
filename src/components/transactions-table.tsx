@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback } from 'react'
+import Link from 'next/link'
 import { formatRupees } from '@/lib/format'
 import {
   SortableHeader,
@@ -18,11 +19,17 @@ export type TxnRow = {
   transaction_date: string
   description?: string | null
   member_name?: string | null
+  /** Optional donation-only fields. Surface beneficiary text + linked
+   *  approval poll on the donations section table. */
+  beneficiary_name?: string | null
+  poll?: { id: string; question: string } | null
   /** Optional per-row manage link. When ANY row supplies one, the table
    *  renders an Actions column. Set on the server (strings are serializable;
    *  callbacks would violate the server→client boundary). */
   manage_href?: string | null
 }
+
+const POLL_LABEL_MAX = 40
 
 type SortKey = 'date' | 'member' | 'txn_id' | 'description' | 'amount'
 
@@ -50,21 +57,29 @@ export function TransactionsTable({
   emptyLabel = 'No transactions yet',
   enableSearch = true,
   memberColumnLabel = 'Member',
+  showDonationColumns = false,
 }: {
   rows: TxnRow[]
   showType?: boolean
   emptyLabel?: string
   enableSearch?: boolean
   /** Header label for the column rendering `member_name`. Defaults to
-   *  "Member"; the Donations section overrides it to "Beneficiary" since
-   *  the named party there is a recipient, not a fund member. */
+   *  "Member"; the Donations section overrides it to "Referred by" since
+   *  the joined member there is the referring fund member, not the
+   *  recipient (which lives in `beneficiary_name`). */
   memberColumnLabel?: string
+  /** When true, render two extra columns after the member column:
+   *  "Beneficiary" (from `beneficiary_name`) and "Poll" (from `poll`).
+   *  Used by the /dashboard/donations section view. */
+  showDonationColumns?: boolean
 }) {
   const showActions = rows.some((r) => !!r.manage_href)
   const stringify = useCallback(
     (t: TxnRow) =>
       [
         t.member_name ?? '',
+        t.beneficiary_name ?? '',
+        t.poll?.question ?? '',
         t.description ?? '',
         t.transaction_id,
         typeLabel(t),
@@ -126,6 +141,22 @@ export function TransactionsTable({
                 sort={sort}
                 onToggle={toggleSort}
               />
+              {showDonationColumns && (
+                <>
+                  <th
+                    scope="col"
+                    className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500"
+                  >
+                    Beneficiary
+                  </th>
+                  <th
+                    scope="col"
+                    className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500"
+                  >
+                    Poll
+                  </th>
+                </>
+              )}
               <SortableHeader
                 col="amount"
                 label="Amount"
@@ -155,7 +186,10 @@ export function TransactionsTable({
           <tbody className="divide-y divide-gray-100">
             {sorted.length === 0 ? (
               <tr>
-                <td colSpan={showActions ? 7 : 6} className="px-4 py-12 text-center text-sm text-gray-400">
+                <td
+                  colSpan={6 + (showActions ? 1 : 0) + (showDonationColumns ? 2 : 0)}
+                  className="px-4 py-12 text-center text-sm text-gray-400"
+                >
                   {query ? `No matches for "${query}"` : emptyLabel}
                 </td>
               </tr>
@@ -187,6 +221,28 @@ export function TransactionsTable({
                         <div className="text-xs text-gray-500">{typeLabel(t)}</div>
                       )}
                     </td>
+                    {showDonationColumns && (
+                      <>
+                        <td className="px-4 py-3 align-middle text-sm text-gray-700">
+                          {t.beneficiary_name || <span className="text-gray-300">—</span>}
+                        </td>
+                        <td className="px-4 py-3 align-middle text-sm">
+                          {t.poll ? (
+                            <Link
+                              href={`/polls/${t.poll.id}`}
+                              className="text-blue-600 hover:underline"
+                              title={t.poll.question}
+                            >
+                              {t.poll.question.length > POLL_LABEL_MAX
+                                ? t.poll.question.slice(0, POLL_LABEL_MAX - 1).trimEnd() + '…'
+                                : t.poll.question}
+                            </Link>
+                          ) : (
+                            <span className="text-gray-300">—</span>
+                          )}
+                        </td>
+                      </>
+                    )}
                     <td className="whitespace-nowrap px-4 py-3 text-right font-semibold tabular-nums text-gray-900">
                       {formatRupees(t.amount)}
                     </td>

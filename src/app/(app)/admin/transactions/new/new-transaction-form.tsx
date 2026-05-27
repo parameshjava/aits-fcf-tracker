@@ -2,7 +2,10 @@
 
 import { useActionState, useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
-import { createTransaction } from '@/lib/actions/transactions'
+import {
+  createTransaction,
+  type DonationPollPickerOption,
+} from '@/lib/actions/transactions'
 import { TRANSACTION_TYPES } from '@/lib/constants'
 import type { TransactionType } from '@/lib/constants'
 import { todayISO } from '@/lib/format'
@@ -10,6 +13,7 @@ import { SearchableSelect } from '@/components/searchable-select'
 import { BankBalanceUpdater } from '@/components/bank-balance-updater'
 import { AmountInput } from '@/components/amount-input'
 import { defaultDirectionForContribution } from '@/lib/balance-direction'
+import { buildPollPickerOptions } from '@/lib/loan-poll-picker'
 
 type Member = { id: string; name: string }
 type LoanOption = {
@@ -26,9 +30,13 @@ const TYPES_NEEDING_LOAN = new Set(['loan_repayment', 'penalty'])
 export function NewTransactionForm({
   members,
   loans,
+  polls,
+  initialType = '',
 }: {
   members: Member[]
   loans: LoanOption[]
+  polls: DonationPollPickerOption[]
+  initialType?: TransactionType | ''
 }) {
   const formRef = useRef<HTMLFormElement>(null)
   // Skip the success-effect on initial mount so a router-cached page that
@@ -41,10 +49,12 @@ export function NewTransactionForm({
     },
     null,
   )
-  const [type, setType] = useState<string>('')
+  const [type, setType] = useState<string>(initialType)
   const [interestSource, setInterestSource] = useState<'loans' | 'bank'>('loans')
   const [memberId, setMemberId] = useState<string>('')
+  const [pollId, setPollId] = useState<string>('')
   const [formKey, setFormKey] = useState(0)
+  const pollOptions = buildPollPickerOptions(polls)
 
   // On success, fire a toast and reset the form in place so the admin can
   // record another transaction without re-navigating. (The previous behaviour
@@ -56,16 +66,21 @@ export function NewTransactionForm({
       return
     }
     if (state?.ok) {
-      toast.success(state.message ?? 'Transaction saved')
+      toast.success(state.message ?? 'Transaction saved', {
+        description: 'Posted to the ledger.',
+      })
       formRef.current?.reset()
       // Reset controlled fields so the next entry starts from a clean slate.
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setType('')
       setInterestSource('loans')
       setMemberId('')
+      setPollId('')
       setFormKey((k) => k + 1)
     }
   }, [state])
+
+  const isDonation = type === 'donation'
 
   const needsLoan =
     TYPES_NEEDING_LOAN.has(type) ||
@@ -136,8 +151,12 @@ export function NewTransactionForm({
 
         <div>
           <label htmlFor="member_id" className="block text-sm font-medium text-gray-700">
-            Member
-            <span className="ml-1 text-xs font-normal text-gray-400">(optional · type to search)</span>
+            {isDonation ? 'Referred by' : 'Member'}
+            <span className="ml-1 text-xs font-normal text-gray-400">
+              {isDonation
+                ? '(optional · fund member who proposed this donation)'
+                : '(optional · type to search)'}
+            </span>
           </label>
           <div className="mt-1">
             <SearchableSelect
@@ -145,11 +164,50 @@ export function NewTransactionForm({
               options={members}
               value={memberId}
               onChange={setMemberId}
-              emptyOption="— No member —"
-              placeholder="Search members…"
+              emptyOption={isDonation ? '— No referrer —' : '— No member —'}
+              placeholder={isDonation ? 'Search members…' : 'Search members…'}
             />
           </div>
         </div>
+
+        {isDonation && (
+          <>
+            <div className="sm:col-span-2">
+              <label htmlFor="beneficiary_name" className="block text-sm font-medium text-gray-700">
+                Beneficiary
+                <span className="ml-1 text-xs font-normal text-gray-400">
+                  (optional · who receives this donation)
+                </span>
+              </label>
+              <input
+                id="beneficiary_name"
+                name="beneficiary_name"
+                type="text"
+                className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                placeholder="e.g. Naidruva"
+              />
+            </div>
+
+            <div className="sm:col-span-2">
+              <label className="block text-sm font-medium text-gray-700">
+                Approval poll
+                <span className="ml-1 text-xs font-normal text-gray-400">
+                  (optional · the poll that authorised this donation)
+                </span>
+              </label>
+              <div className="mt-1">
+                <SearchableSelect
+                  name="poll_id"
+                  options={pollOptions}
+                  value={pollId}
+                  onChange={setPollId}
+                  placeholder="No poll attached"
+                  emptyOption="No poll attached"
+                />
+              </div>
+            </div>
+          </>
+        )}
 
         {type === 'interest' && (
           <div className="sm:col-span-2">

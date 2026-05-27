@@ -43,6 +43,15 @@ export async function createTransaction(
       (transactionType === 'interest' && interestSource === 'loans')
     const loanId = needsLoan && loanIdRaw && loanIdRaw.length > 0 ? loanIdRaw : null
 
+    // Donation-only fields: beneficiary_name (text) + poll_id (FK).
+    // Persisted ONLY when type=donation; null on every other type so
+    // changing a row's type clears them.
+    const isDonation = transactionType === 'donation'
+    const beneficiaryRaw = (formData.get('beneficiary_name') as string | null)?.trim()
+    const beneficiaryName = isDonation && beneficiaryRaw ? beneficiaryRaw : null
+    const pollIdRaw = (formData.get('poll_id') as string | null)?.trim()
+    const pollId = isDonation && pollIdRaw && pollIdRaw.length > 0 ? pollIdRaw : null
+
     if (
       transactionType === 'interest' &&
       interestSource === 'loans' &&
@@ -64,12 +73,20 @@ export async function createTransaction(
       interest_source: interestSource,
       member_id: memberId,
       loan_id: loanId,
+      beneficiary_name: beneficiaryName,
+      poll_id: pollId,
       description,
       created_by: user.id,
       verified_by: user.id,
     })
 
     if (error) {
+      if (isPollAlreadyLinkedError(error)) {
+        return actionError(
+          'That poll is already linked to another donation.',
+          'poll_id',
+        )
+      }
       return actionError(error.message)
     }
 
@@ -97,13 +114,17 @@ export async function getTransactions() {
   const supabase = await createClient()
   const { data, error } = await supabase
     .from('transactions')
-    .select('*, beneficiary_name, member:member_id (name, slug)')
+    .select(
+      '*, beneficiary_name, poll_id, member:member_id (name, slug), poll:poll_id (id, question)',
+    )
     .order('transaction_date', { ascending: false })
 
   if (error) throw new Error(error.message)
 
   type MemberRef = { name: string; slug: string } | null
+  type PollRef = { id: string; question: string } | null
   type DBRow = Record<string, unknown> & {
+    id: string
     transaction_id: string
     transaction_date: string
     amount: number | string
@@ -111,22 +132,21 @@ export async function getTransactions() {
     interest_source?: 'loans' | 'bank' | null
     description?: string | null
     beneficiary_name?: string | null
+    poll_id?: string | null
+    member_id?: string | null
     member?: MemberRef
+    poll?: PollRef
     member_name?: string | null
   }
-  // Donations are paid to external beneficiaries (not members) — fall back to
-  // `beneficiary_name` so the donations page's "Beneficiary" column still
-  // renders a name. See migrations/008_seed_donations.sql.
-  //
-  // The DB is the single source of truth — all historical seed data has been
-  // migrated into `public.transactions` via scripts/prod/transactions/{YYYY}.sql
-  // and 008_seed_donations.sql. The previous JS-side synthetic merge from
-  // seed.json double-counted contributions in section-view (slug-based IDs
-  // didn't match the abbrev-based IDs in DB), inflating corpus growth and
-  // throwing off the eligibility math.
+  // member_name reflects the JOINED member only — no more coalesce to
+  // beneficiary_name. On donation rows member_id means "referrer", so a
+  // donation with no referrer correctly surfaces null for member_name.
+  // Consumers that need to show a beneficiary read beneficiary_name
+  // explicitly.
   return ((data ?? []) as DBRow[]).map((r) => ({
     ...r,
-    member_name: r.member?.name ?? r.beneficiary_name ?? null,
+    member_name: r.member?.name ?? null,
+    poll: r.poll ?? null,
   }))
 }
 
@@ -214,6 +234,14 @@ export async function updateTransaction(formData: FormData): Promise<ActionResul
     const memberId = memberIdRaw && memberIdRaw.length > 0 ? memberIdRaw : null
     const loanId = needsLoan && loanIdRaw && loanIdRaw.length > 0 ? loanIdRaw : null
 
+    // Donation-only fields. Persisted when type=donation, explicitly
+    // null-ed otherwise so switching a row's type clears them.
+    const isDonation = transactionType === 'donation'
+    const beneficiaryRaw = (formData.get('beneficiary_name') as string | null)?.trim()
+    const beneficiaryName = isDonation && beneficiaryRaw ? beneficiaryRaw : null
+    const pollIdRaw = (formData.get('poll_id') as string | null)?.trim()
+    const pollId = isDonation && pollIdRaw && pollIdRaw.length > 0 ? pollIdRaw : null
+
     const { error } = await supabase
       .from('transactions')
       .update({
@@ -223,11 +251,21 @@ export async function updateTransaction(formData: FormData): Promise<ActionResul
         interest_source: interestSource,
         member_id: memberId,
         loan_id: loanId,
+        beneficiary_name: beneficiaryName,
+        poll_id: pollId,
         description: description?.trim() || null,
       })
       .eq('id', id)
 
-    if (error) return actionError(error.message)
+    if (error) {
+      if (isPollAlreadyLinkedError(error)) {
+        return actionError(
+          'That poll is already linked to another donation.',
+          'poll_id',
+        )
+      }
+      return actionError(error.message)
+    }
 
     revalidatePath('/admin')
     revalidatePath('/admin/transactions')
@@ -267,4 +305,68 @@ export async function deleteTransaction(formData: FormData): Promise<ActionResul
     redirect('/admin/transactions')
   }
   return result
+}
+
+/** True when the supplied Supabase/Postgres error is the unique-violation
+ *  raised by the `transactions_poll_id_unique` partial index (one poll per
+ *  donation). Used by create/updateTransaction to surface a friendly
+ *  inline error instead of the raw 23505 message. */
+function isPollAlreadyLinkedError(err: {
+  code?: string | null
+  message?: string | null
+}): boolean {
+  return (
+    err.code === '23505' &&
+    typeof err.message === 'string' &&
+    err.message.includes('transactions_poll_id_unique')
+  )
+}
+
+export type DonationPollPickerOption = {
+  id: string
+  question: string
+  status: 'open' | 'closed'
+  closes_at: string
+}
+
+/** Minimal poll list for the donation-form picker. Returns the 50 most
+ *  recent polls, ordered by created_at desc, excluding any poll already
+ *  linked to a different donation transaction (the donation ↔ poll
+ *  relationship is 1:1).
+ *
+ *  Pass `excludeTxnId` from the edit form so the donation's own current
+ *  poll stays selectable; omit it on the new-transaction form. */
+export async function getPollsForDonationPicker(
+  opts?: { excludeTxnId?: string },
+): Promise<DonationPollPickerOption[]> {
+  const supabase = await createClient()
+  const [pollsRes, linkedRes] = await Promise.all([
+    supabase
+      .from('polls')
+      .select('id, question, status, closes_at')
+      .order('created_at', { ascending: false })
+      .limit(50),
+    supabase
+      .from('transactions')
+      .select('id, poll_id')
+      .not('poll_id', 'is', null),
+  ])
+  if (pollsRes.error) throw new Error(pollsRes.error.message)
+  if (linkedRes.error) throw new Error(linkedRes.error.message)
+
+  const excludedPollIds = new Set<string>()
+  for (const r of (linkedRes.data ?? []) as { id: string; poll_id: string | null }[]) {
+    if (!r.poll_id) continue
+    if (opts?.excludeTxnId && r.id === opts.excludeTxnId) continue
+    excludedPollIds.add(r.poll_id)
+  }
+
+  return ((pollsRes.data ?? []) as DonationPollPickerOption[])
+    .filter((p) => !excludedPollIds.has(p.id))
+    .map((p) => ({
+      id: p.id,
+      question: p.question,
+      status: p.status,
+      closes_at: p.closes_at,
+    }))
 }
