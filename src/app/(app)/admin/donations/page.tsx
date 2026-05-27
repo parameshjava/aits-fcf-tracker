@@ -138,6 +138,7 @@ export default async function AdminDonationsPage() {
                         <LoanPollModal
                           pollId={r.poll.id}
                           pollQuestion={r.poll.question}
+                          compact
                         />
                       ) : (
                         <span className="text-gray-300">—</span>

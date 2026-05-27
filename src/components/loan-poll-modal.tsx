@@ -27,13 +27,17 @@ function formatDateTime(iso: string | null): string {
 type Props = {
   pollId: string
   pollQuestion: string
+  /** When true, render the trigger as a small icon-only button (no
+   *  question text). Used in tight table cells where the full pill takes
+   *  up too much horizontal space. */
+  compact?: boolean
 }
 
 /** Renders the linked poll as a click target inside the loan Terms grid.
  *  The full poll detail (options, vote counts, voters when visible) is
  *  fetched on first open — keeps the panel render cheap when no one
  *  drills in. */
-export function LoanPollModal({ pollId, pollQuestion }: Props) {
+export function LoanPollModal({ pollId, pollQuestion, compact = false }: Props) {
   const [open, setOpen] = useState(false)
   const [detail, setDetail] = useState<LinkedPollDetail | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -64,10 +68,15 @@ export function LoanPollModal({ pollId, pollQuestion }: Props) {
           load()
         }}
         title={pollQuestion}
-        className="inline-flex max-w-[22rem] items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium text-blue-700 ring-1 ring-blue-200 transition-colors hover:bg-blue-50 focus:outline-none focus-visible:bg-blue-50"
+        aria-label={compact ? `Open linked poll: ${pollQuestion}` : undefined}
+        className={
+          compact
+            ? 'inline-flex h-7 w-7 items-center justify-center rounded-full text-blue-700 ring-1 ring-blue-200 transition-colors hover:bg-blue-50 focus:outline-none focus-visible:bg-blue-50'
+            : 'inline-flex max-w-[22rem] items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium text-blue-700 ring-1 ring-blue-200 transition-colors hover:bg-blue-50 focus:outline-none focus-visible:bg-blue-50'
+        }
       >
-        <Vote className="h-3 w-3 shrink-0" aria-hidden />
-        <span className="truncate">{pollQuestion}</span>
+        <Vote className={compact ? 'h-3.5 w-3.5' : 'h-3 w-3 shrink-0'} aria-hidden />
+        {!compact && <span className="truncate">{pollQuestion}</span>}
       </button>
 
       <Dialog open={open} onOpenChange={setOpen}>

@@ -229,6 +229,7 @@ export function TransactionsTable({
                             <LoanPollModal
                               pollId={t.poll.id}
                               pollQuestion={t.poll.question}
+                              compact
                             />
                           ) : (
                             <span className="text-gray-300">—</span>
