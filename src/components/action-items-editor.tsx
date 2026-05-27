@@ -1,14 +1,8 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState, useTransition } from 'react'
+import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
 import { MarkdownEditor, type MarkdownEditorMode } from '@/components/markdown-editor'
 import { updateActionItems } from '@/lib/actions/meetings'
 
@@ -16,28 +10,27 @@ export type MentionOption = { slug: string; name: string }
 
 type Props = {
   meetingId: string
-  open: boolean
-  onOpenChange: (open: boolean) => void
   initial: string | null
   mentionOptions: MentionOption[]
+  onClose: () => void
 }
 
 export function ActionItemsEditor({
   meetingId,
-  open,
-  onOpenChange,
   initial,
   mentionOptions,
+  onClose,
 }: Props) {
+  const router = useRouter()
   const [value, setValue] = useState(initial ?? '')
   const [mode, setMode] = useState<MarkdownEditorMode>('split')
   const [pending, startTransition] = useTransition()
   const editorRef = useRef<HTMLTextAreaElement | null>(null)
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- intentionally syncing dialog value when it opens
-    if (open) setValue(initial ?? '')
-  }, [open, initial])
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- intentionally syncing value when editor mounts
+    setValue(initial ?? '')
+  }, [initial])
 
   const mentions = useMemo(
     () => ({
@@ -59,7 +52,8 @@ export function ActionItemsEditor({
       const res = await updateActionItems(fd)
       if (res.ok) {
         toast.success(res.message ?? 'Action items saved')
-        onOpenChange(false)
+        router.refresh()
+        onClose()
       } else {
         toast.error(res.error)
       }
@@ -67,52 +61,45 @@ export function ActionItemsEditor({
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl">
-        <DialogHeader>
-          <DialogTitle>Edit action items</DialogTitle>
-        </DialogHeader>
-        <div className="space-y-2">
-          <div className="flex justify-start">
-            <button
-              type="button"
-              onClick={addItem}
-              className="rounded-md border border-gray-200 bg-white px-2.5 py-1 text-xs hover:bg-gray-50"
-            >
-              + Add item
-            </button>
-          </div>
-          <MarkdownEditor
-            value={value}
-            onChange={setValue}
-            mode={mode}
-            onModeChange={setMode}
-            minHeight={280}
-            mentions={mentions}
-            textareaRef={editorRef}
-          />
-          <p className="text-[11px] text-gray-500">
-            Tip: type <code>@</code> to assign an item to a member.
-          </p>
-        </div>
-        <DialogFooter>
-          <button
-            type="button"
-            onClick={() => onOpenChange(false)}
-            className="rounded-md border border-gray-200 bg-white px-3 py-1.5 text-sm hover:bg-gray-50"
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            onClick={save}
-            disabled={pending}
-            className="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
-          >
-            {pending ? 'Saving…' : 'Save'}
-          </button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+    <div className="border-t border-gray-100 px-4 py-3 space-y-2">
+      <div className="flex justify-start">
+        <button
+          type="button"
+          onClick={addItem}
+          className="rounded-md border border-gray-200 bg-white px-2.5 py-1 text-xs hover:bg-gray-50"
+        >
+          + Add item
+        </button>
+      </div>
+      <MarkdownEditor
+        value={value}
+        onChange={setValue}
+        mode={mode}
+        onModeChange={setMode}
+        minHeight={280}
+        mentions={mentions}
+        textareaRef={editorRef}
+      />
+      <p className="text-[11px] text-gray-500">
+        Tip: type <code>@</code> to assign an item to a member.
+      </p>
+      <div className="flex justify-end gap-2 pt-1">
+        <button
+          type="button"
+          onClick={onClose}
+          className="rounded-md border border-gray-200 bg-white px-3 py-1.5 text-sm hover:bg-gray-50"
+        >
+          Cancel
+        </button>
+        <button
+          type="button"
+          onClick={save}
+          disabled={pending}
+          className="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
+        >
+          {pending ? 'Saving…' : 'Save'}
+        </button>
+      </div>
+    </div>
   )
 }

@@ -29,6 +29,52 @@ type Props = {
   textareaRef?: MutableRefObject<HTMLTextAreaElement | null>
 }
 
+function getCaretCoordinates(
+  el: HTMLTextAreaElement,
+  position: number,
+): { top: number; left: number; lineHeight: number } {
+  const style = window.getComputedStyle(el)
+  const div = document.createElement('div')
+  const propsToCopy = [
+    'boxSizing', 'width', 'height', 'overflowX', 'overflowY',
+    'borderTopWidth', 'borderRightWidth', 'borderBottomWidth', 'borderLeftWidth',
+    'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft',
+    'fontStyle', 'fontVariant', 'fontWeight', 'fontStretch', 'fontSize',
+    'fontSizeAdjust', 'lineHeight', 'fontFamily',
+    'textAlign', 'textTransform', 'textIndent', 'textDecoration',
+    'letterSpacing', 'wordSpacing', 'tabSize', 'whiteSpace', 'wordWrap', 'wordBreak',
+  ] as const
+  for (const p of propsToCopy) {
+    ;(div.style as unknown as Record<string, string>)[p] = (style as unknown as Record<string, string>)[p]
+  }
+  div.style.position = 'absolute'
+  div.style.visibility = 'hidden'
+  div.style.whiteSpace = 'pre-wrap'
+  div.style.wordWrap = 'break-word'
+  div.style.top = '0'
+  div.style.left = '0'
+
+  const value = el.value
+  div.textContent = value.substring(0, position)
+  const span = document.createElement('span')
+  span.textContent = value.substring(position) || '.'
+  div.appendChild(span)
+
+  document.body.appendChild(div)
+  const offsetTop = span.offsetTop
+  const offsetLeft = span.offsetLeft
+  document.body.removeChild(div)
+
+  const rect = el.getBoundingClientRect()
+  const lineHeight = parseInt(style.lineHeight, 10) || parseInt(style.fontSize, 10) * 1.4 || 18
+
+  return {
+    top: rect.top + offsetTop - el.scrollTop + lineHeight,
+    left: rect.left + offsetLeft - el.scrollLeft,
+    lineHeight,
+  }
+}
+
 export function MarkdownEditor({
   value,
   onChange,
@@ -56,19 +102,37 @@ export function MarkdownEditor({
 
   function handleKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
     if (!mentions) return
+
     if (e.key === '@') {
       const ta = e.currentTarget
-      const rect = ta.getBoundingClientRect()
+      // Use selectionStart + 1 because the '@' hasn't been inserted into value yet
+      const coords = getCaretCoordinates(ta, (ta.selectionStart ?? 0) + 1)
+      const popoverWidth = 224 // matches w-56
+      const left = Math.min(coords.left, window.innerWidth - popoverWidth - 8)
       setMentionState({
         open: true,
         query: '',
-        anchor: { top: rect.top + 24, left: rect.left + 80 },
+        anchor: { top: coords.top + 2, left },
       })
       return
     }
+
     if (mentionState.open) {
-      if (e.key === 'Escape' || e.key === ' ' || e.key === 'Enter') {
+      if (e.key === 'Escape' || e.key === ' ' || e.key === 'Enter' || e.key === '@') {
         setMentionState((s) => ({ ...s, open: false }))
+        return
+      }
+      if (e.key === 'Backspace') {
+        setMentionState((s) =>
+          s.query.length > 0
+            ? { ...s, query: s.query.slice(0, -1) }
+            : { ...s, open: false },
+        )
+        return
+      }
+      if (e.key.length === 1 && /[a-zA-Z0-9\-]/.test(e.key)) {
+        setMentionState((s) => ({ ...s, query: s.query + e.key }))
+        return
       }
     }
   }

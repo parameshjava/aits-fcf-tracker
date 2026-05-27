@@ -70,29 +70,33 @@ export function ActionItemsPanel({
         </h2>
         {isAdmin && meetingStatus === 'open' && (
           <button
-            onClick={() => setEditing(true)}
+            onClick={() => setEditing((prev) => !prev)}
             className="rounded-md border border-gray-200 bg-white px-2.5 py-1 text-xs hover:bg-gray-50"
           >
-            {source ? 'Edit list' : 'Add list'}
+            {editing ? 'Cancel' : (source ? 'Edit list' : 'Add list')}
           </button>
         )}
       </div>
-      <div className="px-4 py-3" onClickCapture={onCheckboxClick}>
-        {!source || total === 0 ? (
-          <p className="py-2 text-xs text-gray-400">No action items yet.</p>
-        ) : (
-          <MarkdownView source={source} mentions={{ slugToName }} />
-        )}
-        {pending && <p className="mt-1 text-[11px] text-gray-400">Saving…</p>}
-      </div>
 
-      <ActionItemsEditor
-        meetingId={meetingId}
-        open={editing}
-        onOpenChange={setEditing}
-        initial={source}
-        mentionOptions={mentionOptions}
-      />
+      {!editing && (
+        <div className="px-4 py-3" onClickCapture={onCheckboxClick}>
+          {!source || total === 0 ? (
+            <p className="py-2 text-xs text-gray-400">No action items yet.</p>
+          ) : (
+            <MarkdownView source={source} mentions={{ slugToName }} />
+          )}
+          {pending && <p className="mt-1 text-[11px] text-gray-400">Saving…</p>}
+        </div>
+      )}
+
+      {editing && (
+        <ActionItemsEditor
+          meetingId={meetingId}
+          initial={source}
+          mentionOptions={mentionOptions}
+          onClose={() => setEditing(false)}
+        />
+      )}
     </div>
   )
 }
