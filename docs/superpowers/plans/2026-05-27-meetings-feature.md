@@ -31,8 +31,10 @@ src/lib/
     meetings.test.ts                # pure-logic tests (validation + shuffle wiring)
 
 src/components/
-  markdown-editor.tsx               # @uiw/react-md-editor wrapper with mode toggle
-  markdown-view.tsx                 # react-markdown + remark-gfm wrapper
+  markdown-editor.tsx               # @uiw/react-md-editor wrapper with mode toggle + optional @mention typeahead
+  markdown-view.tsx                 # react-markdown + remark-gfm wrapper with optional @mention chip renderer
+  action-items-panel.tsx            # read-mode checklist with click-to-toggle + Edit-list button (admin)
+  action-items-editor.tsx           # dialog-wrapped editor with @mention typeahead + Add-item button
 
 src/app/(app)/
   meetings/
@@ -127,6 +129,7 @@ create table if not exists public.meetings (
   status          text not null default 'open' check (status in ('open','closed')),
   random_seed     bigint not null,
   linked_poll_id  uuid references public.polls(id) on delete set null,
+  action_items_md text check (action_items_md is null or char_length(action_items_md) <= 10000),
   created_by      uuid not null references public.members(id),
   created_at      timestamptz not null default now(),
   closed_at       timestamptz,
@@ -291,10 +294,26 @@ alter table public.meeting_attendees enable row level security;
 create policy "meetings_select" on public.meetings
   for select to authenticated using (true);
 
-create policy "meetings_write_admin" on public.meetings
-  for all to authenticated
+create policy "meetings_insert_admin" on public.meetings
+  for insert to authenticated
+  with check (public.is_admin());
+
+create policy "meetings_delete_admin" on public.meetings
+  for delete to authenticated
+  using (public.is_admin());
+
+create policy "meetings_update_admin" on public.meetings
+  for update to authenticated
   using      (public.is_admin())
   with check (public.is_admin());
+
+-- Action-items toggle is allowed for any authenticated user while the meeting
+-- is open. RLS allows the row update; the server action is the single point
+-- that restricts the change to action_items_md only.
+create policy "meetings_update_action_items_open" on public.meetings
+  for update to authenticated
+  using      (status = 'open')
+  with check (status = 'open');
 
 create policy "attendees_select" on public.meeting_attendees
   for select to authenticated using (true);
@@ -350,6 +369,7 @@ select
   m.meeting_date,
   m.status,
   m.linked_poll_id,
+  m.action_items_md,
   m.created_by,
   m.created_at,
   m.closed_at,
@@ -735,6 +755,7 @@ export type MeetingRow = {
   meeting_date: string
   status: 'open' | 'closed'
   linked_poll_id: string | null
+  action_items_md: string | null
   created_by: string
   created_at: string
   closed_at: string | null
@@ -1232,6 +1253,262 @@ git commit -m "feat(meetings): write actions (create, update, attendees, notes, 
 
 ---
 
+## Task 6b: Action items helpers (TDD) + server actions
+
+**Files:**
+- Create: `src/lib/action-items.ts`
+- Test: `src/lib/action-items.test.ts`
+- Modify: `src/lib/actions/meetings.ts` (append two actions)
+
+The helper is pure string manipulation — easy to TDD, and shared between the toggle action and the editor's "Add item" button.
+
+- [ ] **Step 1: Write the failing test**
+
+```ts
+// src/lib/action-items.test.ts
+import { describe, expect, it } from 'vitest'
+import {
+  countActionItems,
+  extractMentions,
+  toggleCheckboxAt,
+} from './action-items'
+
+describe('toggleCheckboxAt', () => {
+  const src = [
+    '- [x] First done @ramesh-k',
+    '- [ ] Second pending @sita-d',
+    'not an item',
+    '- [ ] Third @anil-p',
+  ].join('\n')
+
+  it('flips a checkbox to checked', () => {
+    const out = toggleCheckboxAt(src, 1, true)
+    expect(out.ok).toBe(true)
+    if (out.ok) {
+      const lines = out.value.split('\n')
+      expect(lines[1]).toBe('- [x] Second pending @sita-d')
+      expect(lines[0]).toBe('- [x] First done @ramesh-k')      // others unchanged
+      expect(lines[3]).toBe('- [ ] Third @anil-p')
+    }
+  })
+
+  it('flips a checkbox to unchecked', () => {
+    const out = toggleCheckboxAt(src, 0, false)
+    expect(out.ok).toBe(true)
+    if (out.ok) expect(out.value.split('\n')[0]).toBe('- [ ] First done @ramesh-k')
+  })
+
+  it('is idempotent when target state matches', () => {
+    const out = toggleCheckboxAt(src, 0, true)
+    expect(out.ok).toBe(true)
+    if (out.ok) expect(out.value).toBe(src)
+  })
+
+  it('rejects a non-checkbox line', () => {
+    const out = toggleCheckboxAt(src, 2, true)
+    expect(out.ok).toBe(false)
+  })
+
+  it('rejects out-of-range index', () => {
+    const out = toggleCheckboxAt(src, 99, true)
+    expect(out.ok).toBe(false)
+  })
+})
+
+describe('countActionItems', () => {
+  it('counts done vs total', () => {
+    const src = '- [x] a\n- [ ] b\n- [ ] c\nnot an item\n- [x] d'
+    expect(countActionItems(src)).toEqual({ done: 2, total: 4 })
+  })
+
+  it('treats null/empty as zero', () => {
+    expect(countActionItems(null)).toEqual({ done: 0, total: 0 })
+    expect(countActionItems('')).toEqual({ done: 0, total: 0 })
+  })
+})
+
+describe('extractMentions', () => {
+  it('returns unique slugs from text', () => {
+    expect(extractMentions('hello @ramesh-k cc @sita-d and again @ramesh-k')).toEqual(
+      ['ramesh-k', 'sita-d'],
+    )
+  })
+
+  it('ignores emails and code-fence content', () => {
+    expect(extractMentions('email me at foo@bar.com')).toEqual([])
+  })
+})
+```
+
+- [ ] **Step 2: Run the test, watch it fail**
+
+```bash
+npm test -- --run src/lib/action-items.test.ts
+```
+
+Expected: FAIL — module not found.
+
+- [ ] **Step 3: Implement**
+
+```ts
+// src/lib/action-items.ts
+
+const CHECKBOX_LINE = /^(\s*[-*]\s+)\[( |x|X)\](\s+.*)?$/
+
+export type Validated<T> =
+  | { ok: true; value: T }
+  | { ok: false; error: string }
+
+/** Toggle the checkbox on line `index` (0-based) to `checked`. */
+export function toggleCheckboxAt(
+  source: string,
+  index: number,
+  checked: boolean,
+): Validated<string> {
+  if (!source) return { ok: false, error: 'No action items' }
+  const lines = source.split('\n')
+  if (index < 0 || index >= lines.length) {
+    return { ok: false, error: 'Line index out of range' }
+  }
+  const m = lines[index].match(CHECKBOX_LINE)
+  if (!m) return { ok: false, error: 'Line is not an action item' }
+  const prefix = m[1]
+  const rest = m[3] ?? ''
+  lines[index] = `${prefix}[${checked ? 'x' : ' '}]${rest}`
+  return { ok: true, value: lines.join('\n') }
+}
+
+export function countActionItems(source: string | null): { done: number; total: number } {
+  if (!source) return { done: 0, total: 0 }
+  let done = 0
+  let total = 0
+  for (const line of source.split('\n')) {
+    const m = line.match(CHECKBOX_LINE)
+    if (!m) continue
+    total++
+    if (m[2] === 'x' || m[2] === 'X') done++
+  }
+  return { done, total }
+}
+
+// Matches '@slug' where slug starts with a letter and contains only [a-z0-9-].
+// Negative-lookbehind on '@' prevents matching the user portion of email addresses.
+const MENTION_RE = /(?<![\w.@])@([a-z][a-z0-9-]{1,40})/g
+
+export function extractMentions(source: string | null): string[] {
+  if (!source) return []
+  const seen = new Set<string>()
+  for (const m of source.matchAll(MENTION_RE)) seen.add(m[1])
+  return [...seen]
+}
+```
+
+- [ ] **Step 4: Run the test, watch it pass**
+
+```bash
+npm test -- --run src/lib/action-items.test.ts
+```
+
+Expected: all tests pass.
+
+- [ ] **Step 5: Append two server actions to `src/lib/actions/meetings.ts`**
+
+Add these imports at the top of `meetings.ts`:
+
+```ts
+import { toggleCheckboxAt } from '@/lib/action-items'
+```
+
+Append these two actions at the bottom of `meetings.ts`:
+
+```ts
+export async function updateActionItems(
+  formData: FormData,
+): Promise<ActionResult<{ meetingId: string }>> {
+  return runAction('updateActionItems', async () => {
+    const user = await getCurrentUser()
+    if (!user || user.profile?.role !== 'admin') return actionError('Unauthorized')
+
+    const id = String(formData.get('id') ?? '').trim()
+    if (!id) return actionError('Missing meeting id')
+
+    const raw = formData.get('action_items_md')
+    const text = raw == null ? '' : String(raw)
+    if (text.length > 10_000) return actionError('Action items are too long (max 10000 chars)')
+
+    const value = text.trim().length === 0 ? null : text
+
+    const supabase = await createClient()
+    const { error } = await supabase
+      .from('meetings')
+      .update({ action_items_md: value })
+      .eq('id', id)
+    if (error) return actionError(error.message)
+
+    invalidate(id)
+    return actionOk({ meetingId: id }, 'Action items saved')
+  })
+}
+
+export async function toggleActionItem(
+  formData: FormData,
+): Promise<ActionResult<{ meetingId: string }>> {
+  return runAction('toggleActionItem', async () => {
+    const user = await getCurrentUser()
+    if (!user) return actionError('Unauthorized')
+
+    const id = String(formData.get('id') ?? '').trim()
+    const lineIndex = Number(formData.get('line_index'))
+    const checked = String(formData.get('checked') ?? '') === 'true'
+    if (!id || !Number.isInteger(lineIndex)) return actionError('Invalid request')
+
+    const supabase = await createClient()
+    const { data: m, error: mErr } = await supabase
+      .from('meetings')
+      .select('status, action_items_md')
+      .eq('id', id)
+      .maybeSingle()
+    if (mErr) return actionError(mErr.message)
+    if (!m) return actionError('Meeting not found')
+    if (m.status !== 'open') return actionError('This meeting is closed')
+
+    const result = toggleCheckboxAt(m.action_items_md ?? '', lineIndex, checked)
+    if (!result.ok) return actionError(result.error)
+
+    // Skip the round-trip if nothing changed.
+    if (result.value === m.action_items_md) {
+      return actionOk({ meetingId: id })
+    }
+
+    const { error } = await supabase
+      .from('meetings')
+      .update({ action_items_md: result.value })
+      .eq('id', id)
+    if (error) return actionError(error.message)
+
+    invalidate(id)
+    return actionOk({ meetingId: id })
+  })
+}
+```
+
+- [ ] **Step 6: Build & verify**
+
+```bash
+npm run build
+```
+
+Expected: passes.
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add src/lib/action-items.ts src/lib/action-items.test.ts src/lib/actions/meetings.ts
+git commit -m "feat(meetings): action-items helpers + updateActionItems/toggleActionItem"
+```
+
+---
+
 ## Task 7: `<MarkdownView>` component
 
 **Files:**
@@ -1243,15 +1520,67 @@ Lightweight, safe-to-render-in-RSC wrapper around `react-markdown` + `remark-gfm
 
 ```tsx
 // src/components/markdown-view.tsx
+import { Fragment, type ReactNode } from 'react'
+import Link from 'next/link'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
 type Props = {
   source: string
   className?: string
+  /**
+   * Optional @-mention renderer. When provided, any `@<slug>` token found in
+   * a text node is replaced with a styled chip linking to the member.
+   * Unknown slugs (not present in `slugToName`) render as plain text.
+   */
+  mentions?: { slugToName: Record<string, string> }
 }
 
-export function MarkdownView({ source, className }: Props) {
+const MENTION_TOKEN = /(?<![\w.@])@([a-z][a-z0-9-]{1,40})/g
+
+function renderTextWithMentions(text: string, slugToName: Record<string, string>): ReactNode {
+  const parts: ReactNode[] = []
+  let lastIdx = 0
+  let key = 0
+  for (const m of text.matchAll(MENTION_TOKEN)) {
+    const start = m.index ?? 0
+    const slug = m[1]
+    if (start > lastIdx) parts.push(text.slice(lastIdx, start))
+    const name = slugToName[slug]
+    if (name) {
+      parts.push(
+        <Link
+          key={`m-${key++}`}
+          href={`/dashboard/members#${slug}`}
+          className="mx-0.5 inline-flex items-center rounded-full bg-indigo-100 px-2 py-[1px] text-[11px] font-medium text-indigo-700 hover:bg-indigo-200"
+        >
+          @{name}
+        </Link>,
+      )
+    } else {
+      parts.push(`@${slug}`)
+    }
+    lastIdx = start + m[0].length
+  }
+  if (lastIdx < text.length) parts.push(text.slice(lastIdx))
+  return <Fragment>{parts}</Fragment>
+}
+
+export function MarkdownView({ source, className, mentions }: Props) {
+  const components = mentions
+    ? {
+        // Walk text nodes inside common inline containers and swap mentions.
+        // We only need to override containers that hold the action-items
+        // text; other elements pass through with default styling.
+        p: ({ children }: { children?: ReactNode }) => (
+          <p>{transformChildren(children, mentions.slugToName)}</p>
+        ),
+        li: ({ children }: { children?: ReactNode }) => (
+          <li>{transformChildren(children, mentions.slugToName)}</li>
+        ),
+      }
+    : undefined
+
   return (
     <div
       className={
@@ -1261,9 +1590,24 @@ export function MarkdownView({ source, className }: Props) {
         (className ?? '')
       }
     >
-      <ReactMarkdown remarkPlugins={[remarkGfm]}>{source}</ReactMarkdown>
+      <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
+        {source}
+      </ReactMarkdown>
     </div>
   )
+}
+
+function transformChildren(children: ReactNode, slugToName: Record<string, string>): ReactNode {
+  if (children == null) return children
+  if (typeof children === 'string') return renderTextWithMentions(children, slugToName)
+  if (Array.isArray(children)) {
+    return children.map((c, i) =>
+      typeof c === 'string'
+        ? <Fragment key={i}>{renderTextWithMentions(c, slugToName)}</Fragment>
+        : c,
+    )
+  }
+  return children
 }
 ```
 
@@ -1377,6 +1721,328 @@ Expected: passes.
 ```bash
 git add src/components/markdown-editor.tsx
 git commit -m "feat(ui): MarkdownEditor with write/split/read modes"
+```
+
+---
+
+## Task 8b: Action items components
+
+**Files:**
+- Create: `src/components/action-items-editor.tsx`
+- Create: `src/components/action-items-panel.tsx`
+
+`ActionItemsEditor` is a dialog wrapping `<MarkdownEditor>` with two extras: an **Add item** button and an **@ typeahead** popover wired through `textareaProps.onKeyDown`. `ActionItemsPanel` is the read-side checklist that intercepts checkbox clicks and calls `toggleActionItem`.
+
+- [ ] **Step 1: Write `action-items-editor.tsx`**
+
+```tsx
+// src/components/action-items-editor.tsx
+'use client'
+
+import { useEffect, useMemo, useRef, useState, useTransition } from 'react'
+import { toast } from 'sonner'
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import { MarkdownEditor, type MarkdownEditorMode } from '@/components/markdown-editor'
+import { updateActionItems } from '@/lib/actions/meetings'
+
+export type MentionOption = { slug: string; name: string }
+
+type Props = {
+  meetingId: string
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  initial: string | null
+  mentionOptions: MentionOption[]
+}
+
+export function ActionItemsEditor({
+  meetingId,
+  open,
+  onOpenChange,
+  initial,
+  mentionOptions,
+}: Props) {
+  const [value, setValue] = useState(initial ?? '')
+  const [mode, setMode] = useState<MarkdownEditorMode>('split')
+  const [pending, startTransition] = useTransition()
+
+  useEffect(() => {
+    if (open) setValue(initial ?? '')
+  }, [open, initial])
+
+  const mentions = useMemo(
+    () => ({
+      trigger: '@' as const,
+      options: mentionOptions.map((m) => ({ label: m.name, value: m.slug })),
+    }),
+    [mentionOptions],
+  )
+
+  const editorRef = useRef<HTMLTextAreaElement | null>(null)
+
+  function addItem() {
+    setValue((prev) => (prev.length === 0 ? '- [ ] ' : prev.replace(/\n?$/, '\n- [ ] ')))
+  }
+
+  function save() {
+    startTransition(async () => {
+      const fd = new FormData()
+      fd.set('id', meetingId)
+      fd.set('action_items_md', value)
+      const res = await updateActionItems(fd)
+      if (res.ok) {
+        toast.success(res.message ?? 'Action items saved')
+        onOpenChange(false)
+      } else {
+        toast.error(res.error)
+      }
+    })
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-3xl">
+        <DialogHeader>
+          <DialogTitle>Edit action items</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-2">
+          <div className="flex justify-start">
+            <button
+              type="button"
+              onClick={addItem}
+              className="rounded-md border border-gray-200 bg-white px-2.5 py-1 text-xs hover:bg-gray-50"
+            >
+              + Add item
+            </button>
+          </div>
+          <MarkdownEditor
+            value={value}
+            onChange={setValue}
+            mode={mode}
+            onModeChange={setMode}
+            minHeight={280}
+            mentions={mentions}
+            textareaRef={editorRef}
+          />
+          <p className="text-[11px] text-gray-500">
+            Tip: type <code>@</code> to assign an item to a member.
+          </p>
+        </div>
+        <DialogFooter>
+          <button
+            type="button"
+            onClick={() => onOpenChange(false)}
+            className="rounded-md border border-gray-200 bg-white px-3 py-1.5 text-sm hover:bg-gray-50"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={save}
+            disabled={pending}
+            className="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
+          >
+            {pending ? 'Saving…' : 'Save'}
+          </button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+```
+
+Note: `ActionItemsEditor` references two `MarkdownEditor` props that the v1 from Task 8 doesn't have yet — `mentions` and `textareaRef`. Update `MarkdownEditor` to accept them now:
+
+```diff
+ // src/components/markdown-editor.tsx (additions)
++import type { MutableRefObject } from 'react'
++
++export type MentionConfig = {
++  trigger: '@'
++  options: { label: string; value: string }[]
++}
++
+ type Props = {
+   value: string
+   onChange: (next: string) => void
+   mode?: MarkdownEditorMode
+   onModeChange?: (next: MarkdownEditorMode) => void
+   minHeight?: number
++  mentions?: MentionConfig
++  textareaRef?: MutableRefObject<HTMLTextAreaElement | null>
+ }
+```
+
+Inside the `<MDEditor>` component, accept `textareaProps` that includes the `@`-typeahead handler (popover state managed locally in `MarkdownEditor`). Sketch:
+
+```tsx
+// inside MarkdownEditor (add):
+const [mentionState, setMentionState] = useState<{ open: boolean; query: string; anchor: { top: number; left: number } | null }>({
+  open: false, query: '', anchor: null,
+})
+
+function onKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
+  if (!mentions) return
+  const ta = e.currentTarget
+  if (e.key === '@') {
+    const rect = ta.getBoundingClientRect()
+    setMentionState({ open: true, query: '', anchor: { top: rect.top + 24, left: rect.left + 80 } })
+    return
+  }
+  if (mentionState.open) {
+    if (e.key === 'Escape') setMentionState((s) => ({ ...s, open: false }))
+  }
+}
+
+function insertMention(slug: string) {
+  // The actual insertion is done via a controlled value setter — append at
+  // current cursor position. The simplest approach: append to the end of value.
+  const ta = textareaRef?.current
+  const insertion = `${slug} `
+  if (!ta) {
+    onChange(`${value}${insertion}`)
+  } else {
+    const start = ta.selectionStart ?? value.length
+    const next = value.slice(0, start) + insertion + value.slice(start)
+    onChange(next)
+  }
+  setMentionState({ open: false, query: '', anchor: null })
+}
+```
+
+And render the popover near `mentionState.anchor` with the filtered `mentions.options`. Keep it simple — a fixed-position `<div>` with `position: 'absolute'` (relative to the editor wrapper which is `position: relative`).
+
+- [ ] **Step 2: Write `action-items-panel.tsx`**
+
+```tsx
+// src/components/action-items-panel.tsx
+'use client'
+
+import { useState, useTransition, type MouseEvent } from 'react'
+import { toast } from 'sonner'
+import { MarkdownView } from '@/components/markdown-view'
+import { ActionItemsEditor, type MentionOption } from '@/components/action-items-editor'
+import { countActionItems } from '@/lib/action-items'
+import { toggleActionItem } from '@/lib/actions/meetings'
+
+type Props = {
+  meetingId: string
+  meetingStatus: 'open' | 'closed'
+  source: string | null
+  isAdmin: boolean
+  mentionOptions: MentionOption[]
+}
+
+export function ActionItemsPanel({
+  meetingId,
+  meetingStatus,
+  source,
+  isAdmin,
+  mentionOptions,
+}: Props) {
+  const [editing, setEditing] = useState(false)
+  const [pending, startTransition] = useTransition()
+  const { done, total } = countActionItems(source)
+
+  const slugToName = Object.fromEntries(mentionOptions.map((m) => [m.slug, m.name]))
+
+  function onCheckboxClick(e: MouseEvent<HTMLDivElement>) {
+    if (meetingStatus === 'closed') return
+    const target = e.target as HTMLElement
+    if (target.tagName !== 'INPUT' || (target as HTMLInputElement).type !== 'checkbox') return
+    // react-markdown gives every task-list-item a data-index from its position;
+    // but it doesn't by default. We compute line_index by walking all task
+    // checkboxes in document order — the Nth checkbox in DOM order maps to the
+    // Nth matching checkbox in the source.
+    const all = (e.currentTarget.querySelectorAll('input[type=checkbox]') as NodeListOf<HTMLInputElement>)
+    const nth = Array.from(all).indexOf(target as HTMLInputElement)
+    if (nth < 0 || !source) return
+    // Map "Nth checkbox in DOM order" back to its line number in source.
+    const lines = source.split('\n')
+    let seen = -1
+    let lineIndex = -1
+    for (let i = 0; i < lines.length; i++) {
+      if (/^\s*[-*]\s+\[( |x|X)\]/.test(lines[i])) {
+        seen++
+        if (seen === nth) { lineIndex = i; break }
+      }
+    }
+    if (lineIndex < 0) return
+    const checked = (target as HTMLInputElement).checked
+    startTransition(async () => {
+      const fd = new FormData()
+      fd.set('id', meetingId)
+      fd.set('line_index', String(lineIndex))
+      fd.set('checked', String(checked))
+      const res = await toggleActionItem(fd)
+      if (!res.ok) {
+        toast.error(res.error)
+        ;(target as HTMLInputElement).checked = !checked   // visual revert
+      } else {
+        // Cache invalidation will refresh on next navigation; for in-page
+        // feedback the optimistic visual change is enough.
+      }
+    })
+  }
+
+  return (
+    <div className="rounded-lg border border-gray-200 bg-white">
+      <div className="flex items-center justify-between border-b border-gray-100 px-4 py-2.5">
+        <h2 className="text-sm font-bold text-gray-900">
+          📋 Action items{' '}
+          <span className="font-normal text-gray-500">
+            ({done} / {total} done)
+          </span>
+        </h2>
+        {isAdmin && meetingStatus === 'open' && (
+          <button
+            onClick={() => setEditing(true)}
+            className="rounded-md border border-gray-200 bg-white px-2.5 py-1 text-xs hover:bg-gray-50"
+          >
+            {source ? 'Edit list' : 'Add list'}
+          </button>
+        )}
+      </div>
+      <div className="px-4 py-3" onClickCapture={onCheckboxClick}>
+        {!source || total === 0 ? (
+          <p className="py-2 text-xs text-gray-400">No action items yet.</p>
+        ) : (
+          <MarkdownView source={source} mentions={{ slugToName }} />
+        )}
+        {pending && <p className="mt-1 text-[11px] text-gray-400">Saving…</p>}
+      </div>
+
+      <ActionItemsEditor
+        meetingId={meetingId}
+        open={editing}
+        onOpenChange={setEditing}
+        initial={source}
+        mentionOptions={mentionOptions}
+      />
+    </div>
+  )
+}
+```
+
+- [ ] **Step 3: Build & verify**
+
+```bash
+npm run build
+```
+
+Expected: passes. No call sites yet — wiring happens in Tasks 12 and 15.
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add src/components/action-items-editor.tsx src/components/action-items-panel.tsx src/components/markdown-editor.tsx
+git commit -m "feat(ui): ActionItemsPanel + ActionItemsEditor with @-mention typeahead"
 ```
 
 ---
@@ -2077,9 +2743,23 @@ export default async function AdminMeetingDetailPage(
       </div>
 
       <CapturePage meeting={meeting} />
+
+      <ActionItemsPanel
+        meetingId={meeting.id}
+        meetingStatus={meeting.status}
+        source={meeting.action_items_md}
+        isAdmin={true}
+        mentionOptions={meeting.attendees.map((a) => ({ slug: a.member_slug, name: a.member_name }))}
+      />
     </div>
   )
 }
+```
+
+Add the import at the top of `page.tsx`:
+
+```ts
+import { ActionItemsPanel } from '@/components/action-items-panel'
 ```
 
 - [ ] **Step 4: Build & manual smoke**
@@ -2483,9 +3163,23 @@ export default async function MeetingDetailPage(
       </div>
 
       <ConsolidatedView meeting={meeting} viewerMemberId={user.member?.id ?? null} />
+
+      <ActionItemsPanel
+        meetingId={meeting.id}
+        meetingStatus={meeting.status}
+        source={meeting.action_items_md}
+        isAdmin={user.profile?.role === 'admin'}
+        mentionOptions={meeting.attendees.map((a) => ({ slug: a.member_slug, name: a.member_name }))}
+      />
     </div>
   )
 }
+```
+
+Add the import at the top of `page.tsx`:
+
+```ts
+import { ActionItemsPanel } from '@/components/action-items-panel'
 ```
 
 - [ ] **Step 3: Build & manual smoke**
@@ -2524,6 +3218,7 @@ npm test
 Expected: all tests pass — at minimum:
 - `src/lib/shuffle.test.ts` (4 tests)
 - `src/lib/meetings-validation.test.ts` (≥8 tests)
+- `src/lib/action-items.test.ts` (≥9 tests)
 - `src/lib/actions/meetings.test.ts` (1 test)
 - All pre-existing tests unaffected.
 
@@ -2555,6 +3250,8 @@ Tick off each acceptance criterion from the spec — all of these must work:
 6. Reopen the meeting from the admin page; confirm the meeting becomes editable again.
 7. Confirm the sidebar's Meetings row shows a badge for the non-admin attendee while their notes are blank, and the badge disappears after they save.
 8. Confirm `/polls/<id>` (linked poll) still works and the meeting detail's "linked poll" link navigates correctly.
+9. As admin, open the "Add list" button under "📋 Action items". In the dialog, click **+ Add item** to insert `- [ ] `, type a task, then type `@` and confirm the popover lists attendees; pick one to insert `@<slug>`. Save. Confirm the read view shows the @mention as a styled chip and the checkbox count reads `0 / 1 done`.
+9. As any authenticated user (admin or not), click the checkbox on the action item; confirm it persists across reload (`0 / 1 done` → `1 / 1 done`). On a closed meeting, confirm clicking the same checkbox does nothing.
 
 - [ ] **Step 5: Commit the verification status if anything was tweaked**
 

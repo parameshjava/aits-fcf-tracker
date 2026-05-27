@@ -18,6 +18,8 @@ Capture members' viewpoints during fund meetings as markdown notes — one secti
 | Add/remove attendees (open meetings)      |  ✓    |             —               |                  —                   |
 | Edit any attendee's `notes_md` (open)     |  ✓    |             —               |                  —                   |
 | Edit own `notes_md` (open meetings)       |  ✓    |             ✓               |                  —                   |
+| Edit `action_items_md` body (open)        |  ✓    |             —               |                  —                   |
+| Toggle a checkbox in `action_items_md`    |  ✓    |             ✓               |                  ✓                   |
 | Close / reopen meeting                    |  ✓    |             —               |                  —                   |
 | Read consolidated view (closed meeting)   |  ✓    |             ✓               |                  ✓                   |
 
@@ -36,6 +38,7 @@ create table public.meetings (
   status          text not null default 'open' check (status in ('open','closed')),
   random_seed     int  not null,                              -- locked at create time
   linked_poll_id  uuid references public.polls(id) on delete set null,
+  action_items_md text,                                    -- nullable; one shared list per meeting (markdown)
   created_by      uuid not null references public.members(id),
   created_at      timestamptz not null default now(),
   closed_at       timestamptz,
@@ -78,7 +81,10 @@ All `public.*` tables have RLS enabled per project rule.
 
 ### `meetings`
 - `select` — `to authenticated using (true)` (org-wide read).
-- `insert` / `update` / `delete` — `to authenticated using (is_admin()) with check (is_admin())`.
+- `insert` / `delete` — `to authenticated using (is_admin()) with check (is_admin())`.
+- `update` — split into two policies (same shape as `meeting_attendees`):
+  - **Admin update** — `using (is_admin()) with check (is_admin())` (any column).
+  - **Action-items-only toggle for anyone** — `using (status = 'open') with check (status = 'open')`. Like the attendee self-update policy, this permits any column write at the RLS layer; the `toggleActionItem` server action is the single enforcement point that restricts the update to `action_items_md` only.
 
 ### `meeting_attendees`
 - `select` — `to authenticated using (true)`.
@@ -107,6 +113,8 @@ All write actions wrapped in `runAction(name, async () => { ... })` returning `A
 | `saveAttendeeNotes({ meeting_id, member_id, notes_md })` | meeting `open` AND (admin OR `member_id = currentMemberId()`) | Sets `notes_updated_at = now()`, `notes_updated_by = currentMemberId()`. Empty string → store as `null`. |
 | `closeMeeting(id)`                                    | admin                                                           | Sets `status='closed'`, `closed_at=now()`, `closed_by=currentMemberId()`. |
 | `reopenMeeting(id)`                                   | admin                                                           | Sets `status='open'`, clears `closed_at`/`closed_by`. |
+| `updateActionItems({ id, action_items_md })`          | admin, meeting `open`                                           | Replaces the whole `action_items_md` body. Length-capped at 10 000 chars. |
+| `toggleActionItem({ id, line_index, checked })`       | any authenticated user, meeting `open`                          | Loads `action_items_md`, finds the line at `line_index` (0-based), validates it starts with `- [ ]` or `- [x]`, flips the box to the target state, writes back. Idempotent: setting to a state the line is already in is a no-op success. |
 
 All writes call `updateTag('meetings')` after success.
 
@@ -132,8 +140,10 @@ src/app/(app)/
 ```
 
 ### Shared components
-- `src/components/markdown-editor.tsx` — wraps `@uiw/react-md-editor` (`MDEditor`) with our three-mode toggle. Props: `value`, `onChange`, `mode` (`'write' | 'split' | 'read'`), `onModeChange`. Internally maps `preview="edit" | "live" | "preview"`. Dynamic-imported (`next/dynamic`, `ssr: false`) because the editor touches `window` at module init.
-- `src/components/markdown-view.tsx` — wraps `react-markdown` with `remark-gfm` plugin. Lightweight; safe to use server-side.
+- `src/components/markdown-editor.tsx` — wraps `@uiw/react-md-editor` (`MDEditor`) with our three-mode toggle. Props: `value`, `onChange`, `mode` (`'write' | 'split' | 'read'`), `onModeChange`, plus an optional `mentions?: { trigger: '@'; options: { label: string; value: string }[] }` prop for the @-typeahead. Internally maps `preview="edit" | "live" | "preview"`. Dynamic-imported (`next/dynamic`, `ssr: false`) because the editor touches `window` at module init.
+- `src/components/markdown-view.tsx` — wraps `react-markdown` with `remark-gfm` plugin. Accepts an optional `mentions?: { slugToName: Record<string, string> }` prop; when provided, a custom text-node renderer walks rendered output and replaces `@<slug>` tokens with styled chips (`<a href="/dashboard/members#slug">@Name</a>`). Unknown slugs fall through as plain text. Lightweight; safe to use server-side except where `mentions` makes it client-bound.
+- `src/components/action-items-panel.tsx` *(new — client)* — renders `action_items_md` as a checklist. Built on top of `<MarkdownView mentions={…}>` plus an overlay that intercepts checkbox clicks: each click resolves to a `(line_index, checked)` pair and dispatches `toggleActionItem`. Read-only when the meeting is `closed`. Shows a small "Edit list" button (admin + open only) that opens a `<Dialog>` with the markdown editor.
+- `src/components/action-items-editor.tsx` *(new — client)* — wraps `<MarkdownEditor>` with the `mentions` prop populated from the meeting's attendees, an "Add item" button that inserts `- [ ] ` at the cursor, and a save handler that calls `updateActionItems`.
 
 ### Sidebar update (`src/components/layout/sidebar.tsx`)
 - Add to `mainGroup.items` directly after Polls:
@@ -151,13 +161,21 @@ src/app/(app)/
 - Accordion: only one section expanded at a time. Expanding another section auto-saves the current one (if dirty) by calling `saveAttendeeNotes` — show a sonner success toast and inline error if it fails.
 - Mode toggle (Write / Split / Read) lives in the expanded section's header. Default mode = `split`. Mode preference is **not** persisted (session-scoped).
 - Progress strip at top shows `X / N captured` + the meeting's `random_seed` (informational only; helps admin explain order to attendees).
+- `<ActionItemsPanel>` renders below the attendee accordion, always visible. When `action_items_md` is null/empty, shows an empty state "No action items yet" with an "Add list" button for admins. Counts done/total in the heading (`📋 Action items (2 / 4 done)`).
 - Mark complete button → confirm `<Dialog>` ("Closing locks all notes. You can reopen later.") → calls `closeMeeting`. On success, route stays at the same URL; the page just re-renders in consolidated read mode.
+
+### Action items — @mention typeahead
+- In `<ActionItemsEditor>`, a `@` keystroke at a word boundary opens a small popover anchored to the cursor with member names from the meeting's attendee list (typeahead filtered as the user types more letters).
+- Selecting a member inserts `@<member-slug>` plain text at the cursor.
+- Implementation: a thin listener wired through `MDEditor`'s `textareaProps.onKeyDown`; the popover itself is a regular floating `<div>` positioned via `getBoundingClientRect()`. No extra editor plugin needed.
+- In the read view, `@<slug>` tokens are detected by a regex (`/@([a-z][a-z0-9-]+)/g`) in the custom text-node renderer described above. The slug is resolved against the meeting's attendee list — unknown slugs render as plain text.
 
 ### Consolidated read view — interaction notes
 - Renders attendee rows in ascending `position` order.
 - A row whose `notes_md` is `null` is dimmed and labelled "— no notes captured" (not expandable).
 - For the row matching `currentMemberId()` on an **open** meeting, show an **"Edit my notes"** button that opens a `<Dialog>` containing the `MarkdownEditor`. On save, call `saveAttendeeNotes` and close the dialog.
 - "Expand all" / "Collapse all" toolbar controls multi-row state.
+- `<ActionItemsPanel>` renders at the bottom of the page. Checkboxes are clickable for **any authenticated user** when the meeting is `open` (calls `toggleActionItem`); fully read-only when the meeting is `closed`. The "Edit list" button is visible to admins only and disabled on closed meetings.
 
 ## Form & validation
 
@@ -213,5 +231,7 @@ Confirmed allowed during brainstorming (per AGENTS.md "ask first" rule).
 6. Admin closes the meeting via a confirm dialog; all writes are subsequently blocked (DB-level via triggers + RLS, server-action level via role check).
 7. Closed meetings render read-only for everyone, including the owner of a section.
 8. Sidebar shows a badge on "Meetings" with the count of open meetings where the viewer is an unfilled attendee.
-9. RLS policies match the persona matrix above; service-role bypass is not used at runtime.
-10. `npm run build`, `npm run lint`, and `npm test` all pass.
+9. Admin can edit the meeting's action-items markdown via a dialog with @-mention typeahead; the saved markdown round-trips as `- [ ] ... @<slug>` lines and renders @mentions as styled chips in the read view.
+10. Any authenticated user can toggle action-item checkboxes on an open meeting (the toggle persists across reloads). On a closed meeting, checkboxes are read-only for everyone.
+11. RLS policies match the persona matrix above; service-role bypass is not used at runtime.
+12. `npm run build`, `npm run lint`, and `npm test` all pass.
