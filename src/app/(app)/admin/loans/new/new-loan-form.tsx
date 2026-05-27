@@ -1,10 +1,10 @@
 'use client'
 
-import { useActionState, useEffect, useState } from 'react'
+import { useActionState, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
-import { createLoan } from '@/lib/actions/loans'
+import { createLoan, type LoanPollPickerOption } from '@/lib/actions/loans'
 import {
   MAX_INTEREST_WAIVER_MONTHS,
   type LoanType,
@@ -14,27 +14,45 @@ import { BankBalanceUpdater } from '@/components/bank-balance-updater'
 import { AmountInput } from '@/components/amount-input'
 import { LOAN_DISBURSEMENT_DEFAULT } from '@/lib/balance-direction'
 import { SearchableSelect } from '@/components/searchable-select'
+import { buildPollPickerOptions } from '@/lib/loan-poll-picker'
 
 type Member = { id: string; name: string }
 
 export function NewLoanForm({
   members,
+  polls,
   interestPerLakh,
 }: {
   members: Member[]
+  polls: LoanPollPickerOption[]
   interestPerLakh: number
 }) {
   const router = useRouter()
   const [memberId, setMemberId] = useState('')
+  const [pollId, setPollId] = useState('')
   const [loanType, setLoanType] = useState<LoanType>('personal')
+  // Medical loans default to a 6-month interest waiver; personal loans
+  // default to none. The admin can still override either way.
+  const [waiverMonths, setWaiverMonths] = useState<number>(0)
+  const pollOptions = buildPollPickerOptions(polls)
+  // Skip the success-effect on initial mount so a router-cached page that
+  // remembers an old { ok: true } from a previous submit doesn't immediately
+  // bounce the admin back to /dashboard/loans when they re-open this form.
+  const mountedRef = useRef(false)
   const [state, action, pending] = useActionState(
     async (_prev: unknown, formData: FormData) => createLoan(formData),
     null,
   )
 
   useEffect(() => {
+    if (!mountedRef.current) {
+      mountedRef.current = true
+      return
+    }
     if (state?.ok) {
-      toast.success(state.message ?? 'Loan created')
+      toast.success(state.message ?? 'Loan created', {
+        description: 'You can view it on the Loans page.',
+      })
       router.push('/dashboard/loans')
       router.refresh()
     }
@@ -42,45 +60,6 @@ export function NewLoanForm({
 
   return (
     <form action={action} className="space-y-4 rounded-lg border bg-white p-6">
-      <fieldset>
-        <legend className="text-sm font-medium text-gray-700">Loan type</legend>
-        <div className="mt-2 flex gap-3">
-          {(['personal', 'medical'] as const).map((t) => {
-            const checked = loanType === t
-            return (
-              <label
-                key={t}
-                className={
-                  'flex flex-1 cursor-pointer items-start gap-2 rounded-md border px-3 py-2 text-sm transition-colors ' +
-                  (checked
-                    ? 'border-blue-500 bg-blue-50 ring-1 ring-blue-500'
-                    : 'border-gray-300 hover:bg-gray-50')
-                }
-              >
-                <input
-                  type="radio"
-                  name="loan_type"
-                  value={t}
-                  checked={checked}
-                  onChange={() => setLoanType(t)}
-                  className="mt-0.5"
-                />
-                <span>
-                  <span className="block font-medium text-gray-900">
-                    {t === 'personal' ? 'Personal' : 'Medical'}
-                  </span>
-                  <span className="block text-xs text-gray-500">
-                    {t === 'personal'
-                      ? 'Standard loan — waiver optional.'
-                      : 'Medical-benefit loan — typically with waiver.'}
-                  </span>
-                </span>
-              </label>
-            )
-          })}
-        </div>
-      </fieldset>
-
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <div>
           <label htmlFor="member_id" className="block text-sm font-medium text-gray-700">
@@ -142,6 +121,48 @@ export function NewLoanForm({
           />
         </div>
 
+        <fieldset className="sm:col-span-2">
+          <legend className="text-sm font-medium text-gray-700">Loan type</legend>
+          <div className="mt-2 flex gap-3">
+            {(['personal', 'medical'] as const).map((t) => {
+              const checked = loanType === t
+              return (
+                <label
+                  key={t}
+                  className={
+                    'flex flex-1 cursor-pointer items-start gap-2 rounded-md border px-3 py-2 text-sm transition-colors ' +
+                    (checked
+                      ? 'border-blue-500 bg-blue-50 ring-1 ring-blue-500'
+                      : 'border-gray-300 hover:bg-gray-50')
+                  }
+                >
+                  <input
+                    type="radio"
+                    name="loan_type"
+                    value={t}
+                    checked={checked}
+                    onChange={() => {
+                      setLoanType(t)
+                      setWaiverMonths(t === 'medical' ? 6 : 0)
+                    }}
+                    className="mt-0.5"
+                  />
+                  <span>
+                    <span className="block font-medium text-gray-900">
+                      {t === 'personal' ? 'Personal' : 'Medical'}
+                    </span>
+                    <span className="block text-xs text-gray-500">
+                      {t === 'personal'
+                        ? 'Standard loan — waiver optional.'
+                        : 'Medical-benefit loan — typically with waiver.'}
+                    </span>
+                  </span>
+                </label>
+              )
+            })}
+          </div>
+        </fieldset>
+
         <div className="sm:col-span-2">
           <label htmlFor="interest_waiver_months" className="block text-sm font-medium text-gray-700">
             Interest waiver
@@ -156,9 +177,32 @@ export function NewLoanForm({
             min="0"
             max={MAX_INTEREST_WAIVER_MONTHS}
             step="1"
-            defaultValue={0}
+            value={waiverMonths}
+            onChange={(e) => {
+              const next = Number(e.target.value)
+              setWaiverMonths(Number.isFinite(next) ? next : 0)
+            }}
             className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
           />
+        </div>
+
+        <div className="sm:col-span-2">
+          <label className="block text-sm font-medium text-gray-700">
+            Approval poll
+            <span className="ml-1 text-xs font-normal text-gray-400">
+              (optional — the poll that authorised this loan)
+            </span>
+          </label>
+          <div className="mt-1">
+            <SearchableSelect
+              name="poll_id"
+              options={pollOptions}
+              value={pollId}
+              onChange={setPollId}
+              placeholder="No poll attached"
+              emptyOption="No poll attached"
+            />
+          </div>
         </div>
 
         <div className="sm:col-span-2">

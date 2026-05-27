@@ -1,38 +1,7 @@
 import { formatRupees } from '@/lib/format'
 import type { LoanDetailData } from '@/lib/actions/loans'
 import { LoanTimelineSection } from '@/components/loan-timeline-section'
-
-type StatTone = 'blue' | 'gray' | 'indigo' | 'emerald'
-const STAT_TONE: Record<StatTone, string> = {
-  blue:    'border-blue-200/70 bg-blue-50/40',
-  gray:    'border-gray-200 bg-gray-50/40',
-  indigo:  'border-indigo-200/70 bg-indigo-50/40',
-  emerald: 'border-emerald-200/70 bg-emerald-50/40',
-}
-
-function Stat({
-  label,
-  value,
-  hint,
-  tone = 'gray',
-}: {
-  label: string
-  value: string
-  hint?: string
-  tone?: StatTone
-}) {
-  return (
-    <div className={`rounded-lg border px-3 py-2 ${STAT_TONE[tone]}`}>
-      <p className="text-[10px] font-medium uppercase tracking-wider text-gray-500">
-        {label}
-      </p>
-      <p className="mt-0.5 text-base font-semibold tabular-nums text-gray-900">
-        {value}
-      </p>
-      {hint && <p className="mt-0.5 text-[11px] text-gray-500">{hint}</p>}
-    </div>
-  )
-}
+import { LoanPollModal } from '@/components/loan-poll-modal'
 
 const STATUS_PILL: Record<string, string> = {
   active:    'bg-blue-50 text-blue-700 ring-blue-200',
@@ -44,11 +13,107 @@ const STATUS_LABEL: Record<string, string> = {
   paid:      'Paid',
   write_off: 'Write off',
 }
+const TYPE_PILL: Record<string, string> = {
+  personal: 'bg-gray-50 text-gray-700 ring-gray-200',
+  medical:  'bg-violet-50 text-violet-700 ring-violet-200',
+}
+const TYPE_LABEL: Record<string, string> = {
+  personal: 'Personal',
+  medical:  'Medical',
+}
 
 function formatDate(iso: string | null): string {
   if (!iso) return '—'
   const d = new Date(iso)
   return `${String(d.getUTCDate()).padStart(2, '0')}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${d.getUTCFullYear()}`
+}
+
+/** Label cell inside the Terms grid. */
+function TermLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <dt className="self-baseline text-[11px] font-medium uppercase tracking-wider text-gray-500">
+      {children}
+    </dt>
+  )
+}
+
+/** Value cell inside the Terms grid. Pass `span` to widen across columns
+ *  (used for the Purpose row, which is one wide cell on its own line). */
+function TermValue({
+  children,
+  span = 1,
+}: {
+  children: React.ReactNode
+  span?: 1 | 3
+}) {
+  return (
+    <dd
+      className={
+        'self-baseline text-xs text-gray-800 ' +
+        (span === 3 ? 'sm:col-span-3' : '')
+      }
+    >
+      {children}
+    </dd>
+  )
+}
+
+type LedgerRow = {
+  label: string
+  value: number
+  /** When true, the row is visually emphasised (bold, separator above). */
+  emphasis?: boolean
+  /** Optional tone: 'rose' for forgiven/written-off rows. */
+  tone?: 'rose' | 'default'
+}
+
+function LedgerCard({ title, rows }: { title: string; rows: LedgerRow[] }) {
+  return (
+    <div className="rounded-lg border border-gray-200 bg-white">
+      <div className="border-b border-gray-100 px-3 py-1.5">
+        <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-500">
+          {title}
+        </p>
+      </div>
+      <dl className="px-3 py-2">
+        {rows.map((row) => (
+          <div
+            key={row.label}
+            className={
+              'flex items-baseline justify-between gap-3 py-1 text-xs ' +
+              (row.emphasis
+                ? 'mt-1 border-t border-gray-100 pt-2 font-semibold text-gray-900'
+                : 'text-gray-700')
+            }
+          >
+            <dt
+              className={
+                row.tone === 'rose'
+                  ? 'text-rose-700'
+                  : row.emphasis
+                  ? 'text-gray-900'
+                  : 'text-gray-600'
+              }
+            >
+              {row.label}
+            </dt>
+            <dd
+              className={
+                'tabular-nums ' +
+                (row.tone === 'rose'
+                  ? 'text-rose-700'
+                  : row.emphasis
+                  ? 'text-gray-900'
+                  : 'text-gray-800')
+              }
+            >
+              {formatRupees(row.value)}
+            </dd>
+          </div>
+        ))}
+      </dl>
+    </div>
+  )
 }
 
 export function LoanDetailPanel({ data }: { data: LoanDetailData }) {
@@ -66,37 +131,53 @@ export function LoanDetailPanel({ data }: { data: LoanDetailData }) {
     isWithinWaiver,
   } = financials
 
-  const metaBits = [
-    `Start ${formatDate(loan.start_date)}`,
-    `End ${formatDate(loan.end_date)}`,
-    `${months} ${months === 1 ? 'month' : 'months'}`,
-    `₹${interestPerLakh.toLocaleString('en-IN')}/L/mo on pending principal`,
-  ]
-  if (interestWaiverMonths > 0) {
-    metaBits.push(
-      `${interestWaiverMonths}-mo interest waiver → accrual from ${formatDate(interestStartDate.toISOString())}`,
-    )
-  }
   const badDebt = Number(loan.bad_debt || 0)
   const interestWaivedAtClose = Number(loan.interest_waived || 0)
-  if (isClosed) {
-    metaBits.push('closed — no further interest')
-    if (loan.status === 'write_off' && (badDebt > 0 || interestWaivedAtClose > 0)) {
-      const parts: string[] = []
-      if (badDebt > 0) parts.push(`${formatRupees(badDebt)} principal`)
-      if (interestWaivedAtClose > 0) parts.push(`${formatRupees(interestWaivedAtClose)} interest`)
-      metaBits.push(`waived at closure: ${parts.join(' + ')}`)
-    }
-  } else if (isWithinWaiver) metaBits.push('currently in waiver window')
+  const isWriteOff = loan.status === 'write_off'
+  // Conservation: every rupee of interest the loan ever owed.
+  const interestAccrued = paidInterestTotal + interestDue + interestWaivedAtClose
+
+  const principalRows: LedgerRow[] = [
+    { label: 'Original',     value: principal },
+    { label: 'Repaid',       value: paidPrincipal },
+    ...(isWriteOff
+      ? [{ label: 'Written off', value: badDebt, tone: 'rose' as const }]
+      : []),
+    { label: 'Outstanding',  value: balance, emphasis: true },
+  ]
+
+  const interestRows: LedgerRow[] = [
+    { label: 'Accrued',      value: interestAccrued },
+    { label: 'Paid',         value: paidInterestTotal },
+    ...(isWriteOff
+      ? [{ label: 'Waived', value: interestWaivedAtClose, tone: 'rose' as const }]
+      : []),
+    { label: 'Outstanding',  value: isClosed ? 0 : interestDue, emphasis: true },
+  ]
 
   return (
-    <div className="space-y-3 p-4">
+    <div className="space-y-4 p-4">
+      {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h3 className="text-sm font-semibold text-gray-900">
+        <h3 className="flex flex-wrap items-center gap-2 text-sm font-semibold text-gray-900">
           <span className="font-mono">{loan.loan_number}</span>
-          <span className="ml-2 text-xs text-gray-500">
+          <span className="text-xs font-normal text-gray-500">
             · {loan.member?.name ?? 'No member'}
           </span>
+          <span
+            className={
+              'rounded-full px-2 py-0.5 text-[11px] font-medium ring-1 ' +
+              (TYPE_PILL[loan.loan_type] ?? TYPE_PILL.personal)
+            }
+          >
+            {TYPE_LABEL[loan.loan_type] ?? loan.loan_type}
+          </span>
+          {loan.poll ? (
+            <LoanPollModal
+              pollId={loan.poll.id}
+              pollQuestion={loan.poll.question}
+            />
+          ) : null}
         </h3>
         <span
           className={
@@ -108,50 +189,73 @@ export function LoanDetailPanel({ data }: { data: LoanDetailData }) {
         </span>
       </div>
 
-      <p className="text-xs text-gray-500">
-        {metaBits.join(' · ')}
-        {loan.notes ? <span className="text-gray-400"> · {loan.notes}</span> : null}
-      </p>
+      {/* Terms — 2 columns of (label, value) on ≥ sm, single column on
+          mobile. Purpose, when present, takes its own full-width row at
+          the bottom regardless of status. */}
+      <dl className="grid grid-cols-[6.5rem_1fr] gap-x-3 gap-y-2 rounded-lg border border-gray-200 bg-gray-50/40 px-3 py-2.5 sm:grid-cols-[7rem_1fr_7rem_1fr]">
+        <TermLabel>Principal</TermLabel>
+        <TermValue>{formatRupees(principal)}</TermValue>
 
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-        <Stat
-          label="Amount Due"
-          value={formatRupees(balance)}
-          hint={
-            Number(loan.bad_debt || 0) > 0
-              ? `bad debt ${formatRupees(loan.bad_debt)}`
-              : balance === 0
-              ? 'fully repaid'
-              : 'full or partial'
-          }
-          tone="blue"
-        />
-        <Stat
-          label="Principal Paid"
-          value={formatRupees(paidPrincipal)}
-          hint={`of ${formatRupees(principal)}`}
-          tone="gray"
-        />
-        <Stat
-          label="Interest Paid"
-          value={formatRupees(paidInterestTotal)}
-          hint={undefined}
-          tone="indigo"
-        />
-        <Stat
-          label="Interest Due"
-          value={isClosed || isWithinWaiver ? '—' : formatRupees(interestDue)}
-          hint={
-            isClosed
-              ? interestWaivedAtClose > 0
-                ? `${formatRupees(interestWaivedAtClose)} waived`
-                : 'settled'
-              : isWithinWaiver
-              ? 'waiver active'
-              : undefined
-          }
-          tone="emerald"
-        />
+        <TermLabel>Interest rate</TermLabel>
+        <TermValue>
+          ₹{interestPerLakh.toLocaleString('en-IN')} per ₹1L · per month
+        </TermValue>
+
+        <TermLabel>Period</TermLabel>
+        <TermValue>
+          {formatDate(loan.start_date)}{' → '}
+          {isClosed ? formatDate(loan.end_date) : 'ongoing'}
+          <span className="ml-1 text-gray-500">
+            ({months} {months === 1 ? 'month' : 'months'}
+            {!isClosed ? ' elapsed' : ''})
+          </span>
+        </TermValue>
+
+        <TermLabel>Waiver</TermLabel>
+        <TermValue>
+          {interestWaiverMonths > 0 ? (
+            <>
+              {interestWaiverMonths}{' '}
+              {interestWaiverMonths === 1 ? 'month' : 'months'} interest-free
+              {!isClosed && isWithinWaiver && (
+                <span className="ml-1 text-gray-500">
+                  · accrual begins {formatDate(interestStartDate.toISOString())}
+                </span>
+              )}
+            </>
+          ) : (
+            <span className="text-gray-500">None</span>
+          )}
+        </TermValue>
+
+        {/* Purpose row: always shown when a note is set, regardless of
+            loan status. The value cell spans the remaining 3 columns on
+            wide layouts so long sentences don't wrap awkwardly.
+            The linked approval poll is surfaced inline in the header
+            (next to the type pill), not here. */}
+        {loan.notes ? (
+          <>
+            <TermLabel>Purpose</TermLabel>
+            <TermValue span={3}>{loan.notes}</TermValue>
+          </>
+        ) : null}
+      </dl>
+
+      {/* Status callouts (active in waiver only — close-state info is
+          already conveyed by the ledger rows). */}
+      {!isClosed && isWithinWaiver && (
+        <div className="rounded-md border border-blue-200 bg-blue-50/60 px-3 py-2 text-xs text-blue-900">
+          <span className="font-medium">◆ Interest waiver active</span>
+          <span className="ml-1 text-blue-800">
+            — no interest accrues until {formatDate(interestStartDate.toISOString())}.
+          </span>
+        </div>
+      )}
+
+      {/* Two-ledger view */}
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <LedgerCard title="Principal" rows={principalRows} />
+        <LedgerCard title="Interest" rows={interestRows} />
       </div>
 
       <LoanTimelineSection timeline={data.timeline} size="sm" />

@@ -1,7 +1,10 @@
 import Link from 'next/link'
 import { notFound, redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
-import { getTransactionByTxnId } from '@/lib/actions/transactions'
+import {
+  getTransactionByTxnId,
+  getPollsForDonationPicker,
+} from '@/lib/actions/transactions'
 import { EditTransactionForm } from './edit-transaction-form'
 import { DeleteTransactionForm } from './delete-transaction-form'
 
@@ -54,6 +57,8 @@ export default async function AdminTransactionManagePage({
     }
   })
 
+  const donationPolls = await getPollsForDonationPicker({ excludeTxnId: txn.id })
+
   return (
     <div className="mx-auto max-w-3xl space-y-6">
       <div>
@@ -75,10 +80,13 @@ export default async function AdminTransactionManagePage({
           interest_source: txn.interest_source ?? null,
           member_id: txn.member_id ?? null,
           loan_id: txn.loan_id ?? null,
+          beneficiary_name: txn.beneficiary_name ?? null,
+          poll_id: txn.poll_id ?? null,
           description: txn.description ?? null,
         }}
         members={members ?? []}
         loans={loans}
+        polls={donationPolls}
       />
 
       <DeleteTransactionForm id={txn.id} transactionId={txn.transaction_id} />

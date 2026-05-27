@@ -17,7 +17,10 @@ export function SubmitPaymentForm() {
   )
 
   useEffect(() => {
-    if (state?.ok) toast.success(state.message ?? 'Payment submitted for review')
+    if (state?.ok)
+      toast.success(state.message ?? 'Payment submitted for review', {
+        description: "An admin will verify it shortly — you'll see it move to the ledger once approved.",
+      })
   }, [state])
 
   const [transactionType, setTransactionType] = useState<string>('')

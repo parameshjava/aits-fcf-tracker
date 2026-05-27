@@ -66,11 +66,14 @@ export function PendingInterestPanel({ loanId, accruals }: Props) {
   useEffect(() => {
     if (state?.ok) {
       if (state.data?.balanceUpdateFailed) {
-        toast.warning(
-          'Interest payment recorded, but the FCF bank balance update failed — adjust it manually under Admin → Reference.',
-        )
+        toast.warning('Interest payment recorded', {
+          description:
+            'FCF bank balance update failed — adjust it manually under Admin → Reference.',
+        })
       } else {
-        toast.success(state.message ?? 'Interest payment recorded')
+        toast.success(state.message ?? 'Interest payment recorded', {
+          description: 'Accruals updated.',
+        })
       }
       router.refresh()
     }

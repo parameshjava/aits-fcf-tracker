@@ -72,6 +72,22 @@ const ROUTES: Record<string, RouteMeta> = {
       { label: 'New' },
     ],
   },
+  '/meetings': {
+    title: 'Meetings',
+    crumbs: [{ label: 'Meetings' }],
+  },
+  '/admin/meetings': {
+    title: 'Manage meetings',
+    crumbs: [{ label: 'Admin', href: '/admin' }, { label: 'Meetings' }],
+  },
+  '/admin/meetings/new': {
+    title: 'New meeting',
+    crumbs: [
+      { label: 'Admin', href: '/admin' },
+      { label: 'Meetings', href: '/admin/meetings' },
+      { label: 'New' },
+    ],
+  },
 }
 
 export function resolveBreadcrumb(pathname: string): RouteMeta {

@@ -123,6 +123,19 @@ export default async function AdminPage() {
           </div>
           <span className="text-2xl text-purple-600">🗳️</span>
         </Link>
+
+        <Link
+          href="/admin/donations"
+          className="flex items-center justify-between rounded-lg border bg-white p-5 transition hover:border-rose-300"
+        >
+          <div>
+            <h3 className="font-semibold text-gray-900">Manage donations</h3>
+            <p className="text-sm text-gray-500">
+              Edit donations and link approval polls
+            </p>
+          </div>
+          <span className="text-2xl text-rose-600">❤️</span>
+        </Link>
       </div>
 
       <div className="rounded-lg border bg-white p-5">

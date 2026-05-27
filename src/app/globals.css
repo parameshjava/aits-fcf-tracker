@@ -161,4 +161,34 @@
   html {
     @apply font-sans;
   }
+
+}
+
+/* Sonner: anchor the per-toast close button inside the top-right corner.
+   Kept outside @layer base so it beats Sonner's unlayered defaults; the
+   !important on left/right is needed because Sonner pins those via its
+   own scoped styles. */
+[data-sonner-toaster] [data-sonner-toast] [data-close-button] {
+  left: auto !important;
+  right: 0.5rem !important;
+  top: 0.5rem !important;
+  transform: none !important;
+  width: 1.25rem;
+  height: 1.25rem;
+  border-radius: 0.375rem;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--muted-foreground);
+  opacity: 0.7;
+  transition: opacity 120ms, background-color 120ms, color 120ms, border-color 120ms;
+}
+[data-sonner-toaster] [data-sonner-toast] [data-close-button]:hover {
+  opacity: 1;
+  background: var(--muted);
+  color: var(--foreground);
+  border-color: var(--border);
+}
+[data-sonner-toaster] [data-sonner-toast] [data-close-button] svg {
+  width: 0.875rem;
+  height: 0.875rem;
 }

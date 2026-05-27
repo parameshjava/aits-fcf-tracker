@@ -63,8 +63,14 @@ export type LoanRow = {
   /** Interest forgiven at closure (write_off path). */
   interest_waived: number
   notes: string | null
+  /** Optional link to the approval poll that authorised this loan.
+   *  Historical loans pre-date the polls feature and will be null. */
+  poll_id: string | null
   created_at: string
   member: { id: string; name: string; slug: string } | null
+  /** Embedded poll summary for display next to the loan. Null when
+   *  `poll_id` is null OR the referenced poll was deleted. */
+  poll: { id: string; question: string } | null
 }
 
 export async function getInterestPerLakh(): Promise<number> {
@@ -153,11 +159,133 @@ export async function getTotalPendingPrincipal(): Promise<number> {
   return total
 }
 
+const LOAN_ROW_SELECT =
+  '*, member:member_id (id, name, slug), poll:poll_id (id, question)'
+
+/** True when the supplied Supabase/Postgres error is the unique-violation
+ *  raised by the `loans_poll_id_unique` partial index (one loan per poll).
+ *  Used by createLoan/updateLoan to surface a friendly inline error
+ *  instead of the raw 23505 message. */
+function isPollAlreadyLinkedError(err: {
+  code?: string | null
+  message?: string | null
+}): boolean {
+  return (
+    err.code === '23505' &&
+    typeof err.message === 'string' &&
+    err.message.includes('loans_poll_id_unique')
+  )
+}
+
+export type LoanPollPickerOption = {
+  id: string
+  question: string
+  status: 'open' | 'closed'
+  closes_at: string
+}
+
+/** Minimal poll list for the loan-form picker. Returns the 50 most recent
+ *  polls, ordered by created_at desc, excluding any poll already linked
+ *  to a different loan (the loan ↔ poll relationship is 1:1).
+ *
+ *  Pass `excludeLoanId` from the edit form so the loan's own current
+ *  poll stays selectable; omit it on the new-loan form. */
+export async function getPollsForLoanPicker(
+  opts?: { excludeLoanId?: string },
+): Promise<LoanPollPickerOption[]> {
+  const supabase = await createClient()
+  const [pollsRes, linkedRes] = await Promise.all([
+    supabase
+      .from('polls')
+      .select('id, question, status, closes_at')
+      .order('created_at', { ascending: false })
+      .limit(50),
+    supabase
+      .from('loans')
+      .select('id, poll_id')
+      .not('poll_id', 'is', null),
+  ])
+  if (pollsRes.error) throw new Error(pollsRes.error.message)
+  if (linkedRes.error) throw new Error(linkedRes.error.message)
+
+  const excludedPollIds = new Set<string>()
+  for (const r of (linkedRes.data ?? []) as { id: string; poll_id: string | null }[]) {
+    if (!r.poll_id) continue
+    if (opts?.excludeLoanId && r.id === opts.excludeLoanId) continue
+    excludedPollIds.add(r.poll_id)
+  }
+
+  return ((pollsRes.data ?? []) as LoanPollPickerOption[])
+    .filter((p) => !excludedPollIds.has(p.id))
+    .map((p) => ({
+      id: p.id,
+      question: p.question,
+      status: p.status,
+      closes_at: p.closes_at,
+    }))
+}
+
+export type LinkedPollDetail = {
+  id: string
+  question: string
+  description: string | null
+  kind: 'single' | 'multi'
+  visibility: 'sensitive' | 'public'
+  status: 'open' | 'closed'
+  is_closed: boolean
+  closes_at: string
+  closed_at: string | null
+  options: { id: string; label: string; vote_count: number; voter_names: string[] | null }[]
+  total_voters: number
+  other_responses: { text: string; author: string | null }[]
+}
+
+/** Fetches the full poll detail + results for the modal opened from a
+ *  loan's Terms grid. Pulled on demand by the client modal (server action)
+ *  so the panel itself stays cheap. Returns null when the poll has been
+ *  deleted between page render and click. */
+export async function getLinkedPollDetail(
+  pollId: string,
+): Promise<LinkedPollDetail | null> {
+  if (!pollId) return null
+  const { getPoll, getPollResults } = await import('@/lib/queries/polls')
+  const [poll, results] = await Promise.all([getPoll(pollId), getPollResults(pollId)])
+  if (!poll) return null
+  const byOptionId = new Map(
+    (results?.options ?? []).map((o) => [o.option_id, o]),
+  )
+  return {
+    id: poll.id,
+    question: poll.question,
+    description: poll.description,
+    kind: poll.kind,
+    visibility: poll.visibility,
+    status: poll.status,
+    is_closed: poll.is_closed,
+    closes_at: poll.closes_at,
+    closed_at: poll.closed_at,
+    options: poll.options.map((o) => {
+      const r = byOptionId.get(o.id)
+      return {
+        id: o.id,
+        label: o.label,
+        vote_count: r?.vote_count ?? 0,
+        voter_names: r?.voter_names ?? null,
+      }
+    }),
+    total_voters: results?.total_voters ?? 0,
+    other_responses: (results?.other_responses ?? []).map((r) => ({
+      text: r.text,
+      author: r.author,
+    })),
+  }
+}
+
 export async function getLoans(): Promise<LoanRow[]> {
   const supabase = await createClient()
   const { data, error } = await supabase
     .from('loans')
-    .select('*, member:member_id (id, name, slug)')
+    .select(LOAN_ROW_SELECT)
     .order('loan_number', { ascending: false })
   if (error) throw new Error(error.message)
   return (data ?? []) as LoanRow[]
@@ -167,7 +295,7 @@ export async function getLoanByNumber(loanNumber: string): Promise<LoanRow | nul
   const supabase = await createClient()
   const { data, error } = await supabase
     .from('loans')
-    .select('*, member:member_id (id, name, slug)')
+    .select(LOAN_ROW_SELECT)
     .eq('loan_number', loanNumber)
     .maybeSingle()
   if (error) throw new Error(error.message)
@@ -251,7 +379,7 @@ export async function getLoanDetail(loanId: string): Promise<LoanDetailData | nu
   const [loanRes, txnRes, accrualRes, paymentRes, interestPerLakh] = await Promise.all([
     supabase
       .from('loans')
-      .select('*, member:member_id (id, name, slug)')
+      .select(LOAN_ROW_SELECT)
       .eq('id', loanId)
       .maybeSingle(),
     supabase
@@ -362,6 +490,7 @@ export async function createLoan(
     const loanType: LoanType = loanTypeRaw === 'medical' ? 'medical' : 'personal'
     const waiverRaw = (formData.get('interest_waiver_months') as string | null)?.trim() || ''
     const interestWaiverMonths = waiverRaw === '' ? 0 : Math.floor(Number(waiverRaw))
+    const pollId = ((formData.get('poll_id') as string | null) ?? '').trim() || null
 
     if (!memberId) return actionError('Member is required', 'member_id')
     if (!Number.isFinite(principal) || principal <= 0) {
@@ -397,9 +526,18 @@ export async function createLoan(
       bad_debt: 0,
       interest_waiver_months: interestWaiverMonths,
       notes,
+      poll_id: pollId,
     })
 
-    if (error) return actionError(error.message)
+    if (error) {
+      if (isPollAlreadyLinkedError(error)) {
+        return actionError(
+          'That poll is already attached to another loan.',
+          'poll_id',
+        )
+      }
+      return actionError(error.message)
+    }
 
     const applyToBankBalance = formData.get('applyToBankBalance') === '1'
     const balanceDirectionRaw = formData.get('balanceDirection') as BalanceDirection | null
@@ -473,8 +611,25 @@ export async function updateLoan(formData: FormData): Promise<ActionResult> {
     if (loanTypeRaw)  patch.loan_type = loanTypeRaw as LoanType
     if (waiverMonthsInput != null) patch.interest_waiver_months = waiverMonthsInput
 
+    // poll_id is only updated when the form posts the field. An empty
+    // string explicitly clears the link; otherwise we set it to the new
+    // poll UUID. Forms that don't render the picker simply omit the
+    // field and the existing link is preserved.
+    if (formData.has('poll_id')) {
+      const pollIdRaw = ((formData.get('poll_id') as string | null) ?? '').trim()
+      patch.poll_id = pollIdRaw === '' ? null : pollIdRaw
+    }
+
     const { error } = await supabase.from('loans').update(patch).eq('id', loanId)
-    if (error) return actionError(error.message)
+    if (error) {
+      if (isPollAlreadyLinkedError(error)) {
+        return actionError(
+          'That poll is already attached to another loan.',
+          'poll_id',
+        )
+      }
+      return actionError(error.message)
+    }
 
     revalidatePath('/dashboard/loans')
     revalidatePath(`/dashboard/loans/[loan_number]`, 'page')

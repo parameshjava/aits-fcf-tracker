@@ -43,7 +43,9 @@ export function VoteForm({
 
   useEffect(() => {
     if (state?.ok) {
-      toast.success(state.message ?? 'Vote recorded')
+      toast.success(state.message ?? 'Vote recorded', {
+        description: 'Thanks for casting your vote.',
+      })
       router.push('/polls')
       router.refresh()
     }

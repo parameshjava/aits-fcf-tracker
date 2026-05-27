@@ -268,7 +268,8 @@ export async function SectionView({
         <TransactionsTable
           rows={matchingRows}
           emptyLabel={`No ${SECTION_LABELS[section].toLowerCase()} yet`}
-          memberColumnLabel={section === 'donations' ? 'Beneficiary' : 'Member'}
+          memberColumnLabel={section === 'donations' ? 'Referred by' : 'Member'}
+          showDonationColumns={section === 'donations'}
         />
       </section>
     </div>

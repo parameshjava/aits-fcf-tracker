@@ -1,8 +1,14 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
+import { getPollsForDonationPicker } from '@/lib/actions/transactions'
+import { TRANSACTION_TYPES, type TransactionType } from '@/lib/constants'
 import { NewTransactionForm } from './new-transaction-form'
 
-export default async function NewTransactionPage() {
+export default async function NewTransactionPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ type?: string }>
+}) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/auth/login')
@@ -47,13 +53,26 @@ export default async function NewTransactionPage() {
     }
   })
 
+  const donationPolls = await getPollsForDonationPicker()
+
+  const sp = await searchParams
+  const initialType: TransactionType | '' =
+    sp.type && (TRANSACTION_TYPES as readonly string[]).includes(sp.type)
+      ? (sp.type as TransactionType)
+      : ''
+
   return (
     <div className="mx-auto max-w-2xl space-y-6">
       <h1 className="text-lg font-semibold text-gray-900">Add transaction</h1>
       <p className="text-sm text-gray-500">
         Record a verified financial transaction
       </p>
-      <NewTransactionForm members={members ?? []} loans={loans} />
+      <NewTransactionForm
+        members={members ?? []}
+        loans={loans}
+        polls={donationPolls}
+        initialType={initialType}
+      />
     </div>
   )
 }

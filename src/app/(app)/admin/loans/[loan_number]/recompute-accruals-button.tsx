@@ -32,9 +32,9 @@ export function RecomputeAccrualsButton({ loanId }: { loanId: string }) {
     startTransition(async () => {
       const result = await recomputeLoanAccruals(loanId)
       if (result.ok) {
-        toast.success(
-          `${result.message ?? 'Accruals recomputed'} — ${result.data?.rows ?? 0} row(s)`,
-        )
+        toast.success(result.message ?? 'Accruals recomputed', {
+          description: `${result.data?.rows ?? 0} row(s) refreshed.`,
+        })
         setOpen(false)
         router.refresh()
       } else {
