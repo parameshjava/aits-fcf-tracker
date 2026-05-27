@@ -1,13 +1,15 @@
 'use client'
 
 import { useActionState, useState } from 'react'
-import { updateLoan } from '@/lib/actions/loans'
+import { updateLoan, type LoanPollPickerOption } from '@/lib/actions/loans'
 import {
   MAX_INTEREST_WAIVER_MONTHS,
   type LoanType,
 } from '@/lib/loan-type'
 import { todayISO } from '@/lib/format'
 import { AmountInput } from '@/components/amount-input'
+import { SearchableSelect } from '@/components/searchable-select'
+import { buildPollPickerOptions } from '@/lib/loan-poll-picker'
 
 type Props = {
   loanId: string
@@ -16,6 +18,8 @@ type Props = {
   loanType: LoanType
   interestWaiverMonths: number
   notes: string | null
+  pollId: string | null
+  polls: LoanPollPickerOption[]
 }
 
 export function EditLoanForm({
@@ -25,9 +29,17 @@ export function EditLoanForm({
   loanType: initialLoanType,
   interestWaiverMonths,
   notes,
+  pollId: initialPollId,
+  polls,
 }: Props) {
   const [open, setOpen] = useState(false)
   const [loanType, setLoanType] = useState<LoanType>(initialLoanType)
+  const [pollId, setPollId] = useState<string>(initialPollId ?? '')
+  // Initial value mirrors what's on the loan. Switching loan type after
+  // open snaps the waiver to the type's default (6 for medical, 0 for
+  // personal); the admin can still override manually.
+  const [waiverMonths, setWaiverMonths] = useState<number>(interestWaiverMonths)
+  const pollOptions = buildPollPickerOptions(polls)
   const [state, action, pending] = useActionState(
     async (_prev: unknown, formData: FormData) => {
       const result = await updateLoan(formData)
@@ -92,7 +104,10 @@ export function EditLoanForm({
                   name="loan_type"
                   value={t}
                   checked={checked}
-                  onChange={() => setLoanType(t)}
+                  onChange={() => {
+                    setLoanType(t)
+                    setWaiverMonths(t === 'medical' ? 6 : 0)
+                  }}
                   className="mt-0.5"
                 />
                 <span>
@@ -151,13 +166,36 @@ export function EditLoanForm({
             min="0"
             max={MAX_INTEREST_WAIVER_MONTHS}
             step="1"
-            defaultValue={interestWaiverMonths}
+            value={waiverMonths}
+            onChange={(e) => {
+              const next = Number(e.target.value)
+              setWaiverMonths(Number.isFinite(next) ? next : 0)
+            }}
             className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
           />
           <p className="mt-1 text-[11px] text-gray-400">
             No interest accrues for this many months from start date (0–
             {MAX_INTEREST_WAIVER_MONTHS}).
           </p>
+        </div>
+
+        <div className="sm:col-span-3">
+          <label className="block text-xs font-medium text-gray-700">
+            Approval poll
+            <span className="ml-1 text-[11px] font-normal text-gray-400">
+              (optional)
+            </span>
+          </label>
+          <div className="mt-1">
+            <SearchableSelect
+              name="poll_id"
+              options={pollOptions}
+              value={pollId}
+              onChange={setPollId}
+              placeholder="No poll attached"
+              emptyOption="No poll attached"
+            />
+          </div>
         </div>
 
         <div className="sm:col-span-3">

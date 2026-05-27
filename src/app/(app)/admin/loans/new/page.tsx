@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
-import { getInterestPerLakh } from '@/lib/actions/loans'
+import { getInterestPerLakh, getPollsForLoanPicker } from '@/lib/actions/loans'
 import { NewLoanForm } from './new-loan-form'
 
 export default async function NewLoanPage() {
@@ -15,12 +15,14 @@ export default async function NewLoanPage() {
     .single()
   if (profile?.role !== 'admin') redirect('/dashboard')
 
-  const { data: members } = await supabase
-    .from('members')
-    .select('id, name')
-    .order('name', { ascending: true })
-
-  const interestPerLakh = await getInterestPerLakh()
+  const [{ data: members }, interestPerLakh, polls] = await Promise.all([
+    supabase
+      .from('members')
+      .select('id, name')
+      .order('name', { ascending: true }),
+    getInterestPerLakh(),
+    getPollsForLoanPicker(),
+  ])
 
   return (
     <div className="mx-auto max-w-2xl space-y-6">
@@ -28,7 +30,11 @@ export default async function NewLoanPage() {
       <p className="text-sm text-gray-500">
         Create a new loan. The loan number is auto-generated.
       </p>
-      <NewLoanForm members={members ?? []} interestPerLakh={interestPerLakh} />
+      <NewLoanForm
+        members={members ?? []}
+        polls={polls}
+        interestPerLakh={interestPerLakh}
+      />
     </div>
   )
 }

@@ -2,7 +2,7 @@ import Link from 'next/link'
 import { notFound, redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { formatRupees } from '@/lib/format'
-import { getLoanByNumber, getLoanDetail } from '@/lib/actions/loans'
+import { getLoanByNumber, getLoanDetail, getPollsForLoanPicker } from '@/lib/actions/loans'
 import { EditLoanForm } from './edit-loan-form'
 import { LoanTimelineSection } from '@/components/loan-timeline-section'
 import { CloseLoanForm } from './close-loan-form'
@@ -53,7 +53,10 @@ export default async function AdminLoanManagePage({
   const { loan_number } = await params
   const loan = await getLoanByNumber(decodeURIComponent(loan_number))
   if (!loan) notFound()
-  const detail = await getLoanDetail(loan.id)
+  const [detail, polls] = await Promise.all([
+    getLoanDetail(loan.id),
+    getPollsForLoanPicker({ excludeLoanId: loan.id }),
+  ])
   const pendingPrincipal = detail?.financials.balance ?? 0
   const pendingInterest = detail?.financials.interestDue ?? 0
 
@@ -133,6 +136,8 @@ export default async function AdminLoanManagePage({
         loanType={loan.loan_type}
         interestWaiverMonths={Number(loan.interest_waiver_months || 0)}
         notes={loan.notes}
+        pollId={loan.poll_id}
+        polls={polls}
       />
 
       <div className="rounded-2xl border border-gray-200/80 bg-white p-5">

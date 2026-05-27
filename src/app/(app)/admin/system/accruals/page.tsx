@@ -141,10 +141,12 @@ export default async function AccrualsPage() {
         <h3 className="mb-3 font-semibold text-gray-900">Recent cron runs</h3>
         {!cronAvailable ? (
           <p className="text-sm text-gray-500">
-            Cron history requires database-level grants
-            (<code className="rounded bg-gray-100 px-1 py-0.5 text-xs">
-              grant usage on schema cron, select on cron.job_run_details to
-              authenticated
+            Cron history requires database-level grants (
+            <code className="rounded bg-gray-100 px-1 py-0.5 text-xs">
+              grant usage on schema cron to authenticated;
+            </code>{' '}
+            <code className="rounded bg-gray-100 px-1 py-0.5 text-xs">
+              grant select on cron.job_run_details to authenticated;
             </code>
             ). Not configured by default.
           </p>
