@@ -1,6 +1,19 @@
 // src/lib/actions/meetings-reads.ts
 
+/**
+ * Meetings read accessors. The three cached functions below (`getMeetings`,
+ * `getMeeting`, `getOpenAndRecentPolls`) use `createAdminClient` because
+ * Cache Components forbids reading cookies inside a `'use cache'` scope.
+ * Meetings are org-wide readable per RLS spec, so bypassing RLS in the
+ * cached read is safe — auth gating happens in (app)/layout.tsx + each
+ * page's getCurrentUser() redirect before these run.
+ *
+ * `getMyOpenUncapturedMeetingCount` stays on the cookie-aware client because
+ * it's per-user (not cached).
+ */
+
 import { cacheLife, cacheTag } from 'next/cache'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 import { getCurrentUser } from './auth'
 
@@ -24,7 +37,7 @@ export async function getMeetings(): Promise<MeetingRow[]> {
   cacheLife('hours')
   cacheTag('meetings')
 
-  const supabase = await createClient()
+  const supabase = createAdminClient()
   const { data, error } = await supabase
     .from('meetings_with_progress')
     .select('*')
@@ -57,7 +70,7 @@ export async function getMeeting(id: string): Promise<MeetingDetail | null> {
   cacheTag('meetings')
   cacheTag(`meeting:${id}`)
 
-  const supabase = await createClient()
+  const supabase = createAdminClient()
   const { data: meeting, error: mErr } = await supabase
     .from('meetings_with_progress')
     .select('*')
@@ -111,7 +124,7 @@ export async function getOpenAndRecentPolls(): Promise<
   cacheLife('hours')
   cacheTag('polls')
 
-  const supabase = await createClient()
+  const supabase = createAdminClient()
   const { data, error } = await supabase
     .from('polls')
     .select('id, question, status, closes_at')
