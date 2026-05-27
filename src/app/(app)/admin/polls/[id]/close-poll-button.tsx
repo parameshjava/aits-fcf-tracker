@@ -28,7 +28,9 @@ export function ClosePollButton({ pollId }: { pollId: string }) {
       fd.set('poll_id', pollId)
       const result = await closePoll(fd)
       if (result.ok) {
-        toast.success(result.message ?? 'Poll closed')
+        toast.success(result.message ?? 'Poll closed', {
+          description: 'No further votes will be accepted.',
+        })
         setOpen(false)
         router.refresh()
       } else {

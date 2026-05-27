@@ -23,7 +23,9 @@ export function NewMeetingForm({ members, polls, defaultDate }: Props) {
 
   useEffect(() => {
     if (state?.ok) {
-      toast.success(state.message ?? 'Meeting created')
+      toast.success(state.message ?? 'Meeting created', {
+        description: 'Open it to capture attendance and notes.',
+      })
       router.push(`/admin/meetings/${state.data?.meetingId}`)
     }
   }, [state, router])

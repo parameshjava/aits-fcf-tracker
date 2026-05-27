@@ -40,11 +40,13 @@ export function ConsolidatedView({ meeting, viewerMemberId }: Props) {
       fd.set('notes_md', editing.value)
       const res = await saveAttendeeNotes(fd)
       if (res.ok) {
-        toast.success('Notes saved')
+        toast.success('Notes saved', {
+          description: 'Your captured notes are up to date.',
+        })
         setEditing(null)
         router.refresh()
       } else {
-        toast.error(res.error)
+        toast.error("Couldn't save notes", { description: res.error })
       }
     })
   }

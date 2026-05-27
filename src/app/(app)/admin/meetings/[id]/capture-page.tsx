@@ -30,10 +30,12 @@ export function CapturePage({ meeting }: Props) {
     if (res.ok) {
       const latest = res.data?.notes_md ?? ''
       setDraftByMember((prev) => ({ ...prev, [memberId]: latest }))
-      toast.success(`Refreshed ${memberName}'s notes`)
+      toast.success('Notes refreshed', {
+        description: `Pulled the latest captured notes for ${memberName}.`,
+      })
       router.refresh()
     } else {
-      toast.error(res.error)
+      toast.error("Couldn't refresh notes", { description: res.error })
     }
   }
 
@@ -52,10 +54,12 @@ export function CapturePage({ meeting }: Props) {
         fd.set('notes_md', value)
         const res = await saveAttendeeNotes(fd)
         if (res.ok) {
-          toast.success('Notes saved')
+          toast.success('Notes saved', {
+            description: 'Captured attendee notes are up to date.',
+          })
           resolve(true)
         } else {
-          toast.error(res.error)
+          toast.error("Couldn't save notes", { description: res.error })
           resolve(false)
         }
       })

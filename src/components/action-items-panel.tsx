@@ -54,7 +54,7 @@ export function ActionItemsPanel({
       fd.set('checked', String(checked))
       const res = await toggleActionItem(fd)
       if (!res.ok) {
-        toast.error(res.error)
+        toast.error("Couldn't update action item", { description: res.error })
         ;(target as HTMLInputElement).checked = !checked
       }
     })

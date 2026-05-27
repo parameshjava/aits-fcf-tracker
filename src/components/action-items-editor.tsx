@@ -63,11 +63,13 @@ export function ActionItemsEditor({
       fd.set('action_items_md', normalized)
       const res = await updateActionItems(fd)
       if (res.ok) {
-        toast.success(res.message ?? 'Action items saved')
+        toast.success(res.message ?? 'Action items saved', {
+          description: 'The follow-up list is up to date.',
+        })
         router.refresh()
         onClose()
       } else {
-        toast.error(res.error)
+        toast.error("Couldn't save action items", { description: res.error })
       }
     })
   }

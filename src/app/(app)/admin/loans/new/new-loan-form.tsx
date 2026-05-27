@@ -50,7 +50,9 @@ export function NewLoanForm({
       return
     }
     if (state?.ok) {
-      toast.success(state.message ?? 'Loan created')
+      toast.success(state.message ?? 'Loan created', {
+        description: 'You can view it on the Loans page.',
+      })
       router.push('/dashboard/loans')
       router.refresh()
     }

@@ -25,8 +25,8 @@ select
 from public.meetings m
 left join lateral (
   select
-    count(*)::int filter (where true)                          as attendee_count,
-    count(*)::int filter (where ma.notes_md is not null)       as captured_count
+    count(*)::int                                              as attendee_count,
+    (count(*) filter (where ma.notes_md is not null))::int     as captured_count
   from public.meeting_attendees ma
   where ma.meeting_id = m.id
 ) a on true;

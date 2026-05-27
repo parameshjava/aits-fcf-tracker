@@ -68,9 +68,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           {children}
         </div>
       </main>
-      {/* Sonner toast portal — every authenticated screen can call `toast.success(...)`
-          / `toast.error(...)` from sonner. Positioned bottom-right by default. */}
-      <Toaster richColors closeButton position="bottom-right" />
+      <Toaster closeButton expand position="top-right" />
     </div>
   )
 }

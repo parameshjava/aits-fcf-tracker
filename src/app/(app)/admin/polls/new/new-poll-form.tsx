@@ -32,7 +32,9 @@ export function NewPollForm() {
 
   useEffect(() => {
     if (state?.ok && state.data?.pollId) {
-      toast.success(state.message ?? 'Poll created')
+      toast.success(state.message ?? 'Poll created', {
+        description: 'Members can now cast their votes.',
+      })
       router.push(`/polls/${state.data.pollId}`)
       router.refresh()
     }

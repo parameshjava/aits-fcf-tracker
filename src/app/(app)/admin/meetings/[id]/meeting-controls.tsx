@@ -27,11 +27,13 @@ export function MeetingControls({ meetingId, status }: Props) {
       fd.set('id', meetingId)
       const res = await closeMeeting(fd)
       if (res.ok) {
-        toast.success('Meeting closed')
+        toast.success('Meeting closed', {
+          description: 'Attendance and notes are now locked.',
+        })
         setConfirmOpen(false)
         router.refresh()
       } else {
-        toast.error(res.error)
+        toast.error("Couldn't close meeting", { description: res.error })
       }
     })
   }
@@ -42,10 +44,12 @@ export function MeetingControls({ meetingId, status }: Props) {
       fd.set('id', meetingId)
       const res = await reopenMeeting(fd)
       if (res.ok) {
-        toast.success('Meeting reopened')
+        toast.success('Meeting reopened', {
+          description: 'Notes and attendance can be edited again.',
+        })
         router.refresh()
       } else {
-        toast.error(res.error)
+        toast.error("Couldn't reopen meeting", { description: res.error })
       }
     })
   }
