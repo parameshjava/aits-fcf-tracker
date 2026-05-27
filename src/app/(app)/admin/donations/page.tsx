@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { formatRupees } from '@/lib/format'
+import { LoanPollModal } from '@/components/loan-poll-modal'
 
 type RawDonationRow = {
   id: string
@@ -24,8 +25,6 @@ type DonationRow = {
   referrer_name: string | null
   poll: { id: string; question: string } | null
 }
-
-const POLL_LABEL_MAX = 50
 
 export default async function AdminDonationsPage() {
   const supabase = await createClient()
@@ -136,15 +135,10 @@ export default async function AdminDonationsPage() {
                     </td>
                     <td className="px-4 py-3 text-sm">
                       {r.poll ? (
-                        <Link
-                          href={`/polls/${r.poll.id}`}
-                          className="text-blue-600 hover:underline"
-                          title={r.poll.question}
-                        >
-                          {r.poll.question.length > POLL_LABEL_MAX
-                            ? r.poll.question.slice(0, POLL_LABEL_MAX - 1).trimEnd() + '…'
-                            : r.poll.question}
-                        </Link>
+                        <LoanPollModal
+                          pollId={r.poll.id}
+                          pollQuestion={r.poll.question}
+                        />
                       ) : (
                         <span className="text-gray-300">—</span>
                       )}

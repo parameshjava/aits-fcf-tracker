@@ -285,7 +285,11 @@ export function NewTransactionForm({
         </div>
       </div>
 
-      <BankBalanceUpdater defaultDirection={balanceDefault} />
+      {/* Re-key on balanceDefault so the radio re-mounts (and re-reads its
+          default) whenever the admin changes the transaction type — the
+          internal direction state otherwise sticks on the value set at
+          first mount. */}
+      <BankBalanceUpdater key={balanceDefault} defaultDirection={balanceDefault} />
 
       <p className="text-xs text-gray-400">
         Transaction ID is auto-generated as <code className="font-mono">YYYYMMDD-NNN</code>.

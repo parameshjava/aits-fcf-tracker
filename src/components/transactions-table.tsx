@@ -1,8 +1,8 @@
 'use client'
 
 import { useCallback } from 'react'
-import Link from 'next/link'
 import { formatRupees } from '@/lib/format'
+import { LoanPollModal } from '@/components/loan-poll-modal'
 import {
   SortableHeader,
   TableSearch,
@@ -28,8 +28,6 @@ export type TxnRow = {
    *  callbacks would violate the server→client boundary). */
   manage_href?: string | null
 }
-
-const POLL_LABEL_MAX = 40
 
 type SortKey = 'date' | 'member' | 'txn_id' | 'description' | 'amount'
 
@@ -228,15 +226,10 @@ export function TransactionsTable({
                         </td>
                         <td className="px-4 py-3 align-middle text-sm">
                           {t.poll ? (
-                            <Link
-                              href={`/polls/${t.poll.id}`}
-                              className="text-blue-600 hover:underline"
-                              title={t.poll.question}
-                            >
-                              {t.poll.question.length > POLL_LABEL_MAX
-                                ? t.poll.question.slice(0, POLL_LABEL_MAX - 1).trimEnd() + '…'
-                                : t.poll.question}
-                            </Link>
+                            <LoanPollModal
+                              pollId={t.poll.id}
+                              pollQuestion={t.poll.question}
+                            />
                           ) : (
                             <span className="text-gray-300">—</span>
                           )}
