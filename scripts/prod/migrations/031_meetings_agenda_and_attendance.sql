@@ -19,6 +19,13 @@ alter table public.meeting_attendees
 create index if not exists meeting_attendees_attended_idx
   on public.meeting_attendees (meeting_id, attended);
 
+-- CREATE OR REPLACE VIEW can only APPEND new columns to the end of the column
+-- list — it cannot rename, reorder, or remove existing columns. The original
+-- view (migration 029) ended with: …, attendee_count, captured_count. We keep
+-- those 12 columns in their exact original positions and append agenda_md +
+-- present_count after captured_count. captured_count's *expression* is
+-- narrowed to "present with notes" — the column name and type stay identical,
+-- so the replace is accepted.
 create or replace view public.meetings_with_progress
 with (security_invoker = true)
 as
@@ -28,15 +35,15 @@ select
   m.meeting_date,
   m.status,
   m.linked_poll_id,
-  m.agenda_md,
   m.action_items_md,
   m.created_by,
   m.created_at,
   m.closed_at,
   m.closed_by,
   coalesce(a.attendee_count, 0)                                            as attendee_count,
-  coalesce(a.present_count,  0)                                            as present_count,
-  coalesce(a.captured_count, 0)                                            as captured_count
+  coalesce(a.captured_count, 0)                                            as captured_count,
+  m.agenda_md,
+  coalesce(a.present_count,  0)                                            as present_count
 from public.meetings m
 left join lateral (
   select
