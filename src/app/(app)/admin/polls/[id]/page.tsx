@@ -9,6 +9,7 @@ import {
 } from '@/lib/poll-format'
 import { PollResultsView } from '../../../polls/[id]/poll-results'
 import { ClosePollButton } from './close-poll-button'
+import { MarkdownView } from '@/components/markdown-view'
 
 export default async function AdminPollDetailPage({
   params,
@@ -37,7 +38,9 @@ export default async function AdminPollDetailPage({
         </Link>
         <h1 className="mt-1 text-lg font-semibold text-gray-900">{poll.question}</h1>
         {poll.description ? (
-          <p className="mt-1 whitespace-pre-line text-sm text-gray-600">{poll.description}</p>
+          <div className="mt-2">
+            <MarkdownView source={poll.description} />
+          </div>
         ) : null}
         <p className="mt-2 text-xs text-gray-500">
           <span className="font-medium uppercase tracking-wide">

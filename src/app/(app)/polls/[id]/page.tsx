@@ -6,6 +6,7 @@ import { getMyVoteForPoll } from '@/lib/actions/polls'
 import { formatPollDateTime, describePollDeadline } from '@/lib/poll-format'
 import { VoteForm } from './vote-form'
 import { PollResultsView } from './poll-results'
+import { MarkdownView } from '@/components/markdown-view'
 
 export default async function PollDetailPage({
   params,
@@ -33,7 +34,9 @@ export default async function PollDetailPage({
         </Link>
         <h1 className="mt-1 text-lg font-semibold text-gray-900">{poll.question}</h1>
         {poll.description ? (
-          <p className="mt-1 whitespace-pre-line text-sm text-gray-600">{poll.description}</p>
+          <div className="mt-2">
+            <MarkdownView source={poll.description} />
+          </div>
         ) : null}
         <p className="mt-2 text-xs text-gray-500">
           <span className="font-medium uppercase tracking-wide">{poll.kind === 'single' ? 'Single-select' : 'Multi-select'}</span>

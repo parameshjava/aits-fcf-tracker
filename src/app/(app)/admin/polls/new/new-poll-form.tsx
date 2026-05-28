@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { createPoll } from '@/lib/actions/polls'
 import { defaultClosesAtLocal } from '@/lib/poll-format'
+import { MarkdownEditor } from '@/components/markdown-editor'
 import {
   POLL_DESCRIPTION_MAX,
   POLL_OPTION_MAX,
@@ -24,6 +25,7 @@ export function NewPollForm() {
   const [options, setOptions] = useState<string[]>(['', ''])
   const [maxSelections, setMaxSelections] = useState<string>('')
   const [closesAt, setClosesAt] = useState<string>(defaultClosesAtLocal())
+  const [description, setDescription] = useState('')
 
   const [state, action, pending] = useActionState(
     async (_prev: unknown, formData: FormData) => createPoll(formData),
@@ -68,17 +70,30 @@ export function NewPollForm() {
       </div>
 
       <div>
-        <label htmlFor="description" className="block text-sm font-medium text-gray-700">
-          Description <span className="text-xs font-normal text-gray-400">(optional)</span>
+        <label className="block text-sm font-medium text-gray-700">
+          Description{' '}
+          <span className="text-xs font-normal text-gray-400">
+            (optional · markdown — background / context shown to voters)
+          </span>
         </label>
-        <textarea
-          id="description"
+        <div className="mt-1">
+          <MarkdownEditor
+            value={description}
+            onChange={setDescription}
+            mode="split"
+            minHeight={180}
+          />
+        </div>
+        <input
+          type="hidden"
           name="description"
-          rows={2}
-          maxLength={POLL_DESCRIPTION_MAX}
-          placeholder="Background / context shown to voters"
-          className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+          value={description.slice(0, POLL_DESCRIPTION_MAX)}
         />
+        {description.length > POLL_DESCRIPTION_MAX && (
+          <p className="mt-1 text-xs text-red-600">
+            Description is too long ({description.length} / {POLL_DESCRIPTION_MAX} chars).
+          </p>
+        )}
       </div>
 
       <fieldset>
