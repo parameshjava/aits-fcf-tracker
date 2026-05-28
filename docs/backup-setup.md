@@ -133,6 +133,9 @@ If you ever need a *full* logical backup including the auth schema, run `pg_dump
 **Workflow fails at "Install PostgreSQL 17 client"**
 The PGDG repo URL or signing key changed. Update the install block from https://www.postgresql.org/download/linux/ubuntu/.
 
+**`pg_dump: error: aborting because of server version mismatch`**
+Supabase upgraded to a Postgres major newer than the workflow's pinned client. The runner image ships `postgresql-client-16` by default, and `/usr/bin/pg_dump` is a `pg_wrapper` symlink that can keep routing to v16 even after PGDG installs v17 — which is why the workflow now invokes `/usr/lib/postgresql/17/bin/pg_dump` by absolute path and asserts the major version before dumping. If Supabase moves to Postgres 18, bump every occurrence of `17` in `.github/workflows/db-backup.yml` to `18`.
+
 **`pg_dump: error: connection to server … failed`**
 - Confirm the host is the **session pooler** (`aws-0-<region>.pooler.supabase.com:5432`), not the direct host (`db.<ref>.supabase.co:5432`). The direct host is IPv6-only on Free tier and GitHub runners are IPv4 — the connection will silently hang and time out.
 - Confirm the port is **5432** (session), not **6543** (transaction). `pg_dump` doesn't work over the transaction pooler.

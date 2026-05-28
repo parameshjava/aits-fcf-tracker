@@ -37,9 +37,23 @@ jobs:
           . /etc/os-release
           echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt ${VERSION_CODENAME}-pgdg main" \
             | sudo tee /etc/apt/sources.list.d/pgdg.list >/dev/null
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq postgresql-client-17
-          pg_dump --version
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client-17
+
+          # The PGDG package installs to /usr/lib/postgresql/17/bin/. The
+          # runner image pre-ships postgresql-client-16, so /usr/bin/pg_dump
+          # (a pg_wrapper symlink) may still route to v16 unless we put the
+          # versioned bin dir on PATH first. Append it to $GITHUB_PATH so
+          # subsequent steps see the v17 binary.
+          echo "/usr/lib/postgresql/17/bin" >> "$GITHUB_PATH"
+
+          # Hard-assert v17 is what we'll actually invoke from now on.
+          /usr/lib/postgresql/17/bin/pg_dump --version
+          PG_MAJOR=$(/usr/lib/postgresql/17/bin/pg_dump --version | awk '{print $3}' | cut -d. -f1)
+          if [ "${PG_MAJOR}" != "17" ]; then
+            echo "::error::Expected pg_dump 17, got ${PG_MAJOR}"
+            exit 1
+          fi
 
       - name: Run pg_dump
         env:
@@ -54,7 +68,9 @@ jobs:
           STAMP=$(date -u +"%Y-%m-%dT%H-%M-%SZ")
           FILE="out/fcf-${STAMP}.sql.gz"
           echo "Dumping public schema to ${FILE}"
-          pg_dump \
+          # Invoke the v17 binary by absolute path — defense in depth in case
+          # something downstream resets PATH and a stray v16 wrapper sneaks in.
+          /usr/lib/postgresql/17/bin/pg_dump \
             --schema=public \
             --no-owner \
             --no-privileges \
