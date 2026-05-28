@@ -84,21 +84,47 @@ export default async function MeetingDetailPage(
 
       {/* Section 3 — Attendance card */}
       <div className="rounded-lg border border-gray-200 bg-white px-4 py-3">
-        <h2 className="mb-2 text-sm font-semibold text-gray-900">
+        <h2 className="mb-3 text-sm font-semibold text-gray-900">
           Attendance{' '}
           <span className="font-normal text-gray-500">
             ({present.length} present{absent.length > 0 ? ` · ${absent.length} absent` : ''})
           </span>
         </h2>
-        <div className="space-y-1 text-xs text-gray-700">
+        <div className="space-y-3">
           <div>
-            <span className="font-semibold text-gray-900">Present:</span>{' '}
-            {present.length > 0 ? present.map((a) => a.member_name).join(' · ') : '—'}
+            <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+              Present
+            </div>
+            {present.length > 0 ? (
+              <div className="flex flex-wrap gap-1.5">
+                {present.map((a) => (
+                  <span
+                    key={a.member_id}
+                    className="rounded-full bg-green-50 px-2.5 py-0.5 text-xs font-medium text-green-800 ring-1 ring-inset ring-green-200"
+                  >
+                    {a.member_name}
+                  </span>
+                ))}
+              </div>
+            ) : (
+              <p className="text-xs text-gray-400">No one marked present.</p>
+            )}
           </div>
           {absent.length > 0 && (
             <div>
-              <span className="font-semibold text-gray-900">Absent:</span>{' '}
-              {absent.map((a) => a.member_name).join(' · ')}
+              <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+                Absent
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {absent.map((a) => (
+                  <span
+                    key={a.member_id}
+                    className="rounded-full bg-rose-50 px-2.5 py-0.5 text-xs font-medium text-rose-700 ring-1 ring-inset ring-rose-200"
+                  >
+                    {a.member_name}
+                  </span>
+                ))}
+              </div>
             </div>
           )}
         </div>
