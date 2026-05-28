@@ -28,7 +28,7 @@ Non-goals: structured action items, chair/scribe roles, meeting types, carry-for
 
 ---
 
-## 3. Schema changes — migration `030_meetings_agenda_and_attendance.sql`
+## 3. Schema changes — migration `031_meetings_agenda_and_attendance.sql`
 
 ```sql
 begin;

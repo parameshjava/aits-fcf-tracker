@@ -151,7 +151,7 @@ That's a single migration + one server-action update + UI edits to three pages. 
 ## Appendix A — Files touched if Tier 1 proceeds
 
 ```
-scripts/prod/migrations/030_meetings_agenda_and_attendance.sql   (new)
+scripts/prod/migrations/031_meetings_agenda_and_attendance.sql   (new)
 src/lib/actions/meetings.ts                                       (createMeeting, saveAttendeeNotes / new toggleAttendance, updateAgenda)
 src/lib/actions/meetings-reads.ts                                 (extend types: agenda_md, attended)
 src/app/(app)/admin/meetings/new/new-meeting-form.tsx             (add agenda editor)

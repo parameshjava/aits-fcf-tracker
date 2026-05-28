@@ -15,7 +15,7 @@
 ## File map
 
 **Create:**
-- `scripts/prod/migrations/030_meetings_agenda_and_attendance.sql` — adds `meetings.agenda_md`, `meeting_attendees.attended`, replaces `meetings_with_progress` view.
+- `scripts/prod/migrations/031_meetings_agenda_and_attendance.sql` — adds `meetings.agenda_md`, `meeting_attendees.attended`, replaces `meetings_with_progress` view.
 
 **Modify:**
 - `src/lib/meetings-validation.ts` — add `agenda_md` to `MeetingCreateInput`; add `validateAgenda`, `validateAttendedFlag`.
@@ -32,13 +32,13 @@
 ## Task 1: Schema migration
 
 **Files:**
-- Create: `scripts/prod/migrations/030_meetings_agenda_and_attendance.sql`
+- Create: `scripts/prod/migrations/031_meetings_agenda_and_attendance.sql`
 
 - [ ] **Step 1: Write the migration**
 
 ```sql
 -- =============================================================================
--- 030 — Meetings: agenda + attendance.
+-- 031 — Meetings: agenda + attendance.
 --
 --   meetings.agenda_md          — free-form markdown, locked-on-close by 027.
 --   meeting_attendees.attended  — present/absent flag, defaults true.
@@ -105,8 +105,8 @@ Verify in `psql`:
 - [ ] **Step 3: Commit**
 
 ```bash
-git add scripts/prod/migrations/030_meetings_agenda_and_attendance.sql
-git commit -m "feat(meetings): migration 030 — agenda_md, attended, present_count"
+git add scripts/prod/migrations/031_meetings_agenda_and_attendance.sql
+git commit -m "feat(meetings): migration 031 — agenda_md, attended, present_count"
 ```
 
 ---
