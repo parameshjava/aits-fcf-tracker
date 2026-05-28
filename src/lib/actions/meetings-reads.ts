@@ -23,12 +23,14 @@ export type MeetingRow = {
   meeting_date: string
   status: 'open' | 'closed'
   linked_poll_id: string | null
+  agenda_md: string | null
   action_items_md: string | null
   created_by: string
   created_at: string
   closed_at: string | null
   closed_by: string | null
   attendee_count: number
+  present_count: number
   captured_count: number
 }
 
@@ -52,6 +54,7 @@ export type MeetingAttendee = {
   meeting_id: string
   member_id: string
   position: number
+  attended: boolean
   notes_md: string | null
   notes_updated_at: string | null
   notes_updated_by: string | null
@@ -62,6 +65,8 @@ export type MeetingAttendee = {
 export type MeetingDetail = MeetingRow & {
   attendees: MeetingAttendee[]
   linked_poll: { id: string; question: string; status: 'open' | 'closed' } | null
+  created_by_member: { id: string; name: string } | null
+  closed_by_member: { id: string; name: string } | null
 }
 
 export async function getMeeting(id: string): Promise<MeetingDetail | null> {
@@ -82,7 +87,7 @@ export async function getMeeting(id: string): Promise<MeetingDetail | null> {
   // members table uses `name` (not `full_name`) — see 001_init_schema.sql
   const { data: attendees, error: aErr } = await supabase
     .from('meeting_attendees')
-    .select('meeting_id, member_id, position, notes_md, notes_updated_at, notes_updated_by, members:member_id (name, slug)')
+    .select('meeting_id, member_id, position, attended, notes_md, notes_updated_at, notes_updated_by, members:member_id (name, slug)')
     .eq('meeting_id', id)
     .order('position', { ascending: true })
   if (aErr) throw new Error(aErr.message)
@@ -97,6 +102,27 @@ export async function getMeeting(id: string): Promise<MeetingDetail | null> {
     if (poll) linked_poll = poll as MeetingDetail['linked_poll']
   }
 
+  const memberLookupIds = [meeting.created_by, meeting.closed_by].filter(
+    (x): x is string => typeof x === 'string',
+  )
+  let memberNameById: Record<string, string> = {}
+  if (memberLookupIds.length > 0) {
+    const { data: memberRows } = await supabase
+      .from('members')
+      .select('id, name')
+      .in('id', memberLookupIds)
+    memberNameById = Object.fromEntries(
+      (memberRows ?? []).map((m) => [m.id as string, m.name as string]),
+    )
+  }
+
+  const created_by_member = meeting.created_by
+    ? { id: meeting.created_by, name: memberNameById[meeting.created_by] ?? '—' }
+    : null
+  const closed_by_member = meeting.closed_by
+    ? { id: meeting.closed_by, name: memberNameById[meeting.closed_by] ?? '—' }
+    : null
+
   return {
     ...(meeting as MeetingRow),
     attendees: (attendees ?? []).map((row) => {
@@ -105,6 +131,7 @@ export async function getMeeting(id: string): Promise<MeetingDetail | null> {
         meeting_id: row.meeting_id as string,
         member_id: row.member_id as string,
         position: row.position as number,
+        attended: row.attended as boolean,
         notes_md: (row.notes_md as string | null) ?? null,
         notes_updated_at: (row.notes_updated_at as string | null) ?? null,
         notes_updated_by: (row.notes_updated_by as string | null) ?? null,
@@ -113,6 +140,8 @@ export async function getMeeting(id: string): Promise<MeetingDetail | null> {
       }
     }),
     linked_poll,
+    created_by_member,
+    closed_by_member,
   }
 }
 
