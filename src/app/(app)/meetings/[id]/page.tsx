@@ -96,16 +96,17 @@ export default async function MeetingDetailPage(
               Present
             </div>
             {present.length > 0 ? (
-              <div className="flex flex-wrap gap-1.5">
+              <ul className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-gray-800 sm:grid-cols-3">
                 {present.map((a) => (
-                  <span
-                    key={a.member_id}
-                    className="rounded-full bg-green-50 px-2.5 py-0.5 text-xs font-medium text-green-800 ring-1 ring-inset ring-green-200"
-                  >
-                    {a.member_name}
-                  </span>
+                  <li key={a.member_id} className="flex items-center gap-1.5 truncate">
+                    <span
+                      aria-hidden
+                      className="h-1.5 w-1.5 shrink-0 rounded-full bg-green-500"
+                    />
+                    <span className="truncate">{a.member_name}</span>
+                  </li>
                 ))}
-              </div>
+              </ul>
             ) : (
               <p className="text-xs text-gray-400">No one marked present.</p>
             )}
@@ -115,16 +116,17 @@ export default async function MeetingDetailPage(
               <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-gray-500">
                 Absent
               </div>
-              <div className="flex flex-wrap gap-1.5">
+              <ul className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-gray-800 sm:grid-cols-3">
                 {absent.map((a) => (
-                  <span
-                    key={a.member_id}
-                    className="rounded-full bg-rose-50 px-2.5 py-0.5 text-xs font-medium text-rose-700 ring-1 ring-inset ring-rose-200"
-                  >
-                    {a.member_name}
-                  </span>
+                  <li key={a.member_id} className="flex items-center gap-1.5 truncate">
+                    <span
+                      aria-hidden
+                      className="h-1.5 w-1.5 shrink-0 rounded-full bg-rose-500"
+                    />
+                    <span className="truncate">{a.member_name}</span>
+                  </li>
                 ))}
-              </div>
+              </ul>
             </div>
           )}
         </div>
