@@ -43,8 +43,8 @@ export function CapturePage({ meeting }: Props) {
     }
   }
 
-  const captured = meeting.attendees.filter((a) => a.notes_md != null).length
-  const total = meeting.attendees.length
+  const captured = meeting.attendees.filter((a) => a.attended && a.notes_md != null).length
+  const total = meeting.attendees.filter((a) => a.attended).length
 
   function saveActive(): Promise<boolean> {
     if (!activeMemberId) return Promise.resolve(true)
@@ -218,7 +218,8 @@ export function CapturePage({ meeting }: Props) {
                     type="checkbox"
                     checked={a.attended}
                     onChange={(e) => toggleAttendance(a.member_id, e.target.checked)}
-                    className="h-3.5 w-3.5 rounded border-gray-300"
+                    disabled={meeting.status !== 'open'}
+                    className="h-3.5 w-3.5 rounded border-gray-300 disabled:cursor-not-allowed disabled:opacity-50"
                     aria-label={`Mark ${a.member_name} present`}
                   />
                   Present
