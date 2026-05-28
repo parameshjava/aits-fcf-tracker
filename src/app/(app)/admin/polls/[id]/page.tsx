@@ -10,6 +10,7 @@ import {
 import { PollResultsView } from '../../../polls/[id]/poll-results'
 import { ClosePollButton } from './close-poll-button'
 import { MarkdownView } from '@/components/markdown-view'
+import { SharePollButton } from '@/components/share-poll-button'
 
 export default async function AdminPollDetailPage({
   params,
@@ -57,6 +58,7 @@ export default async function AdminPollDetailPage({
         </p>
       </div>
       <div className="flex items-center gap-2">
+        <SharePollButton pollId={poll.id} />
         {!poll.is_closed && (
           <Link
             href={`/admin/polls/${poll.id}/edit`}
