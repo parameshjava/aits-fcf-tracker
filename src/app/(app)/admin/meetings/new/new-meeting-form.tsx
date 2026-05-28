@@ -1,10 +1,11 @@
 'use client'
 
-import { useActionState, useEffect } from 'react'
+import { useActionState, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { createMeeting } from '@/lib/actions/meetings'
 import { AttendeePicker, type AttendeeOption } from './attendee-picker'
+import { MarkdownEditor } from '@/components/markdown-editor'
 
 type PollOption = { id: string; question: string; status: 'open' | 'closed'; closes_at: string }
 
@@ -20,6 +21,7 @@ export function NewMeetingForm({ members, polls, defaultDate }: Props) {
     async (_prev: unknown, fd: FormData) => createMeeting(fd),
     null,
   )
+  const [agendaMd, setAgendaMd] = useState('')
 
   useEffect(() => {
     if (state?.ok) {
@@ -85,6 +87,25 @@ export function NewMeetingForm({ members, polls, defaultDate }: Props) {
           </select>
           {errFor('linked_poll_id') && <p className="mt-1 text-xs text-red-600">{errFor('linked_poll_id')}</p>}
         </div>
+      </div>
+
+      <div>
+        <label className="mb-1 block text-xs font-semibold text-gray-700">
+          Agenda{' '}
+          <span className="font-normal text-gray-400">
+            (markdown — sets what the meeting will cover)
+          </span>
+        </label>
+        <MarkdownEditor
+          value={agendaMd}
+          onChange={setAgendaMd}
+          mode="split"
+          minHeight={200}
+        />
+        <input type="hidden" name="agenda_md" value={agendaMd} />
+        {errFor('agenda_md') && (
+          <p className="mt-1 text-xs text-red-600">{errFor('agenda_md')}</p>
+        )}
       </div>
 
       <AttendeePicker members={members} />
