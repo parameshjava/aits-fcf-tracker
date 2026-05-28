@@ -1,17 +1,35 @@
 'use client'
 
 import { useState } from 'react'
+import { usePathname } from 'next/navigation'
 import { Share2 } from 'lucide-react'
 import { toast } from 'sonner'
 
+// Matches /polls/<uuid> and /admin/polls/<uuid> (with anything after — eg.
+// .../edit). Captures the UUID so we can rewrite to the public preview URL
+// /p/<uuid>, which is the route designed for link-preview crawlers
+// (WhatsApp, Slack, iMessage) — it has OG meta tags + no auth wall.
+const POLL_PATH_RE = /^\/(?:admin\/)?polls\/([0-9a-f-]{36})(?:\/|$)/i
+
+function buildShareUrl(pathname: string | null): string {
+  if (pathname) {
+    const match = pathname.match(POLL_PATH_RE)
+    if (match) {
+      return `${window.location.origin}/p/${match[1]}`
+    }
+  }
+  return window.location.href
+}
+
 export function ShareLinkButton() {
   const [isSharing, setIsSharing] = useState(false)
+  const pathname = usePathname()
 
   async function handleShare() {
     if (isSharing) return
     setIsSharing(true)
     try {
-      const url = window.location.href
+      const url = buildShareUrl(pathname)
       const title = document.title || 'FCF Tracker'
       if (
         typeof navigator !== 'undefined' &&
