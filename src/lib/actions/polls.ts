@@ -9,7 +9,7 @@ import {
   runAction,
   type ActionResult,
 } from './action-result'
-import { validatePollCreate, validateVote } from '@/lib/polls-validation'
+import { validatePollCreate, validatePollUpdateLight, validateVote } from '@/lib/polls-validation'
 import type {
   AdminLivePoll,
   MyVote,
@@ -149,6 +149,110 @@ export async function closePoll(
 
     invalidatePolls(pollId)
     return actionOk({ pollId }, 'Poll closed')
+  })
+}
+
+export async function updatePoll(
+  formData: FormData,
+): Promise<ActionResult<{ pollId: string }>> {
+  return runAction('updatePoll', async () => {
+    const user = await getCurrentUser()
+    if (!user || user.profile?.role !== 'admin') {
+      return actionError('Unauthorized')
+    }
+
+    const pollId = (formData.get('poll_id') as string | null)?.trim() ?? ''
+    if (!pollId) return actionError('Poll id required')
+
+    const supabase = await createClient()
+
+    // Fetch the poll to check status
+    const { data: pollRow, error: pollErr } = await supabase
+      .from('polls')
+      .select('id, status, kind, max_selections, allow_other, visibility')
+      .eq('id', pollId)
+      .maybeSingle()
+    if (pollErr) return actionError(pollErr.message)
+    if (!pollRow) return actionError('Poll not found')
+
+    const status = pollRow.status as PollStatus
+    if (status === 'closed') return actionError('Closed polls cannot be edited')
+
+    // Count votes to determine edit scope
+    const { count } = await supabase
+      .from('poll_votes')
+      .select('id', { count: 'exact', head: true })
+      .eq('poll_id', pollId)
+    const hasVotes = (count ?? 0) > 0
+
+    if (hasVotes) {
+      // Light path: only question, description, closes_at are editable
+      const v = validatePollUpdateLight({
+        question: formData.get('question'),
+        description: formData.get('description'),
+        closes_at: formData.get('closes_at'),
+      })
+      if (!v.ok) return actionError(v.error, v.field)
+
+      const { error } = await supabase
+        .from('polls')
+        .update({
+          question: v.value.question,
+          description: v.value.description,
+          closes_at: v.value.closes_at,
+        })
+        .eq('id', pollId)
+      if (error) return actionError(error.message)
+    } else {
+      // Full path: all scalar fields + options are editable.
+      // Note: delete-then-insert of poll_options is not transactional from the
+      // action layer. This is accepted risk — it's admin-only on an unvoted poll.
+      const v = validatePollCreate({
+        question: formData.get('question'),
+        description: formData.get('description'),
+        kind: formData.get('kind'),
+        max_selections: formData.get('max_selections'),
+        allow_other: formData.get('allow_other'),
+        visibility: formData.get('visibility'),
+        closes_at: formData.get('closes_at'),
+        options: formData.getAll('option'),
+      })
+      if (!v.ok) return actionError(v.error, v.field)
+
+      // Update the polls row
+      const { error: updateErr } = await supabase
+        .from('polls')
+        .update({
+          question: v.value.question,
+          description: v.value.description,
+          kind: v.value.kind,
+          max_selections: v.value.max_selections,
+          allow_other: v.value.allow_other,
+          visibility: v.value.visibility,
+          closes_at: v.value.closes_at,
+        })
+        .eq('id', pollId)
+      if (updateErr) return actionError(updateErr.message)
+
+      // Delete existing options then re-insert
+      const { error: deleteErr } = await supabase
+        .from('poll_options')
+        .delete()
+        .eq('poll_id', pollId)
+      if (deleteErr) return actionError(deleteErr.message)
+
+      const { error: insertErr } = await supabase.from('poll_options').insert(
+        v.value.options.map((label, i) => ({
+          poll_id: pollId,
+          label,
+          position: i + 1,
+        })),
+      )
+      if (insertErr) return actionError(insertErr.message)
+    }
+
+    invalidatePolls(pollId)
+    return actionOk({ pollId }, 'Poll updated')
   })
 }
 
