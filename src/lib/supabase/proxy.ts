@@ -12,6 +12,10 @@ function isPublicPath(pathname: string): boolean {
   if (PUBLIC_PATHS.has(pathname)) return true
   if (pathname.startsWith('/auth/')) return true
   if (pathname.startsWith('/_next/')) return true
+  // /p/<uuid> is the public poll share/preview route. It only ever exposes
+  // the poll question + description (OG card + sign-in CTA); the actual vote
+  // surface lives at /polls/<uuid> behind auth. See src/app/p/[id]/page.tsx.
+  if (pathname.startsWith('/p/')) return true
   return false
 }
 

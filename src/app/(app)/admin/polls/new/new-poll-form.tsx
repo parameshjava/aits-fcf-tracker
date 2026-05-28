@@ -73,7 +73,8 @@ export function NewPollForm() {
         <label className="block text-sm font-medium text-gray-700">
           Description{' '}
           <span className="text-xs font-normal text-gray-400">
-            (optional · markdown — background / context shown to voters)
+            (optional · markdown — background / context shown to voters; also
+            appears in shared link previews)
           </span>
         </label>
         <div className="mt-1">
