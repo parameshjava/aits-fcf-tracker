@@ -5,8 +5,8 @@ export type Validated<T> =
 export type MeetingCreateInput = {
   title: string
   meeting_date: string
-  attendee_ids: string[]
   linked_poll_id: string | null
+  agenda_md: string | null
 }
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -29,17 +29,6 @@ export function validateMeetingCreate(
     return { ok: false, error: 'Pick a valid date', field: 'meeting_date' }
   }
 
-  const rawIds = Array.isArray(r.attendee_ids) ? r.attendee_ids : []
-  const attendee_ids = Array.from(new Set(rawIds.map((x) => String(x).trim()).filter(Boolean)))
-  if (attendee_ids.length === 0) {
-    return { ok: false, error: 'Pick at least one attendee', field: 'attendees' }
-  }
-  for (const id of attendee_ids) {
-    if (!UUID_RE.test(id)) {
-      return { ok: false, error: 'Invalid attendee id', field: 'attendees' }
-    }
-  }
-
   const linkedRaw = r.linked_poll_id
   let linked_poll_id: string | null = null
   if (linkedRaw && String(linkedRaw).trim()) {
@@ -50,7 +39,17 @@ export function validateMeetingCreate(
     linked_poll_id = v
   }
 
-  return { ok: true, value: { title, meeting_date, attendee_ids, linked_poll_id } }
+  const agendaRaw = r.agenda_md
+  let agenda_md: string | null = null
+  if (agendaRaw != null) {
+    const a = String(agendaRaw)
+    if (a.length > 10_000) {
+      return { ok: false, error: 'Agenda is too long (max 10000 chars)', field: 'agenda_md' }
+    }
+    agenda_md = a.trim().length === 0 ? null : a
+  }
+
+  return { ok: true, value: { title, meeting_date, linked_poll_id, agenda_md } }
 }
 
 export function validateNotes(raw: unknown): Validated<string | null> {
@@ -60,4 +59,18 @@ export function validateNotes(raw: unknown): Validated<string | null> {
   }
   const trimmed = s.trim()
   return { ok: true, value: trimmed.length === 0 ? null : s }
+}
+
+export function validateAgenda(raw: unknown): Validated<string | null> {
+  const s = raw == null ? '' : String(raw)
+  if (s.length > 10_000) {
+    return { ok: false, error: 'Agenda is too long (max 10000 chars)' }
+  }
+  return { ok: true, value: s.trim().length === 0 ? null : s }
+}
+
+export function validateAttendedFlag(raw: unknown): Validated<boolean> {
+  if (raw === 'true')  return { ok: true, value: true }
+  if (raw === 'false') return { ok: true, value: false }
+  return { ok: false, error: 'attended must be the string "true" or "false"' }
 }

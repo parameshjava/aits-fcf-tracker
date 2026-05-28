@@ -13,6 +13,8 @@ import {
 import {
   validateMeetingCreate,
   validateNotes,
+  validateAgenda,
+  validateAttendedFlag,
 } from '@/lib/meetings-validation'
 import { seededShuffle } from '@/lib/shuffle'
 import { toggleCheckboxAt } from '@/lib/action-items'
@@ -50,12 +52,22 @@ export async function createMeeting(
     const v = validateMeetingCreate({
       title: formData.get('title'),
       meeting_date: formData.get('meeting_date'),
-      attendee_ids: formData.getAll('attendee_ids'),
       linked_poll_id: formData.get('linked_poll_id'),
+      agenda_md: formData.get('agenda_md'),
     })
     if (!v.ok) return actionError(v.error, v.field)
 
     const supabase = await createClient()
+
+    // Auto-invite every canonical member as a present attendee. Admin manages
+    // actual presence on the capture page via per-row Present toggles.
+    const { data: memberRows, error: memErr } = await supabase
+      .from('members')
+      .select('id')
+    if (memErr) return actionError(memErr.message)
+    const memberIds = (memberRows ?? []).map((m) => m.id as string)
+    if (memberIds.length === 0) return actionError('No members found to invite')
+
     const random_seed = Math.floor(Math.random() * 0x7fffffff)
 
     const { data: meeting, error: mErr } = await supabase
@@ -65,13 +77,14 @@ export async function createMeeting(
         meeting_date: v.value.meeting_date,
         random_seed,
         linked_poll_id: v.value.linked_poll_id,
+        agenda_md: v.value.agenda_md,
         created_by: memberId,
       })
       .select('id')
       .single()
     if (mErr) return actionError(mErr.message)
 
-    const ordered = seededShuffle(v.value.attendee_ids, random_seed)
+    const ordered = seededShuffle(memberIds, random_seed)
     const rows = ordered.map((member_id, idx) => ({
       meeting_id: meeting.id,
       member_id,
@@ -384,5 +397,101 @@ export async function refreshAttendeeNotes(
 
     invalidate(meetingId)
     return actionOk({ notes_md: (data?.notes_md as string | null) ?? null })
+  })
+}
+
+export async function updateAgenda(
+  formData: FormData,
+): Promise<ActionResult<{ meetingId: string }>> {
+  return runAction('updateAgenda', async () => {
+    const user = await getCurrentUser()
+    if (!user || user.profile?.role !== 'admin') return actionError('Unauthorized')
+
+    const id = String(formData.get('id') ?? '').trim()
+    if (!id) return actionError('Missing meeting id')
+
+    const v = validateAgenda(formData.get('agenda_md'))
+    if (!v.ok) return actionError(v.error, 'agenda_md')
+
+    const supabase = await createClient()
+    const { error } = await supabase
+      .from('meetings')
+      .update({ agenda_md: v.value })
+      .eq('id', id)
+    if (error) return actionError(error.message)
+
+    invalidate(id)
+    return actionOk({ meetingId: id }, 'Agenda saved')
+  })
+}
+
+export async function setAttendance(
+  formData: FormData,
+): Promise<ActionResult<{ memberId: string; attended: boolean }>> {
+  return runAction('setAttendance', async () => {
+    const user = await getCurrentUser()
+    if (!user || user.profile?.role !== 'admin') return actionError('Unauthorized')
+
+    const meetingId = String(formData.get('meeting_id') ?? '').trim()
+    const memberId  = String(formData.get('member_id')  ?? '').trim()
+    if (!meetingId || !memberId) return actionError('Missing ids')
+
+    const v = validateAttendedFlag(formData.get('attended'))
+    if (!v.ok) return actionError(v.error, 'attended')
+
+    const supabase = await createClient()
+    const { error } = await supabase
+      .from('meeting_attendees')
+      .update({ attended: v.value })
+      .eq('meeting_id', meetingId)
+      .eq('member_id', memberId)
+    if (error) return actionError(error.message)
+
+    invalidate(meetingId)
+    return actionOk(
+      { memberId, attended: v.value },
+      v.value ? 'Marked present' : 'Marked absent',
+    )
+  })
+}
+
+export async function reshuffleAttendees(
+  formData: FormData,
+): Promise<ActionResult<{ meetingId: string }>> {
+  return runAction('reshuffleAttendees', async () => {
+    const user = await getCurrentUser()
+    if (!user || user.profile?.role !== 'admin') return actionError('Unauthorized')
+
+    const id = String(formData.get('id') ?? '').trim()
+    if (!id) return actionError('Missing meeting id')
+
+    const supabase = await createClient()
+
+    const { data: rows, error: fetchErr } = await supabase
+      .from('meeting_attendees')
+      .select('member_id')
+      .eq('meeting_id', id)
+    if (fetchErr) return actionError(fetchErr.message)
+
+    const memberIds = (rows ?? []).map((r) => r.member_id as string)
+    if (memberIds.length === 0) return actionError('No attendees to shuffle')
+
+    const newSeed = Math.floor(Math.random() * 2_000_000_000)
+    const shuffled = seededShuffle(memberIds, newSeed)
+
+    const { error: seedErr } = await supabase
+      .from('meetings')
+      .update({ random_seed: newSeed })
+      .eq('id', id)
+    if (seedErr) return actionError(seedErr.message)
+
+    const { error: rpcErr } = await supabase.rpc('reshuffle_meeting_attendees', {
+      p_meeting_id: id,
+      p_member_order: shuffled,
+    })
+    if (rpcErr) return actionError(rpcErr.message)
+
+    invalidate(id)
+    return actionOk({ meetingId: id }, 'Attendees reshuffled')
   })
 }
