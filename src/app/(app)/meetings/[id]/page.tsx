@@ -34,6 +34,14 @@ export default async function MeetingDetailPage(
   const present = meeting.attendees.filter((a) => a.attended)
   const absent  = meeting.attendees.filter((a) => !a.attended)
 
+  // Notes accordion shows present attendees who have captured notes — plus the
+  // viewer's own row when the meeting is open, so they can still add notes.
+  const presentForNotes = present.filter(
+    (a) =>
+      a.notes_md != null ||
+      (meeting.status === 'open' && a.member_id === viewerMemberId),
+  )
+
   return (
     <div className="mx-auto max-w-4xl space-y-3 px-4 py-6 sm:px-6">
       {/* Section 1 — Header card */}
@@ -132,9 +140,9 @@ export default async function MeetingDetailPage(
         </div>
       </div>
 
-      {/* Section 4 — Notes accordion (present attendees only) */}
+      {/* Section 4 — Notes accordion (present attendees with notes, plus viewer when editable) */}
       <ConsolidatedView
-        meeting={{ ...meeting, attendees: present }}
+        meeting={{ ...meeting, attendees: presentForNotes }}
         viewerMemberId={viewerMemberId}
       />
 
