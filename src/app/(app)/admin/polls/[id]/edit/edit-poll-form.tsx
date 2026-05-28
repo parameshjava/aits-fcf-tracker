@@ -4,8 +4,7 @@ import Link from 'next/link'
 import { useActionState, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
-import { createPoll } from '@/lib/actions/polls'
-import { defaultClosesAtLocal } from '@/lib/poll-format'
+import { updatePoll } from '@/lib/actions/polls'
 import { MarkdownEditor } from '@/components/markdown-editor'
 import {
   POLL_DESCRIPTION_MAX,
@@ -13,31 +12,46 @@ import {
   POLL_OPTION_LABEL_MAX,
   POLL_QUESTION_MAX,
 } from '@/lib/polls-types'
+import type { PollDetail } from '@/lib/polls-types'
 
 type Kind = 'single' | 'multi'
 type Visibility = 'sensitive' | 'public'
 
-export function NewPollForm() {
+function isoToLocalDatetime(iso: string): string {
+  const d = new Date(iso)
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
+
+export function EditPollForm({
+  poll,
+  hasVotes,
+}: {
+  poll: PollDetail
+  hasVotes: boolean
+}) {
   const router = useRouter()
-  const [kind, setKind] = useState<Kind>('single')
-  const [visibility, setVisibility] = useState<Visibility>('public')
-  const [allowOther, setAllowOther] = useState(false)
-  const [options, setOptions] = useState<string[]>(['', ''])
-  const [maxSelections, setMaxSelections] = useState<string>('')
-  const [closesAt, setClosesAt] = useState<string>(defaultClosesAtLocal())
-  const [description, setDescription] = useState('')
+  const [kind, setKind] = useState<Kind>(poll.kind as Kind)
+  const [visibility, setVisibility] = useState<Visibility>(poll.visibility as Visibility)
+  const [allowOther, setAllowOther] = useState(poll.allow_other)
+  const [options, setOptions] = useState<string[]>(
+    poll.options.length >= 2 ? poll.options.map((o) => o.label) : ['', ''],
+  )
+  const [maxSelections, setMaxSelections] = useState<string>(
+    poll.max_selections != null ? String(poll.max_selections) : '',
+  )
+  const [closesAt, setClosesAt] = useState<string>(isoToLocalDatetime(poll.closes_at))
+  const [description, setDescription] = useState(poll.description ?? '')
 
   const [state, action, pending] = useActionState(
-    async (_prev: unknown, formData: FormData) => createPoll(formData),
+    async (_prev: unknown, formData: FormData) => updatePoll(formData),
     null,
   )
 
   useEffect(() => {
     if (state?.ok && state.data?.pollId) {
-      toast.success(state.message ?? 'Poll created', {
-        description: 'Members can now cast their votes.',
-      })
-      router.push(`/polls/${state.data.pollId}`)
+      toast.success(state.message ?? 'Poll updated')
+      router.push(`/admin/polls/${state.data.pollId}`)
       router.refresh()
     }
   }, [state, router])
@@ -54,6 +68,8 @@ export function NewPollForm() {
 
   return (
     <form action={action} className="space-y-5 rounded-lg border bg-white p-6">
+      <input type="hidden" name="poll_id" value={poll.id} />
+
       <div>
         <label htmlFor="question" className="block text-sm font-medium text-gray-700">
           Question
@@ -64,6 +80,7 @@ export function NewPollForm() {
           type="text"
           required
           maxLength={POLL_QUESTION_MAX}
+          defaultValue={poll.question}
           placeholder="e.g. What should we do with this month's surplus?"
           className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
         />
@@ -73,8 +90,7 @@ export function NewPollForm() {
         <label className="block text-sm font-medium text-gray-700">
           Description{' '}
           <span className="text-xs font-normal text-gray-400">
-            (optional · markdown — background / context shown to voters; also
-            appears in shared link previews)
+            (optional · markdown — background / context shown to voters)
           </span>
         </label>
         <div className="mt-1">
@@ -98,7 +114,12 @@ export function NewPollForm() {
       </div>
 
       <fieldset>
-        <legend className="text-sm font-medium text-gray-700">Voting mode</legend>
+        <legend className="text-sm font-medium text-gray-700">
+          Voting mode
+          {hasVotes && (
+            <span className="ml-2 text-xs font-normal text-amber-600">(locked)</span>
+          )}
+        </legend>
         <div className="mt-2 grid grid-cols-2 gap-3">
           {(['single', 'multi'] as const).map((k) => {
             const checked = kind === k
@@ -106,7 +127,10 @@ export function NewPollForm() {
               <label
                 key={k}
                 className={
-                  'cursor-pointer rounded-md border px-3 py-2 text-sm transition-colors ' +
+                  'rounded-md border px-3 py-2 text-sm transition-colors ' +
+                  (hasVotes
+                    ? 'cursor-not-allowed opacity-60 '
+                    : 'cursor-pointer ') +
                   (checked
                     ? 'border-blue-500 bg-blue-50 ring-1 ring-blue-500'
                     : 'border-gray-300 hover:bg-gray-50')
@@ -117,7 +141,8 @@ export function NewPollForm() {
                   name="kind"
                   value={k}
                   checked={checked}
-                  onChange={() => setKind(k)}
+                  onChange={() => !hasVotes && setKind(k)}
+                  disabled={hasVotes}
                   className="mr-2"
                 />
                 <span className="font-medium text-gray-900">
@@ -134,7 +159,7 @@ export function NewPollForm() {
         </div>
       </fieldset>
 
-      {kind === 'multi' ? (
+      {kind === 'multi' && !hasVotes ? (
         <div>
           <label htmlFor="max_selections" className="block text-sm font-medium text-gray-700">
             Max selections{' '}
@@ -157,10 +182,14 @@ export function NewPollForm() {
       ) : null}
 
       <fieldset>
-        <legend className="text-sm font-medium text-gray-700">Options</legend>
+        <legend className="text-sm font-medium text-gray-700">
+          Options
+          {hasVotes && (
+            <span className="ml-2 text-xs font-normal text-amber-600">(locked)</span>
+          )}
+        </legend>
         <p className="mt-1 text-xs text-gray-500">
-          Add 2–{POLL_OPTION_MAX} answer choices. Voters see them in the order
-          below.
+          Add 2–{POLL_OPTION_MAX} answer choices. Voters see them in the order below.
         </p>
         <ul className="mt-2 space-y-2">
           {options.map((value, i) => (
@@ -172,16 +201,20 @@ export function NewPollForm() {
                 type="text"
                 name="option"
                 value={value}
-                onChange={(e) => updateOption(i, e.target.value)}
+                onChange={(e) => !hasVotes && updateOption(i, e.target.value)}
+                readOnly={hasVotes}
                 placeholder={`Option ${i + 1}`}
                 maxLength={POLL_OPTION_LABEL_MAX}
                 required={i < 2}
-                className="flex-1 rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                className={
+                  'flex-1 rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500' +
+                  (hasVotes ? ' cursor-not-allowed bg-gray-50 opacity-60' : '')
+                }
               />
               <button
                 type="button"
                 onClick={() => removeOption(i)}
-                disabled={options.length <= 2}
+                disabled={options.length <= 2 || hasVotes}
                 className="rounded-md border border-gray-300 px-2 py-1 text-xs font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-30"
                 aria-label={`Remove option ${i + 1}`}
               >
@@ -193,19 +226,25 @@ export function NewPollForm() {
         <button
           type="button"
           onClick={addOption}
-          disabled={options.length >= POLL_OPTION_MAX}
+          disabled={options.length >= POLL_OPTION_MAX || hasVotes}
           className="mt-2 rounded-md border border-dashed border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-50"
         >
           + Add option
         </button>
       </fieldset>
 
-      <label className="flex items-start gap-3 rounded-md border border-gray-200 px-3 py-2 text-sm">
+      <label
+        className={
+          'flex items-start gap-3 rounded-md border border-gray-200 px-3 py-2 text-sm' +
+          (hasVotes ? ' cursor-not-allowed opacity-60' : '')
+        }
+      >
         <input
           type="checkbox"
           name="allow_other"
           checked={allowOther}
-          onChange={(e) => setAllowOther(e.target.checked)}
+          onChange={(e) => !hasVotes && setAllowOther(e.target.checked)}
+          disabled={hasVotes}
           className="mt-1"
         />
         <span>
@@ -218,7 +257,12 @@ export function NewPollForm() {
       </label>
 
       <fieldset>
-        <legend className="text-sm font-medium text-gray-700">Result visibility</legend>
+        <legend className="text-sm font-medium text-gray-700">
+          Result visibility
+          {hasVotes && (
+            <span className="ml-2 text-xs font-normal text-amber-600">(locked)</span>
+          )}
+        </legend>
         <div className="mt-2 grid grid-cols-2 gap-3">
           {(['public', 'sensitive'] as const).map((v) => {
             const checked = visibility === v
@@ -226,7 +270,10 @@ export function NewPollForm() {
               <label
                 key={v}
                 className={
-                  'cursor-pointer rounded-md border px-3 py-2 text-sm transition-colors ' +
+                  'rounded-md border px-3 py-2 text-sm transition-colors ' +
+                  (hasVotes
+                    ? 'cursor-not-allowed opacity-60 '
+                    : 'cursor-pointer ') +
                   (checked
                     ? 'border-blue-500 bg-blue-50 ring-1 ring-blue-500'
                     : 'border-gray-300 hover:bg-gray-50')
@@ -237,7 +284,8 @@ export function NewPollForm() {
                   name="visibility"
                   value={v}
                   checked={checked}
-                  onChange={() => setVisibility(v)}
+                  onChange={() => !hasVotes && setVisibility(v)}
+                  disabled={hasVotes}
                   className="mr-2"
                 />
                 <span className="font-medium text-gray-900">
@@ -267,10 +315,6 @@ export function NewPollForm() {
           onChange={(e) => setClosesAt(e.target.value)}
           className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
         />
-        <p className="mt-1 text-xs text-gray-500">
-          Defaults to 7 days from now. You can also close the poll manually before
-          this time.
-        </p>
       </div>
 
       {state && !state.ok ? (
@@ -279,7 +323,7 @@ export function NewPollForm() {
 
       <div className="flex justify-end gap-3">
         <Link
-          href="/polls"
+          href={`/admin/polls/${poll.id}`}
           className="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
         >
           Cancel
@@ -289,7 +333,7 @@ export function NewPollForm() {
           disabled={pending}
           className="rounded-md bg-blue-600 px-6 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
         >
-          {pending ? 'Creating…' : 'Create poll'}
+          {pending ? 'Saving…' : 'Save changes'}
         </button>
       </div>
     </form>

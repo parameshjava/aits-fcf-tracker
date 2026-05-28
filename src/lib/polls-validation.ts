@@ -149,6 +149,60 @@ export function validatePollCreate(input: {
   }
 }
 
+export type PollUpdateLightInput = {
+  question: string
+  description: string | null
+  closes_at: string
+}
+
+/**
+ * Light validator for descriptive-only poll updates (used when votes have
+ * already been cast). Only question, description, and closes_at are mutable
+ * in that path — kind/visibility/options are immutable to preserve vote
+ * integrity.
+ */
+export function validatePollUpdateLight(input: {
+  question: unknown
+  description?: unknown
+  closes_at: unknown
+  now?: Date
+}): ValidationResult<PollUpdateLightInput> {
+  const question = typeof input.question === 'string' ? input.question.trim() : ''
+  if (question.length < POLL_QUESTION_MIN || question.length > POLL_QUESTION_MAX) {
+    return fail(
+      `Question must be ${POLL_QUESTION_MIN}–${POLL_QUESTION_MAX} characters`,
+      'question',
+    )
+  }
+
+  const descriptionRaw = typeof input.description === 'string' ? input.description.trim() : ''
+  if (descriptionRaw.length > POLL_DESCRIPTION_MAX) {
+    return fail(`Description must be ≤ ${POLL_DESCRIPTION_MAX} characters`, 'description')
+  }
+  const description = descriptionRaw === '' ? null : descriptionRaw
+
+  if (typeof input.closes_at !== 'string' || input.closes_at.trim() === '') {
+    return fail('Closing time is required', 'closes_at')
+  }
+  const closesAt = new Date(input.closes_at)
+  if (!Number.isFinite(closesAt.getTime())) {
+    return fail('Closing time is invalid', 'closes_at')
+  }
+  const now = input.now ?? new Date()
+  if (closesAt.getTime() <= now.getTime()) {
+    return fail('Closing time must be in the future', 'closes_at')
+  }
+
+  return {
+    ok: true,
+    value: {
+      question,
+      description,
+      closes_at: closesAt.toISOString(),
+    },
+  }
+}
+
 export type VoteInput = {
   poll_id: string
   option_ids: string[]

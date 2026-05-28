@@ -9,6 +9,7 @@ import {
 } from '@/lib/poll-format'
 import { PollResultsView } from '../../../polls/[id]/poll-results'
 import { ClosePollButton } from './close-poll-button'
+import { MarkdownView } from '@/components/markdown-view'
 
 export default async function AdminPollDetailPage({
   params,
@@ -37,7 +38,9 @@ export default async function AdminPollDetailPage({
         </Link>
         <h1 className="mt-1 text-lg font-semibold text-gray-900">{poll.question}</h1>
         {poll.description ? (
-          <p className="mt-1 whitespace-pre-line text-sm text-gray-600">{poll.description}</p>
+          <div className="mt-2">
+            <MarkdownView source={poll.description} />
+          </div>
         ) : null}
         <p className="mt-2 text-xs text-gray-500">
           <span className="font-medium uppercase tracking-wide">
@@ -53,12 +56,22 @@ export default async function AdminPollDetailPage({
           })}
         </p>
       </div>
-      <Link
-        href={`/polls/${poll.id}`}
-        className="rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700"
-      >
-        Go vote →
-      </Link>
+      <div className="flex items-center gap-2">
+        {!poll.is_closed && (
+          <Link
+            href={`/admin/polls/${poll.id}/edit`}
+            className="rounded-md border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
+          >
+            Edit poll
+          </Link>
+        )}
+        <Link
+          href={`/polls/${poll.id}`}
+          className="rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700"
+        >
+          Go vote →
+        </Link>
+      </div>
     </header>
   )
 
