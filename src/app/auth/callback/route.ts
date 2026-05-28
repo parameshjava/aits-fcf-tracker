@@ -1,10 +1,12 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { isSafeNextPath } from '@/lib/auth-redirect'
 
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url)
   const code = searchParams.get('code')
-  const next = searchParams.get('next') ?? '/dashboard'
+  const rawNext = searchParams.get('next')
+  const next = isSafeNextPath(rawNext) ? rawNext : '/dashboard'
 
   // Provider may also surface an error directly on the callback URL
   // (e.g. when our Before-User-Created hook rejects the email).

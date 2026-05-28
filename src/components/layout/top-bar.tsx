@@ -3,6 +3,7 @@
 import Image from 'next/image'
 import { useEffect, useRef, useState } from 'react'
 import { signOut } from '@/lib/actions/auth'
+import { ShareLinkButton } from './share-link-button'
 
 type Props = {
   fullName: string | null
@@ -63,6 +64,7 @@ export function TopBar({ fullName, email, avatarUrl }: Props) {
         </div>
 
         <div className="flex flex-shrink-0 items-center gap-2">
+          <ShareLinkButton />
           <div className="relative" ref={menuRef}>
           <button
             type="button"
