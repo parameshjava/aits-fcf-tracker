@@ -8,7 +8,7 @@ import { RefreshButton } from '@/components/ui/refresh-button'
 import { MarkdownEditor, type MarkdownEditorMode } from '@/components/markdown-editor'
 import { MarkdownView } from '@/components/markdown-view'
 import { Button } from '@/components/ui/button'
-import { refreshAttendeeNotes, saveAttendeeNotes, setAttendance, updateAgenda } from '@/lib/actions/meetings'
+import { refreshAttendeeNotes, reshuffleAttendees, saveAttendeeNotes, setAttendance, updateAgenda } from '@/lib/actions/meetings'
 import type { MeetingDetail } from '@/lib/actions/meetings-reads'
 
 type Props = {
@@ -25,6 +25,15 @@ export function CapturePage({ meeting }: Props) {
   const [pending, startTransition] = useTransition()
   const [agendaEditing, setAgendaEditing] = useState(false)
   const [agendaDraft, setAgendaDraft] = useState(meeting.agenda_md ?? '')
+  const [shufflePending, setShufflePending] = useState(false)
+
+  // Present members first, then absent — both groups stay in their (randomized)
+  // position order. Display copy of the list; underlying meeting.attendees is
+  // untouched.
+  const sortedAttendees = [...meeting.attendees].sort((a, b) => {
+    if (a.attended !== b.attended) return a.attended ? -1 : 1
+    return a.position - b.position
+  })
 
   async function refreshMember(memberId: string, memberName: string) {
     const fd = new FormData()
@@ -81,6 +90,25 @@ export function CapturePage({ meeting }: Props) {
       router.refresh()
     } else {
       toast.error("Couldn't save agenda", { description: res.error })
+    }
+  }
+
+  async function handleReshuffle() {
+    setShufflePending(true)
+    try {
+      const fd = new FormData()
+      fd.set('id', meeting.id)
+      const res = await reshuffleAttendees(fd)
+      if (res.ok) {
+        toast.success('Attendees reshuffled', {
+          description: 'New random order applied for everyone.',
+        })
+        router.refresh()
+      } else {
+        toast.error("Couldn't shuffle", { description: res.error })
+      }
+    } finally {
+      setShufflePending(false)
     }
   }
 
@@ -156,8 +184,19 @@ export function CapturePage({ meeting }: Props) {
       </div>
 
       <div className="rounded-lg border border-gray-200 bg-white px-4 py-3 text-xs text-gray-700">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-2">
           <span className="font-semibold">{captured} / {total} captured</span>
+          {meeting.status === 'open' && (
+            <Button
+              type="button"
+              variant="outline"
+              size="xs"
+              onClick={handleReshuffle}
+              disabled={shufflePending}
+            >
+              {shufflePending ? 'Shuffling…' : 'Shuffle order'}
+            </Button>
+          )}
         </div>
         <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-gray-200">
           <div className="h-full bg-blue-600" style={{ width: `${total === 0 ? 0 : (captured / total) * 100}%` }} />
@@ -165,7 +204,7 @@ export function CapturePage({ meeting }: Props) {
       </div>
 
       <div className="space-y-2">
-        {meeting.attendees.map((a) => {
+        {sortedAttendees.map((a) => {
           const isActive = activeMemberId === a.member_id
           const hasNotes = a.notes_md != null
           const mode = modeByMember[a.member_id] ?? 'split'

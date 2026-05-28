@@ -445,3 +445,44 @@ export async function setAttendance(
     )
   })
 }
+
+export async function reshuffleAttendees(
+  formData: FormData,
+): Promise<ActionResult<{ meetingId: string }>> {
+  return runAction('reshuffleAttendees', async () => {
+    const user = await getCurrentUser()
+    if (!user || user.profile?.role !== 'admin') return actionError('Unauthorized')
+
+    const id = String(formData.get('id') ?? '').trim()
+    if (!id) return actionError('Missing meeting id')
+
+    const supabase = await createClient()
+
+    const { data: rows, error: fetchErr } = await supabase
+      .from('meeting_attendees')
+      .select('member_id')
+      .eq('meeting_id', id)
+    if (fetchErr) return actionError(fetchErr.message)
+
+    const memberIds = (rows ?? []).map((r) => r.member_id as string)
+    if (memberIds.length === 0) return actionError('No attendees to shuffle')
+
+    const newSeed = Math.floor(Math.random() * 2_000_000_000)
+    const shuffled = seededShuffle(memberIds, newSeed)
+
+    const { error: seedErr } = await supabase
+      .from('meetings')
+      .update({ random_seed: newSeed })
+      .eq('id', id)
+    if (seedErr) return actionError(seedErr.message)
+
+    const { error: rpcErr } = await supabase.rpc('reshuffle_meeting_attendees', {
+      p_meeting_id: id,
+      p_member_order: shuffled,
+    })
+    if (rpcErr) return actionError(rpcErr.message)
+
+    invalidate(id)
+    return actionOk({ meetingId: id }, 'Attendees reshuffled')
+  })
+}
