@@ -14,6 +14,7 @@ import {
   validateMeetingCreate,
   validateNotes,
   validateAgenda,
+  validateAttendedFlag,
 } from '@/lib/meetings-validation'
 import { seededShuffle } from '@/lib/shuffle'
 import { toggleCheckboxAt } from '@/lib/action-items'
@@ -412,5 +413,35 @@ export async function updateAgenda(
 
     invalidate(id)
     return actionOk({ meetingId: id }, 'Agenda saved')
+  })
+}
+
+export async function setAttendance(
+  formData: FormData,
+): Promise<ActionResult<{ memberId: string; attended: boolean }>> {
+  return runAction('setAttendance', async () => {
+    const user = await getCurrentUser()
+    if (!user || user.profile?.role !== 'admin') return actionError('Unauthorized')
+
+    const meetingId = String(formData.get('meeting_id') ?? '').trim()
+    const memberId  = String(formData.get('member_id')  ?? '').trim()
+    if (!meetingId || !memberId) return actionError('Missing ids')
+
+    const v = validateAttendedFlag(formData.get('attended'))
+    if (!v.ok) return actionError(v.error, 'attended')
+
+    const supabase = await createClient()
+    const { error } = await supabase
+      .from('meeting_attendees')
+      .update({ attended: v.value })
+      .eq('meeting_id', meetingId)
+      .eq('member_id', memberId)
+    if (error) return actionError(error.message)
+
+    invalidate(meetingId)
+    return actionOk(
+      { memberId, attended: v.value },
+      v.value ? 'Marked present' : 'Marked absent',
+    )
   })
 }
