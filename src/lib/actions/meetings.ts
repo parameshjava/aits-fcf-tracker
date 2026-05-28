@@ -52,13 +52,22 @@ export async function createMeeting(
     const v = validateMeetingCreate({
       title: formData.get('title'),
       meeting_date: formData.get('meeting_date'),
-      attendee_ids: formData.getAll('attendee_ids'),
       linked_poll_id: formData.get('linked_poll_id'),
       agenda_md: formData.get('agenda_md'),
     })
     if (!v.ok) return actionError(v.error, v.field)
 
     const supabase = await createClient()
+
+    // Auto-invite every canonical member as a present attendee. Admin manages
+    // actual presence on the capture page via per-row Present toggles.
+    const { data: memberRows, error: memErr } = await supabase
+      .from('members')
+      .select('id')
+    if (memErr) return actionError(memErr.message)
+    const memberIds = (memberRows ?? []).map((m) => m.id as string)
+    if (memberIds.length === 0) return actionError('No members found to invite')
+
     const random_seed = Math.floor(Math.random() * 0x7fffffff)
 
     const { data: meeting, error: mErr } = await supabase
@@ -75,7 +84,7 @@ export async function createMeeting(
       .single()
     if (mErr) return actionError(mErr.message)
 
-    const ordered = seededShuffle(v.value.attendee_ids, random_seed)
+    const ordered = seededShuffle(memberIds, random_seed)
     const rows = ordered.map((member_id, idx) => ({
       meeting_id: meeting.id,
       member_id,

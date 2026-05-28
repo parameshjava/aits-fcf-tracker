@@ -5,7 +5,6 @@ export type Validated<T> =
 export type MeetingCreateInput = {
   title: string
   meeting_date: string
-  attendee_ids: string[]
   linked_poll_id: string | null
   agenda_md: string | null
 }
@@ -30,17 +29,6 @@ export function validateMeetingCreate(
     return { ok: false, error: 'Pick a valid date', field: 'meeting_date' }
   }
 
-  const rawIds = Array.isArray(r.attendee_ids) ? r.attendee_ids : []
-  const attendee_ids = Array.from(new Set(rawIds.map((x) => String(x).trim()).filter(Boolean)))
-  if (attendee_ids.length === 0) {
-    return { ok: false, error: 'Pick at least one attendee', field: 'attendees' }
-  }
-  for (const id of attendee_ids) {
-    if (!UUID_RE.test(id)) {
-      return { ok: false, error: 'Invalid attendee id', field: 'attendees' }
-    }
-  }
-
   const linkedRaw = r.linked_poll_id
   let linked_poll_id: string | null = null
   if (linkedRaw && String(linkedRaw).trim()) {
@@ -61,7 +49,7 @@ export function validateMeetingCreate(
     agenda_md = a.trim().length === 0 ? null : a
   }
 
-  return { ok: true, value: { title, meeting_date, attendee_ids, linked_poll_id, agenda_md } }
+  return { ok: true, value: { title, meeting_date, linked_poll_id, agenda_md } }
 }
 
 export function validateNotes(raw: unknown): Validated<string | null> {

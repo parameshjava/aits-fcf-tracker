@@ -27,11 +27,14 @@ export function CapturePage({ meeting }: Props) {
   const [agendaDraft, setAgendaDraft] = useState(meeting.agenda_md ?? '')
   const [shufflePending, setShufflePending] = useState(false)
 
-  // Present members first, then absent — both groups stay in their (randomized)
-  // position order. Display copy of the list; underlying meeting.attendees is
-  // untouched.
+  // Display order: present-without-notes (top, next person to capture) →
+  // present-with-notes-saved (middle) → absent (bottom). Within each bucket,
+  // attendees keep their randomized position order.
   const sortedAttendees = [...meeting.attendees].sort((a, b) => {
-    if (a.attended !== b.attended) return a.attended ? -1 : 1
+    const bucket = (x: typeof a) => (!x.attended ? 3 : x.notes_md == null ? 1 : 2)
+    const ba = bucket(a)
+    const bb = bucket(b)
+    if (ba !== bb) return ba - bb
     return a.position - b.position
   })
 
@@ -307,7 +310,12 @@ export function CapturePage({ meeting }: Props) {
                     <button
                       type="button"
                       disabled={pending}
-                      onClick={() => void saveActive()}
+                      onClick={() => {
+                        void (async () => {
+                          const ok = await saveActive()
+                          if (ok) setActiveMemberId(null)
+                        })()
+                      }}
                       className="rounded-md bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
                     >
                       {pending ? 'Saving…' : 'Save notes'}

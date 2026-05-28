@@ -11,7 +11,6 @@ describe('validateMeetingCreate', () => {
     const r = validateMeetingCreate({
       title: '   ',
       meeting_date: '2026-05-27',
-      attendee_ids: ['m1'],
       linked_poll_id: null,
     })
     expect(r.ok).toBe(false)
@@ -22,53 +21,38 @@ describe('validateMeetingCreate', () => {
     const r = validateMeetingCreate({
       title: 'ab',
       meeting_date: '2026-05-27',
-      attendee_ids: ['m1'],
       linked_poll_id: null,
     })
     expect(r.ok).toBe(false)
-  })
-
-  it('rejects empty attendees list', () => {
-    const r = validateMeetingCreate({
-      title: 'Fund rules review',
-      meeting_date: '2026-05-27',
-      attendee_ids: [],
-      linked_poll_id: null,
-    })
-    expect(r.ok).toBe(false)
-    if (!r.ok) expect(r.field).toBe('attendees')
   })
 
   it('rejects invalid date', () => {
     const r = validateMeetingCreate({
       title: 'OK title',
       meeting_date: 'nope',
-      attendee_ids: ['m1'],
       linked_poll_id: null,
     })
     expect(r.ok).toBe(false)
     if (!r.ok) expect(r.field).toBe('meeting_date')
   })
 
-  it('deduplicates attendee ids', () => {
-    const r = validateMeetingCreate({
-      title: 'OK title',
-      meeting_date: '2026-05-27',
-      attendee_ids: ['11111111-1111-1111-1111-111111111111','11111111-1111-1111-1111-111111111111','22222222-2222-2222-2222-222222222222'],
-      linked_poll_id: null,
-    })
-    expect(r.ok).toBe(true)
-    if (r.ok) expect(r.value.attendee_ids).toEqual(['11111111-1111-1111-1111-111111111111','22222222-2222-2222-2222-222222222222'])
-  })
-
   it('passes a well-formed payload', () => {
     const r = validateMeetingCreate({
       title: 'Fund rules review',
       meeting_date: '2026-05-27',
-      attendee_ids: ['11111111-1111-1111-1111-111111111111','22222222-2222-2222-2222-222222222222'],
       linked_poll_id: '33333333-3333-3333-3333-333333333333',
     })
     expect(r.ok).toBe(true)
+  })
+
+  it('rejects an invalid linked_poll_id', () => {
+    const r = validateMeetingCreate({
+      title: 'OK title',
+      meeting_date: '2026-05-27',
+      linked_poll_id: 'not-a-uuid',
+    })
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.field).toBe('linked_poll_id')
   })
 })
 
@@ -96,7 +80,6 @@ describe('validateMeetingCreate with agenda', () => {
     const r = validateMeetingCreate({
       title: 'OK title',
       meeting_date: '2026-05-27',
-      attendee_ids: ['11111111-1111-1111-1111-111111111111'],
       linked_poll_id: null,
       agenda_md: null,
     })
@@ -108,7 +91,6 @@ describe('validateMeetingCreate with agenda', () => {
     const r = validateMeetingCreate({
       title: 'OK title',
       meeting_date: '2026-05-27',
-      attendee_ids: ['11111111-1111-1111-1111-111111111111'],
       linked_poll_id: null,
       agenda_md: '# Topics\n1. Item one',
     })
@@ -120,7 +102,6 @@ describe('validateMeetingCreate with agenda', () => {
     const r = validateMeetingCreate({
       title: 'OK title',
       meeting_date: '2026-05-27',
-      attendee_ids: ['11111111-1111-1111-1111-111111111111'],
       linked_poll_id: null,
       agenda_md: 'a'.repeat(10_001),
     })

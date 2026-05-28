@@ -4,18 +4,16 @@ import { useActionState, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { createMeeting } from '@/lib/actions/meetings'
-import { AttendeePicker, type AttendeeOption } from './attendee-picker'
 import { MarkdownEditor } from '@/components/markdown-editor'
 
 type PollOption = { id: string; question: string; status: 'open' | 'closed'; closes_at: string }
 
 type Props = {
-  members: AttendeeOption[]
   polls: PollOption[]
   defaultDate: string
 }
 
-export function NewMeetingForm({ members, polls, defaultDate }: Props) {
+export function NewMeetingForm({ polls, defaultDate }: Props) {
   const router = useRouter()
   const [state, formAction, pending] = useActionState(
     async (_prev: unknown, fd: FormData) => createMeeting(fd),
@@ -108,8 +106,10 @@ export function NewMeetingForm({ members, polls, defaultDate }: Props) {
         )}
       </div>
 
-      <AttendeePicker members={members} />
-      {errFor('attendees') && <p className="mt-1 text-xs text-red-600">{errFor('attendees')}</p>}
+      <div className="rounded-md border border-dashed border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-600">
+        All members will be added as attendees. Mark people absent on the
+        capture page once the meeting starts.
+      </div>
 
       {state && !state.ok && !state.field && (
         <p className="text-xs text-red-600">{state.error}</p>
