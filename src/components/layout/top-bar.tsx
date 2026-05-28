@@ -34,7 +34,7 @@ export function TopBar({ fullName, email, avatarUrl }: Props) {
           Title + breadcrumb now live in Row 2 below, so the logo can
           occupy the full middle slot without anything competing for
           horizontal space. */}
-      <div className="mx-auto flex h-24 max-w-7xl items-center gap-4 px-4 lg:px-8">
+      <div className="mx-auto flex h-24 items-center gap-4 px-4 lg:px-8">
         <button
           type="button"
           onClick={() => window.dispatchEvent(new CustomEvent('sidebar:open'))}
@@ -54,9 +54,9 @@ export function TopBar({ fullName, email, avatarUrl }: Props) {
             TopBar). */}
         <div className="hidden min-w-0 flex-1 self-stretch overflow-hidden sm:block">
           <Image
-            src="/fcf-banner-3000x500.png"
+            src="/fcf-banner-3000x500-girl-exact.png"
             alt="Friends Cooperative Fund"
-            width={3000}
+            width={5000}
             height={500}
             priority
             className="h-full w-full rounded-md object-cover object-center"
