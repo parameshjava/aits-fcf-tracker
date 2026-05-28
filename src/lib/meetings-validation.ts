@@ -7,6 +7,7 @@ export type MeetingCreateInput = {
   meeting_date: string
   attendee_ids: string[]
   linked_poll_id: string | null
+  agenda_md: string | null
 }
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -50,7 +51,17 @@ export function validateMeetingCreate(
     linked_poll_id = v
   }
 
-  return { ok: true, value: { title, meeting_date, attendee_ids, linked_poll_id } }
+  const agendaRaw = r.agenda_md
+  let agenda_md: string | null = null
+  if (agendaRaw != null) {
+    const a = String(agendaRaw)
+    if (a.length > 10_000) {
+      return { ok: false, error: 'Agenda is too long (max 10000 chars)', field: 'agenda_md' }
+    }
+    agenda_md = a.trim().length === 0 ? null : a
+  }
+
+  return { ok: true, value: { title, meeting_date, attendee_ids, linked_poll_id, agenda_md } }
 }
 
 export function validateNotes(raw: unknown): Validated<string | null> {
@@ -60,4 +71,18 @@ export function validateNotes(raw: unknown): Validated<string | null> {
   }
   const trimmed = s.trim()
   return { ok: true, value: trimmed.length === 0 ? null : s }
+}
+
+export function validateAgenda(raw: unknown): Validated<string | null> {
+  const s = raw == null ? '' : String(raw)
+  if (s.length > 10_000) {
+    return { ok: false, error: 'Agenda is too long (max 10000 chars)' }
+  }
+  return { ok: true, value: s.trim().length === 0 ? null : s }
+}
+
+export function validateAttendedFlag(raw: unknown): Validated<boolean> {
+  if (raw === 'true')  return { ok: true, value: true }
+  if (raw === 'false') return { ok: true, value: false }
+  return { ok: false, error: 'attended must be the string "true" or "false"' }
 }
