@@ -7,6 +7,7 @@ import { formatPollDateTime, describePollDeadline } from '@/lib/poll-format'
 import { VoteForm } from './vote-form'
 import { PollResultsView } from './poll-results'
 import { MarkdownView } from '@/components/markdown-view'
+import { SharePollButton } from '@/components/share-poll-button'
 
 export default async function PollDetailPage({
   params,
@@ -50,14 +51,17 @@ export default async function PollDetailPage({
           })}
         </p>
       </div>
-      {isAdmin ? (
-        <Link
-          href={`/admin/polls/${poll.id}`}
-          className="rounded-md border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
-        >
-          Manage poll
-        </Link>
-      ) : null}
+      <div className="flex items-center gap-2">
+        <SharePollButton pollId={poll.id} />
+        {isAdmin ? (
+          <Link
+            href={`/admin/polls/${poll.id}`}
+            className="rounded-md border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
+          >
+            Manage poll
+          </Link>
+        ) : null}
+      </div>
     </header>
   )
 
