@@ -3,10 +3,10 @@
 --
 -- Reassigns positions 1..N to every attendee of a meeting in the order given
 -- by p_member_order. The (meeting_id, position) unique constraint is not
--- deferrable, so we use a two-pass update: negate every existing position
--- (still unique, so no constraint violation), then assign new positive
--- positions from the input ordering. Wrapped in a single transaction so a
--- failure mid-way leaves the table untouched.
+-- deferrable, so we use a two-pass update: bump every existing position by a
+-- large offset (still unique, still ≥ 1, so neither the unique constraint
+-- nor the CHECK (position >= 1) from migration 026 is violated), then assign
+-- new positions 1..N from the input ordering.
 -- =============================================================================
 
 begin;
@@ -32,10 +32,12 @@ begin
       v_attendee_count, coalesce(array_length(p_member_order, 1), 0);
   end if;
 
-  -- Pass 1: move all positions to negative space. -1, -2, … stay mutually
-  -- unique, so the (meeting_id, position) constraint is satisfied.
+  -- Pass 1: offset every position into a high range. Originals 1..N become
+  -- 1_000_001..1_000_000+N — still unique, still ≥ 1 (so the position_check
+  -- constraint is satisfied), and guaranteed not to collide with the final
+  -- 1..N values we assign in pass 2.
   update public.meeting_attendees
-     set position = -position
+     set position = position + 1000000
    where meeting_id = p_meeting_id;
 
   -- Pass 2: assign new positions from the input ordering.
