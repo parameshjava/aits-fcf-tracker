@@ -13,6 +13,7 @@ import {
 import {
   validateMeetingCreate,
   validateNotes,
+  validateAgenda,
 } from '@/lib/meetings-validation'
 import { seededShuffle } from '@/lib/shuffle'
 import { toggleCheckboxAt } from '@/lib/action-items'
@@ -386,5 +387,30 @@ export async function refreshAttendeeNotes(
 
     invalidate(meetingId)
     return actionOk({ notes_md: (data?.notes_md as string | null) ?? null })
+  })
+}
+
+export async function updateAgenda(
+  formData: FormData,
+): Promise<ActionResult<{ meetingId: string }>> {
+  return runAction('updateAgenda', async () => {
+    const user = await getCurrentUser()
+    if (!user || user.profile?.role !== 'admin') return actionError('Unauthorized')
+
+    const id = String(formData.get('id') ?? '').trim()
+    if (!id) return actionError('Missing meeting id')
+
+    const v = validateAgenda(formData.get('agenda_md'))
+    if (!v.ok) return actionError(v.error, 'agenda_md')
+
+    const supabase = await createClient()
+    const { error } = await supabase
+      .from('meetings')
+      .update({ agenda_md: v.value })
+      .eq('id', id)
+    if (error) return actionError(error.message)
+
+    invalidate(id)
+    return actionOk({ meetingId: id }, 'Agenda saved')
   })
 }
