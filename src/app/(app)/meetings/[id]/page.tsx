@@ -4,6 +4,7 @@ import { getMeeting } from '@/lib/actions/meetings-reads'
 import { createClient } from '@/lib/supabase/server'
 import { ActionItemsPanel } from '@/components/action-items-panel'
 import { LinkedPollModal } from '@/components/linked-poll-modal'
+import { MarkdownView } from '@/components/markdown-view'
 import { ConsolidatedView } from './consolidated-view'
 
 async function resolveViewerMemberId(email: string | undefined): Promise<string | null> {
@@ -30,18 +31,32 @@ export default async function MeetingDetailPage(
   const viewerMemberId = await resolveViewerMemberId(user.email)
   const isAdmin = user.profile?.role === 'admin'
 
+  const present = meeting.attendees.filter((a) => a.attended)
+  const absent  = meeting.attendees.filter((a) => !a.attended)
+
   return (
     <div className="mx-auto max-w-4xl space-y-3 px-4 py-6 sm:px-6">
+      {/* Section 1 — Header card */}
       <div className="rounded-lg border border-gray-200 bg-white px-4 py-3">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <h1 className="text-lg font-semibold text-gray-900">{meeting.title}</h1>
             <div className="mt-1 text-xs text-gray-500">
-              {meeting.meeting_date} · {meeting.attendee_count} attendees
+              {meeting.meeting_date}
               {meeting.linked_poll && (
                 <>
                   {' · linked poll: '}
                   <LinkedPollModal poll={meeting.linked_poll} />
+                </>
+              )}
+            </div>
+            <div className="mt-2 text-xs text-gray-500">
+              Created by {meeting.created_by_member?.name ?? '—'} on{' '}
+              {new Date(meeting.created_at).toLocaleDateString('en-IN')}
+              {meeting.status === 'closed' && meeting.closed_by_member && meeting.closed_at && (
+                <>
+                  {' · Closed by '}{meeting.closed_by_member.name}{' on '}
+                  {new Date(meeting.closed_at).toLocaleDateString('en-IN')}
                 </>
               )}
             </div>
@@ -59,8 +74,43 @@ export default async function MeetingDetailPage(
         </div>
       </div>
 
-      <ConsolidatedView meeting={meeting} viewerMemberId={viewerMemberId} />
+      {/* Section 2 — Agenda card (only when agenda_md is set) */}
+      {meeting.agenda_md && (
+        <div className="rounded-lg border border-gray-200 bg-white px-4 py-3">
+          <h2 className="mb-2 text-sm font-semibold text-gray-900">Agenda</h2>
+          <MarkdownView source={meeting.agenda_md} />
+        </div>
+      )}
 
+      {/* Section 3 — Attendance card */}
+      <div className="rounded-lg border border-gray-200 bg-white px-4 py-3">
+        <h2 className="mb-2 text-sm font-semibold text-gray-900">
+          Attendance{' '}
+          <span className="font-normal text-gray-500">
+            ({present.length} present{absent.length > 0 ? ` · ${absent.length} absent` : ''})
+          </span>
+        </h2>
+        <div className="space-y-1 text-xs text-gray-700">
+          <div>
+            <span className="font-semibold text-gray-900">Present:</span>{' '}
+            {present.length > 0 ? present.map((a) => a.member_name).join(' · ') : '—'}
+          </div>
+          {absent.length > 0 && (
+            <div>
+              <span className="font-semibold text-gray-900">Absent:</span>{' '}
+              {absent.map((a) => a.member_name).join(' · ')}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Section 4 — Notes accordion (present attendees only) */}
+      <ConsolidatedView
+        meeting={{ ...meeting, attendees: present }}
+        viewerMemberId={viewerMemberId}
+      />
+
+      {/* Section 5 — Action items panel */}
       <ActionItemsPanel
         meetingId={meeting.id}
         meetingStatus={meeting.status}

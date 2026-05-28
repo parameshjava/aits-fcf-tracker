@@ -26,6 +26,14 @@ export function ConsolidatedView({ meeting, viewerMemberId }: Props) {
 
   const canEditOwn = meeting.status === 'open' && viewerMemberId != null
 
+  if (meeting.attendees.length === 0) {
+    return (
+      <div className="rounded-lg border border-dashed border-gray-300 bg-white px-4 py-6 text-center text-xs text-gray-400">
+        No notes — nobody marked present yet.
+      </div>
+    )
+  }
+
   function startEdit(memberId: string, initial: string) {
     setEditing({ memberId, value: initial })
     setOpen((prev) => ({ ...prev, [memberId]: true }))
