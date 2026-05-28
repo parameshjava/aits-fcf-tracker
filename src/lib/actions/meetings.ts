@@ -52,6 +52,7 @@ export async function createMeeting(
       meeting_date: formData.get('meeting_date'),
       attendee_ids: formData.getAll('attendee_ids'),
       linked_poll_id: formData.get('linked_poll_id'),
+      agenda_md: formData.get('agenda_md'),
     })
     if (!v.ok) return actionError(v.error, v.field)
 
@@ -65,6 +66,7 @@ export async function createMeeting(
         meeting_date: v.value.meeting_date,
         random_seed,
         linked_poll_id: v.value.linked_poll_id,
+        agenda_md: v.value.agenda_md,
         created_by: memberId,
       })
       .select('id')
