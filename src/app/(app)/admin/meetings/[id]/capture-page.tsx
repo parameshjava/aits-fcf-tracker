@@ -6,7 +6,9 @@ import { toast } from 'sonner'
 import { ExpandToggle } from '@/components/ui/expand-toggle'
 import { RefreshButton } from '@/components/ui/refresh-button'
 import { MarkdownEditor, type MarkdownEditorMode } from '@/components/markdown-editor'
-import { refreshAttendeeNotes, saveAttendeeNotes } from '@/lib/actions/meetings'
+import { MarkdownView } from '@/components/markdown-view'
+import { Button } from '@/components/ui/button'
+import { refreshAttendeeNotes, saveAttendeeNotes, setAttendance, updateAgenda } from '@/lib/actions/meetings'
 import type { MeetingDetail } from '@/lib/actions/meetings-reads'
 
 type Props = {
@@ -21,6 +23,8 @@ export function CapturePage({ meeting }: Props) {
   )
   const [modeByMember, setModeByMember] = useState<Record<string, MarkdownEditorMode>>({})
   const [pending, startTransition] = useTransition()
+  const [agendaEditing, setAgendaEditing] = useState(false)
+  const [agendaDraft, setAgendaDraft] = useState(meeting.agenda_md ?? '')
 
   async function refreshMember(memberId: string, memberName: string) {
     const fd = new FormData()
@@ -66,6 +70,34 @@ export function CapturePage({ meeting }: Props) {
     })
   }
 
+  async function saveAgenda() {
+    const fd = new FormData()
+    fd.set('id', meeting.id)
+    fd.set('agenda_md', agendaDraft)
+    const res = await updateAgenda(fd)
+    if (res.ok) {
+      toast.success('Agenda saved')
+      setAgendaEditing(false)
+      router.refresh()
+    } else {
+      toast.error("Couldn't save agenda", { description: res.error })
+    }
+  }
+
+  async function toggleAttendance(memberId: string, nextAttended: boolean) {
+    const fd = new FormData()
+    fd.set('meeting_id', meeting.id)
+    fd.set('member_id', memberId)
+    fd.set('attended', String(nextAttended))
+    const res = await setAttendance(fd)
+    if (res.ok) {
+      toast.success(nextAttended ? 'Marked present' : 'Marked absent')
+      router.refresh()
+    } else {
+      toast.error("Couldn't update attendance", { description: res.error })
+    }
+  }
+
   async function expand(memberId: string) {
     if (memberId === activeMemberId) {
       setActiveMemberId(null)
@@ -77,6 +109,52 @@ export function CapturePage({ meeting }: Props) {
 
   return (
     <div className="space-y-3">
+      <div className="rounded-lg border border-gray-200 bg-white">
+        <div className="flex items-center justify-between border-b border-gray-100 px-4 py-2">
+          <h2 className="text-sm font-semibold text-gray-900">Agenda</h2>
+          {meeting.status === 'open' && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setAgendaDraft(meeting.agenda_md ?? '')
+                setAgendaEditing((prev) => !prev)
+              }}
+            >
+              {agendaEditing ? 'Cancel' : meeting.agenda_md ? 'Edit' : 'Add agenda'}
+            </Button>
+          )}
+        </div>
+        {!agendaEditing && (
+          <div className="px-4 py-3">
+            {meeting.agenda_md ? (
+              <MarkdownView source={meeting.agenda_md} />
+            ) : (
+              <p className="py-2 text-xs text-gray-400">No agenda set.</p>
+            )}
+          </div>
+        )}
+        {agendaEditing && (
+          <div className="space-y-2 px-4 py-3">
+            <MarkdownEditor
+              value={agendaDraft}
+              onChange={setAgendaDraft}
+              mode="split"
+              minHeight={220}
+            />
+            <div className="flex justify-end gap-2">
+              <Button type="button" variant="outline" onClick={() => setAgendaEditing(false)}>
+                Cancel
+              </Button>
+              <Button type="button" onClick={saveAgenda}>
+                Save agenda
+              </Button>
+            </div>
+          </div>
+        )}
+      </div>
+
       <div className="rounded-lg border border-gray-200 bg-white px-4 py-3 text-xs text-gray-700">
         <div className="flex items-center justify-between">
           <span className="font-semibold">{captured} / {total} captured</span>
@@ -96,7 +174,8 @@ export function CapturePage({ meeting }: Props) {
               key={a.member_id}
               className={
                 'rounded-lg border bg-white ' +
-                (isActive ? 'border-blue-500 shadow-sm' : 'border-gray-200')
+                (isActive ? 'border-blue-500 shadow-sm' : 'border-gray-200') +
+                (a.attended ? '' : ' opacity-60')
               }
             >
               <div
@@ -107,8 +186,9 @@ export function CapturePage({ meeting }: Props) {
               >
                 <button
                   type="button"
+                  disabled={!a.attended}
                   onClick={() => void expand(a.member_id)}
-                  className="flex flex-1 items-center gap-3 text-left"
+                  className="flex flex-1 items-center gap-3 text-left disabled:cursor-not-allowed disabled:hover:bg-transparent"
                 >
                   <span
                     className={
@@ -124,16 +204,34 @@ export function CapturePage({ meeting }: Props) {
                   </span>
                   <span className="text-sm font-semibold text-gray-900">{a.member_name}</span>
                   <span className="text-xs text-gray-500">
-                    {hasNotes ? '✓ Notes saved' : isActive ? 'Capturing…' : 'Not yet captured'}
+                    {!a.attended
+                      ? 'Absent'
+                      : hasNotes
+                        ? '✓ Notes saved'
+                        : isActive
+                          ? 'Capturing…'
+                          : 'Not yet captured'}
                   </span>
                 </button>
-                <ExpandToggle
-                  isOpen={isActive}
-                  onClick={() => void expand(a.member_id)}
-                  controlsId={`meeting-attendee-${a.member_id}`}
-                  labelOpen={`Collapse notes for ${a.member_name}`}
-                  labelClosed={`Expand notes for ${a.member_name}`}
-                />
+                <label className="mr-2 flex items-center gap-1 text-xs text-gray-600">
+                  <input
+                    type="checkbox"
+                    checked={a.attended}
+                    onChange={(e) => toggleAttendance(a.member_id, e.target.checked)}
+                    className="h-3.5 w-3.5 rounded border-gray-300"
+                    aria-label={`Mark ${a.member_name} present`}
+                  />
+                  Present
+                </label>
+                {a.attended && (
+                  <ExpandToggle
+                    isOpen={isActive}
+                    onClick={() => void expand(a.member_id)}
+                    controlsId={`meeting-attendee-${a.member_id}`}
+                    labelOpen={`Collapse notes for ${a.member_name}`}
+                    labelClosed={`Expand notes for ${a.member_name}`}
+                  />
+                )}
               </div>
 
               {isActive && (
