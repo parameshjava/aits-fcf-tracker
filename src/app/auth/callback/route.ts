@@ -20,11 +20,11 @@ export async function GET(request: Request) {
       return NextResponse.redirect(`${origin}${next}`)
     }
     return NextResponse.redirect(
-      `${origin}/auth/login?error=${encodeURIComponent(error.message)}`,
+      `${origin}/?error=${encodeURIComponent(error.message)}`,
     )
   }
 
   return NextResponse.redirect(
-    `${origin}/auth/login?error=${encodeURIComponent(providerError ?? 'Auth failed')}`,
+    `${origin}/?error=${encodeURIComponent(providerError ?? 'Auth failed')}`,
   )
 }

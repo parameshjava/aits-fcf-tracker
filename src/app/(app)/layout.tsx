@@ -9,7 +9,7 @@ import { getMyOpenUncapturedMeetingCount } from '@/lib/actions/meetings-reads'
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
-  if (!user) redirect('/auth/login')
+  if (!user) redirect('/')
 
   const { data: profile } = await supabase
     .from('profiles')

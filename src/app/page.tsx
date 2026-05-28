@@ -1,8 +1,26 @@
 import Image from 'next/image'
 import Link from 'next/link'
+import { redirect } from 'next/navigation'
+import { createClient } from '@/lib/supabase/server'
 import { signInWithGoogle } from '@/lib/actions/auth'
+import { isSafeNextPath } from '@/lib/auth-redirect'
 
-export default function HomePage() {
+export default async function HomePage({
+  searchParams,
+}: {
+  searchParams: Promise<{ next?: string; error?: string }>
+}) {
+  const params = await searchParams
+  const next = isSafeNextPath(params.next) ? params.next : null
+
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (user) {
+    redirect(next ?? '/dashboard')
+  }
+
+  const hasError = typeof params.error === 'string' && params.error.length > 0
+
   return (
     <div className="flex min-h-screen flex-col">
       <header className="border-b bg-white">
@@ -18,10 +36,11 @@ export default function HomePage() {
             />
             <span className="text-base font-semibold text-gray-900">FCF Tracker</span>
           </Link>
-          {/* Single sign-in entry point — form action triggers the Supabase
-              OAuth server action, which 302s straight to Google's account
-              chooser. No intermediate /auth/login screen in the happy path. */}
+          {/* Single sign-in entry point for the whole app. Form action triggers
+              the Supabase OAuth server action, which 302s straight to Google's
+              account chooser. There is NO separate /auth/login route. */}
           <form action={signInWithGoogle}>
+            {next ? <input type="hidden" name="next" value={next} /> : null}
             <button
               type="submit"
               className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
@@ -31,6 +50,15 @@ export default function HomePage() {
           </form>
         </div>
       </header>
+
+      {hasError ? (
+        <div className="border-b border-red-200 bg-red-50">
+          <div className="mx-auto max-w-5xl px-6 py-3 text-sm text-red-700">
+            Your Google account is not authorized to access FCF Tracker.
+            Contact an admin if you believe this is a mistake.
+          </div>
+        </div>
+      ) : null}
 
       <main className="flex flex-1 flex-col items-center px-6 pt-10 pb-16 sm:pt-16">
         {/* Wide hero banner — natural dimensions 1935×813. Span the hero

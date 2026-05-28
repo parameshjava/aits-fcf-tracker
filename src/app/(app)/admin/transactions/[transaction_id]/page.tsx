@@ -15,7 +15,7 @@ export default async function AdminTransactionManagePage({
 }) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
-  if (!user) redirect('/auth/login')
+  if (!user) redirect('/')
 
   const { data: profile } = await supabase
     .from('profiles')

@@ -98,7 +98,7 @@ export default async function PublicPollPreviewPage(
   const poll = await loadPreviewPoll(id)
   if (!poll) notFound()
 
-  const signInHref = `/auth/login?next=${encodeURIComponent(`/polls/${id}`)}`
+  const signInHref = `/?next=${encodeURIComponent(`/polls/${id}`)}`
 
   return (
     <main className="mx-auto flex min-h-dvh max-w-xl flex-col items-stretch justify-center gap-6 px-6 py-12">

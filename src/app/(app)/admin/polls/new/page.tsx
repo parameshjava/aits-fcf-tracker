@@ -6,7 +6,7 @@ import { NewPollForm } from './new-poll-form'
 export default async function NewPollPage() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
-  if (!user) redirect('/auth/login')
+  if (!user) redirect('/')
   const { data: profile } = await supabase
     .from('profiles')
     .select('role')

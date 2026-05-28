@@ -3,7 +3,6 @@ import { type NextRequest, NextResponse } from 'next/server'
 
 const PUBLIC_PATHS = new Set<string>([
   '/',
-  '/auth/login',
   '/auth/callback',
   '/api/ping',
 ])
@@ -48,7 +47,7 @@ export async function updateSession(request: NextRequest) {
   const { pathname, search } = request.nextUrl
   if (!user && !isPublicPath(pathname)) {
     const loginUrl = request.nextUrl.clone()
-    loginUrl.pathname = '/auth/login'
+    loginUrl.pathname = '/'
     loginUrl.search = `?next=${encodeURIComponent(pathname + search)}`
     return NextResponse.redirect(loginUrl)
   }

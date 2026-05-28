@@ -5,7 +5,7 @@ import { getMeetings } from '@/lib/actions/meetings-reads'
 
 export default async function MeetingsListPage() {
   const user = await getCurrentUser()
-  if (!user) redirect('/auth/login')
+  if (!user) redirect('/')
 
   const meetings = await getMeetings()
 

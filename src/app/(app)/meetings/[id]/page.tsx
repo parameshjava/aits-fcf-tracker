@@ -23,7 +23,7 @@ export default async function MeetingDetailPage(
 ) {
   const { id } = await params
   const user = await getCurrentUser()
-  if (!user) redirect('/auth/login')
+  if (!user) redirect('/')
 
   const meeting = await getMeeting(id)
   if (!meeting) notFound()

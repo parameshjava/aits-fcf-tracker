@@ -28,7 +28,7 @@ export async function signInWithGoogle(formData?: FormData) {
   })
 
   if (error || !data.url) {
-    redirect('/auth/login?error=' + encodeURIComponent(error?.message ?? 'Google sign-in failed'))
+    redirect('/?error=' + encodeURIComponent(error?.message ?? 'Google sign-in failed'))
   }
 
   redirect(data.url)
