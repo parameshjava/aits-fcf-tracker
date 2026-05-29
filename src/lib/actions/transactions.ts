@@ -28,6 +28,8 @@ export async function createTransaction(
     const amount = parseFloat(formData.get('amount') as string)
     const transactionType = formData.get('transaction_type') as TransactionType
     const description = formData.get('description') as string
+    const bankTransactionId =
+      (formData.get('bank_transaction_id') as string | null)?.trim() || null
     const interestSourceRaw = formData.get('interest_source')
     const interestSource =
       transactionType === 'interest' && (interestSourceRaw === 'loans' || interestSourceRaw === 'bank')
@@ -76,6 +78,7 @@ export async function createTransaction(
       beneficiary_name: beneficiaryName,
       poll_id: pollId,
       description,
+      bank_transaction_id: bankTransactionId,
       created_by: user.id,
       verified_by: user.id,
     })
@@ -213,6 +216,8 @@ export async function updateTransaction(formData: FormData): Promise<ActionResul
     const amountRaw = (formData.get('amount') as string | null)?.trim()
     const transactionType = formData.get('transaction_type') as TransactionType
     const description = formData.get('description') as string | null
+    const bankTransactionId =
+      (formData.get('bank_transaction_id') as string | null)?.trim() || null
     const interestSourceRaw = formData.get('interest_source')
     const memberIdRaw = formData.get('member_id') as string | null
     const loanIdRaw = formData.get('loan_id') as string | null
@@ -254,6 +259,7 @@ export async function updateTransaction(formData: FormData): Promise<ActionResul
         beneficiary_name: beneficiaryName,
         poll_id: pollId,
         description: description?.trim() || null,
+        bank_transaction_id: bankTransactionId,
       })
       .eq('id', id)
 

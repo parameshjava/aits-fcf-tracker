@@ -11,7 +11,7 @@ import type { TransactionType } from '@/lib/constants'
 interface PendingPayment {
   id: string
   transaction_date: string
-  transaction_id: string
+  bank_transaction_id: string | null
   amount: number
   transaction_type: string
   description: string | null
@@ -67,7 +67,11 @@ export function PendingPaymentRow({
             <>
               <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-gray-500">
                 <span>{new Date(payment.transaction_date).toLocaleDateString('en-IN')}</span>
-                <span className="font-mono text-xs">{payment.transaction_id}</span>
+                {payment.bank_transaction_id && (
+                  <span className="font-mono text-xs" title="Bank reference">
+                    {payment.bank_transaction_id}
+                  </span>
+                )}
                 <span className="font-medium text-gray-900">
                   {formatRupees(payment.amount)}
                 </span>
@@ -111,12 +115,13 @@ export function PendingPaymentRow({
             <div className="grid grid-cols-1 gap-3 rounded-md border border-gray-200 bg-gray-50/40 p-3 sm:grid-cols-2">
               <div>
                 <label className="block text-xs font-medium text-gray-700">
-                  Transaction ID
+                  Bank Transaction ID
                 </label>
                 <input
-                  name="transaction_id"
+                  name="bank_transaction_id"
                   type="text"
-                  defaultValue={payment.transaction_id}
+                  defaultValue={payment.bank_transaction_id ?? ''}
+                  placeholder="UPI ref / NEFT UTR"
                   className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-2 py-1 font-mono text-xs focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                 />
               </div>

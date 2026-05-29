@@ -83,6 +83,7 @@ export default async function AdminTransactionManagePage({
           beneficiary_name: txn.beneficiary_name ?? null,
           poll_id: txn.poll_id ?? null,
           description: txn.description ?? null,
+          bank_transaction_id: txn.bank_transaction_id ?? null,
         }}
         members={members ?? []}
         loans={loans}

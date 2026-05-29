@@ -34,6 +34,7 @@ type Txn = {
   beneficiary_name: string | null
   poll_id: string | null
   description: string | null
+  bank_transaction_id: string | null
 }
 
 const TYPES_NEEDING_LOAN = new Set(['loan_repayment', 'penalty'])
@@ -253,6 +254,21 @@ export function EditTransactionForm({
             </select>
           </div>
         )}
+
+        <div className="sm:col-span-2">
+          <label htmlFor="bank_transaction_id" className="block text-xs font-medium text-gray-700">
+            Bank Transaction ID{' '}
+            <span className="font-normal text-gray-400">(optional · UPI/NEFT/cheque reference)</span>
+          </label>
+          <input
+            id="bank_transaction_id"
+            name="bank_transaction_id"
+            type="text"
+            defaultValue={txn.bank_transaction_id ?? ''}
+            className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            placeholder="e.g. UPI ref / NEFT UTR"
+          />
+        </div>
 
         <div className="sm:col-span-2">
           <label htmlFor="description" className="block text-xs font-medium text-gray-700">
