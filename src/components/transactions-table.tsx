@@ -19,6 +19,9 @@ export type TxnRow = {
   transaction_date: string
   description?: string | null
   member_name?: string | null
+  /** Bank's own transaction reference (UPI/NEFT UTR/cheque no). Distinct from
+   *  the app's auto-generated `transaction_id`. */
+  bank_transaction_id?: string | null
   /** Optional donation-only fields. Surface beneficiary text + linked
    *  approval poll on the donations section table. */
   beneficiary_name?: string | null
@@ -80,6 +83,7 @@ export function TransactionsTable({
         t.poll?.question ?? '',
         t.description ?? '',
         t.transaction_id,
+        t.bank_transaction_id ?? '',
         typeLabel(t),
         new Date(t.transaction_date).toLocaleDateString('en-IN'),
         String(t.amount),
@@ -126,30 +130,32 @@ export function TransactionsTable({
         <table className="sticky-thead min-w-full text-sm">
           <thead>
             <tr className="border-b border-gray-200 bg-gray-50/60">
-              <th scope="col" className="w-[52px] px-4 py-3"></th>
+              <th scope="col" className="w-[40px] px-3 py-2.5"></th>
               <SortableHeader
                 col="date"
                 label="Date"
                 sort={sort}
                 onToggle={toggleSort}
+                compact
               />
               <SortableHeader
                 col="member"
                 label={memberColumnLabel}
                 sort={sort}
                 onToggle={toggleSort}
+                compact
               />
               {showDonationColumns && (
                 <>
                   <th
                     scope="col"
-                    className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500"
+                    className="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-500"
                   >
                     Beneficiary
                   </th>
                   <th
                     scope="col"
-                    className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500"
+                    className="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-500"
                   >
                     Poll
                   </th>
@@ -161,21 +167,24 @@ export function TransactionsTable({
                 align="right"
                 sort={sort}
                 onToggle={toggleSort}
+                compact
               />
               <SortableHeader
                 col="txn_id"
                 label="Transaction ID"
                 sort={sort}
                 onToggle={toggleSort}
+                compact
               />
               <SortableHeader
                 col="description"
                 label="Description"
                 sort={sort}
                 onToggle={toggleSort}
+                compact
               />
               {showActions && (
-                <th scope="col" className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500">
+                <th scope="col" className="px-3 py-2.5 text-right text-[11px] font-semibold uppercase tracking-wider text-gray-500">
                   Actions
                 </th>
               )}
@@ -196,22 +205,22 @@ export function TransactionsTable({
                 const meta = TYPE_META[t.transaction_type] ?? TYPE_META.other
                 return (
                   <tr key={t.id} className="transition-colors hover:bg-gray-50">
-                    <td className="w-[52px] py-3 pl-4 pr-0">
+                    <td className="w-[40px] py-2 pl-3 pr-0">
                       <span
                         className={
-                          'grid h-9 w-9 place-items-center rounded-full text-lg ' + meta.bg
+                          'grid h-7 w-7 place-items-center rounded-full text-sm ' + meta.bg
                         }
                         aria-hidden="true"
                       >
                         {meta.emoji}
                       </span>
                     </td>
-                    <td className="whitespace-nowrap px-4 py-3 text-gray-600">
+                    <td className="whitespace-nowrap px-3 py-2 text-gray-600">
                       {new Date(t.transaction_date).toLocaleDateString('en-IN', {
                         day: '2-digit', month: 'short', year: 'numeric',
                       })}
                     </td>
-                    <td className="px-4 py-3 align-middle">
+                    <td className="px-3 py-2 align-middle">
                       <div className="text-sm font-medium text-gray-900">
                         {t.member_name ?? <span className="text-gray-400">—</span>}
                       </div>
@@ -221,10 +230,10 @@ export function TransactionsTable({
                     </td>
                     {showDonationColumns && (
                       <>
-                        <td className="px-4 py-3 align-middle text-sm text-gray-700">
+                        <td className="px-3 py-2 align-middle text-sm text-gray-700">
                           {t.beneficiary_name || <span className="text-gray-300">—</span>}
                         </td>
-                        <td className="px-4 py-3 align-middle text-sm">
+                        <td className="px-3 py-2 align-middle text-sm">
                           {t.poll ? (
                             <LoanPollModal
                               pollId={t.poll.id}
@@ -237,17 +246,22 @@ export function TransactionsTable({
                         </td>
                       </>
                     )}
-                    <td className="whitespace-nowrap px-4 py-3 text-right font-semibold tabular-nums text-gray-900">
+                    <td className="whitespace-nowrap px-3 py-2 text-right font-semibold tabular-nums text-gray-900">
                       {formatRupees(t.amount)}
                     </td>
-                    <td className="whitespace-nowrap px-4 py-3 font-mono text-xs text-gray-500">
-                      {t.transaction_id}
+                    <td className="whitespace-nowrap px-3 py-2 font-mono text-xs text-gray-500">
+                      <div>{t.transaction_id}</div>
+                      {t.bank_transaction_id && (
+                        <div className="text-[11px] text-gray-400" title="Bank reference">
+                          {t.bank_transaction_id}
+                        </div>
+                      )}
                     </td>
-                    <td className="max-w-[280px] truncate px-4 py-3 text-gray-600">
+                    <td className="max-w-[280px] truncate px-3 py-2 text-gray-600">
                       {t.description || <span className="text-gray-300">—</span>}
                     </td>
                     {showActions && (
-                      <td className="whitespace-nowrap px-4 py-3 text-right">
+                      <td className="whitespace-nowrap px-3 py-2 text-right">
                         {t.manage_href ? (
                           <a
                             href={t.manage_href}

@@ -273,6 +273,22 @@ export function NewTransactionForm({
         )}
 
         <div className="sm:col-span-2">
+          <label htmlFor="bank_transaction_id" className="block text-sm font-medium text-gray-700">
+            Bank Transaction ID
+            <span className="ml-1 text-xs font-normal text-gray-400">
+              (optional · UPI/NEFT/cheque reference)
+            </span>
+          </label>
+          <input
+            id="bank_transaction_id"
+            name="bank_transaction_id"
+            type="text"
+            className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            placeholder="e.g. UPI ref / NEFT UTR"
+          />
+        </div>
+
+        <div className="sm:col-span-2">
           <label htmlFor="description" className="block text-sm font-medium text-gray-700">
             Description (optional)
           </label>

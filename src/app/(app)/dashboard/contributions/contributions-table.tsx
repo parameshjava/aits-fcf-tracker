@@ -18,6 +18,7 @@ export type ContributionRow = {
   transaction_date: string
   description?: string | null
   member_name?: string | null
+  bank_transaction_id?: string | null
 }
 
 type SortKey = 'date' | 'member' | 'type' | 'reference' | 'amount'
@@ -50,6 +51,7 @@ export function ContributionsTable({ rows }: { rows: ContributionRow[] }) {
         r.member_name ?? '',
         typeLabel(r),
         r.transaction_id,
+        r.bank_transaction_id ?? '',
         formatDate(r.transaction_date),
         String(r.amount),
       ].join(' '),
@@ -119,7 +121,12 @@ export function ContributionsTable({ rows }: { rows: ContributionRow[] }) {
                   </td>
                   <td className="px-4 py-3 text-gray-700">{typeLabel(t)}</td>
                   <td className="whitespace-nowrap px-4 py-3 font-mono text-xs text-gray-500">
-                    {t.transaction_id}
+                    <div>{t.transaction_id}</div>
+                    {t.bank_transaction_id && (
+                      <div className="text-[11px] text-gray-400" title="Bank reference">
+                        {t.bank_transaction_id}
+                      </div>
+                    )}
                   </td>
                   <td className="whitespace-nowrap px-4 py-3 text-right font-semibold tabular-nums text-gray-900">
                     {formatRupees(t.amount)}

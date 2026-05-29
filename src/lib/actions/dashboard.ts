@@ -85,6 +85,7 @@ export type DashboardTxn = {
   created_at: string
   member_name: string | null
   member_slug: string | null
+  bank_transaction_id: string | null
 }
 
 /** One-row dashboard tile data sourced from `donation_eligibility_summary`. */

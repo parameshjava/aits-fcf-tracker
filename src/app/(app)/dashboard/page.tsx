@@ -441,6 +441,7 @@ function toTxnRow(t: DashboardTxn): TxnRow {
     transaction_date: t.transaction_date,
     description: t.description,
     member_name: t.member_name ?? null,
+    bank_transaction_id: t.bank_transaction_id ?? null,
   }
 }
 

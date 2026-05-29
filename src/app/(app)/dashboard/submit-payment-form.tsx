@@ -92,18 +92,20 @@ export function SubmitPaymentForm() {
 
           <div>
             <label
-              htmlFor="transaction_id"
+              htmlFor="bank_transaction_id"
               className="block text-sm font-medium text-gray-700"
             >
-              Transaction ID
+              Bank Transaction ID
+              <span className="ml-1 text-xs font-normal text-gray-400">
+                (optional)
+              </span>
             </label>
             <input
-              id="transaction_id"
-              name="transaction_id"
+              id="bank_transaction_id"
+              name="bank_transaction_id"
               type="text"
-              required
               className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-              placeholder="e.g., TXN-001"
+              placeholder="e.g. UPI ref / NEFT UTR"
             />
           </div>
 
