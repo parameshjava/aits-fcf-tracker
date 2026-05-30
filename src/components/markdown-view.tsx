@@ -3,6 +3,7 @@ import { Fragment, type ReactNode } from 'react'
 import Link from 'next/link'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import { rehypeTaskLine } from '@/lib/rehype-task-line'
 
 type Props = {
   source: string
@@ -80,16 +81,21 @@ export function MarkdownView({ source, className, mentions, interactiveCheckboxe
 
   if (interactiveCheckboxes) {
     components.input = ({
+      node,
       type,
       checked,
     }: {
+      node?: { properties?: Record<string, unknown> }
       type?: string
       checked?: boolean
     }) => {
       if (type === 'checkbox') {
+        // `data-line` is the 0-based source line, stamped by rehypeTaskLine, so
+        // the panel can map a click back to the exact action_items_md line.
         // Uncontrolled (defaultChecked) so an optimistic click-toggle is not
         // reverted before `source` re-renders. No `disabled` → clicks fire.
-        return <input type="checkbox" defaultChecked={Boolean(checked)} />
+        const line = node?.properties?.dataLine as number | undefined
+        return <input type="checkbox" defaultChecked={Boolean(checked)} data-line={line} />
       }
       return <input type={type} />
     }
@@ -108,6 +114,7 @@ export function MarkdownView({ source, className, mentions, interactiveCheckboxe
     >
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
+        rehypePlugins={interactiveCheckboxes ? ([rehypeTaskLine] as never) : undefined}
         components={hasComponents ? (components as never) : undefined}
       >
         {source}

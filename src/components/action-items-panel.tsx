@@ -34,19 +34,12 @@ export function ActionItemsPanel({
     if (!canToggle) return
     const target = e.target as HTMLElement
     if (target.tagName !== 'INPUT' || (target as HTMLInputElement).type !== 'checkbox') return
-    const all = (e.currentTarget.querySelectorAll('input[type=checkbox]') as NodeListOf<HTMLInputElement>)
-    const nth = Array.from(all).indexOf(target as HTMLInputElement)
-    if (nth < 0 || !source) return
-    const lines = source.split('\n')
-    let seen = -1
-    let lineIndex = -1
-    for (let i = 0; i < lines.length; i++) {
-      if (/^\s*[-*]\s+\[( |x|X)\]/.test(lines[i])) {
-        seen++
-        if (seen === nth) { lineIndex = i; break }
-      }
-    }
-    if (lineIndex < 0) return
+    // The renderer stamps each task-list checkbox with its 0-based source line
+    // (see rehypeTaskLine). Trust that rather than re-deriving the mapping with
+    // a regex, which desyncs from how remark-gfm actually renders checkboxes.
+    const lineAttr = target.dataset.line
+    const lineIndex = Number(lineAttr)
+    if (lineAttr == null || !Number.isInteger(lineIndex)) return
     const checked = (target as HTMLInputElement).checked
     startTransition(async () => {
       const fd = new FormData()

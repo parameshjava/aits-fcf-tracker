@@ -1,8 +1,10 @@
 import { describe, it, expect } from 'vitest'
-import { shapePollResults } from './poll-results'
+import { shapePollResults, rankPollOptions, pollChartSlices } from './poll-results'
+import type { PollResultsOption } from './polls-types'
 
 const OPT_A = 'opt-a'
 const OPT_B = 'opt-b'
+const OPT_C = 'opt-c'
 
 const baseOptions = [
   { option_id: OPT_A, option_label: 'Alpha', position: 1, vote_count: 3 },
@@ -115,5 +117,124 @@ describe('shapePollResults', () => {
       other_responses: [],
     })
     expect(r.options[0]?.voter_names).toEqual(['Anu', 'Bala', 'Charu'])
+  })
+})
+
+function opt(
+  option_id: string,
+  position: number,
+  vote_count: number,
+): PollResultsOption {
+  return { option_id, option_label: option_id, position, vote_count, voter_names: null }
+}
+
+describe('rankPollOptions', () => {
+  it('orders by vote count descending', () => {
+    const { ranked } = rankPollOptions([
+      opt(OPT_A, 1, 1),
+      opt(OPT_B, 2, 5),
+      opt(OPT_C, 3, 3),
+    ])
+    expect(ranked.map((o) => o.option_id)).toEqual([OPT_B, OPT_C, OPT_A])
+  })
+
+  it('breaks vote-count ties by position', () => {
+    const { ranked } = rankPollOptions([
+      opt(OPT_B, 2, 3),
+      opt(OPT_A, 1, 3),
+    ])
+    expect(ranked.map((o) => o.option_id)).toEqual([OPT_A, OPT_B])
+  })
+
+  it('marks the single top option as leading', () => {
+    const { leadingIds } = rankPollOptions([
+      opt(OPT_A, 1, 5),
+      opt(OPT_B, 2, 2),
+    ])
+    expect([...leadingIds]).toEqual([OPT_A])
+  })
+
+  it('marks every option sharing the top count as leading (tie)', () => {
+    const { leadingIds } = rankPollOptions([
+      opt(OPT_A, 1, 4),
+      opt(OPT_B, 2, 4),
+      opt(OPT_C, 3, 1),
+    ])
+    expect(leadingIds.has(OPT_A)).toBe(true)
+    expect(leadingIds.has(OPT_B)).toBe(true)
+    expect(leadingIds.has(OPT_C)).toBe(false)
+  })
+
+  it('leads nothing when there are no votes', () => {
+    const { leadingIds } = rankPollOptions([
+      opt(OPT_A, 1, 0),
+      opt(OPT_B, 2, 0),
+    ])
+    expect(leadingIds.size).toBe(0)
+  })
+
+  it('does not mutate the input array', () => {
+    const input = [opt(OPT_A, 1, 1), opt(OPT_B, 2, 5)]
+    rankPollOptions(input)
+    expect(input.map((o) => o.option_id)).toEqual([OPT_A, OPT_B])
+  })
+})
+
+const PALETTE = ['#aaa', '#bbb', '#ccc']
+
+describe('pollChartSlices', () => {
+  it('orders slices highest-votes-first', () => {
+    const s = pollChartSlices([opt(OPT_A, 1, 2), opt(OPT_B, 2, 8)], PALETTE)
+    expect(s.map((x) => x.option_id)).toEqual([OPT_B, OPT_A])
+  })
+
+  it('computes each slice as a share of all votes (sums to 100)', () => {
+    const s = pollChartSlices(
+      [opt(OPT_A, 1, 3), opt(OPT_B, 2, 1)],
+      PALETTE,
+    )
+    // 3 of 4 votes, 1 of 4 votes
+    expect(s.find((x) => x.option_id === OPT_A)?.pct).toBe(75)
+    expect(s.find((x) => x.option_id === OPT_B)?.pct).toBe(25)
+    expect(s.reduce((t, x) => t + x.pct, 0)).toBe(100)
+  })
+
+  it('assigns colors in rank order and cycles when options exceed palette', () => {
+    const s = pollChartSlices(
+      [opt(OPT_A, 1, 5), opt(OPT_B, 2, 4), opt(OPT_C, 3, 3), opt('opt-d', 4, 2)],
+      PALETTE,
+    )
+    expect(s.map((x) => x.color)).toEqual(['#aaa', '#bbb', '#ccc', '#aaa'])
+  })
+
+  it('yields 0% for every slice when there are no votes', () => {
+    const s = pollChartSlices([opt(OPT_A, 1, 0), opt(OPT_B, 2, 0)], PALETTE)
+    expect(s.every((x) => x.pct === 0)).toBe(true)
+  })
+
+  it('appends an "Other" residual slice last and counts it in the denominator', () => {
+    const s = pollChartSlices(
+      [opt(OPT_A, 1, 6), opt(OPT_B, 2, 2)],
+      PALETTE,
+      { count: 2, color: '#ggg' },
+    )
+    // total votes now 6 + 2 + 2 = 10
+    const last = s[s.length - 1]
+    expect(last?.option_id).toBe('__other__')
+    expect(last?.label).toBe('Other')
+    expect(last?.value).toBe(2)
+    expect(last?.pct).toBe(20)
+    expect(last?.color).toBe('#ggg')
+    expect(s.find((x) => x.option_id === OPT_A)?.pct).toBe(60)
+    expect(s.reduce((t, x) => t + x.pct, 0)).toBe(100)
+  })
+
+  it('omits the "Other" slice when there are no other responses', () => {
+    const s = pollChartSlices(
+      [opt(OPT_A, 1, 3)],
+      PALETTE,
+      { count: 0, color: '#ggg' },
+    )
+    expect(s.some((x) => x.option_id === '__other__')).toBe(false)
   })
 })
