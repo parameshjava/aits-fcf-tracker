@@ -1,5 +1,10 @@
 const CHECKBOX_LINE = /^(\s*[-*]\s+)\[( |x|X)\](\s+.*)?$/
 
+// Split on any line ending (LF, CRLF, or lone CR). Matters because a value
+// saved with CRLF would otherwise leave a trailing \r on each line, which the
+// end-anchored CHECKBOX_LINE rejects — making every checkbox un-toggleable.
+const LINE_BREAK = /\r\n|\r|\n/
+
 export type Validated<T> =
   | { ok: true; value: T }
   | { ok: false; error: string }
@@ -10,7 +15,7 @@ export function toggleCheckboxAt(
   checked: boolean,
 ): Validated<string> {
   if (!source) return { ok: false, error: 'No action items' }
-  const lines = source.split('\n')
+  const lines = source.split(LINE_BREAK)
   if (index < 0 || index >= lines.length) {
     return { ok: false, error: 'Line index out of range' }
   }
@@ -39,7 +44,7 @@ export function countActionItems(source: string | null): { done: number; total: 
   if (!source) return { done: 0, total: 0 }
   let done = 0
   let total = 0
-  for (const line of source.split('\n')) {
+  for (const line of source.split(LINE_BREAK)) {
     const m = line.match(CHECKBOX_LINE)
     if (!m) continue
     total++
