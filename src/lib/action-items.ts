@@ -22,6 +22,19 @@ export function toggleCheckboxAt(
   return { ok: true, value: lines.join('\n') }
 }
 
+/**
+ * Who may toggle / edit a meeting's action items.
+ * Any authenticated user may toggle while the meeting is open; admins may
+ * always edit, including after the meeting is closed. Non-admins are
+ * read-only on closed meetings. Shared by the server action and the panel UI.
+ */
+export function canToggleActionItems(
+  status: string,
+  isAdmin: boolean,
+): boolean {
+  return isAdmin || status === 'open'
+}
+
 export function countActionItems(source: string | null): { done: number; total: number } {
   if (!source) return { done: 0, total: 0 }
   let done = 0
