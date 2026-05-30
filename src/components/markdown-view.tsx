@@ -87,7 +87,9 @@ export function MarkdownView({ source, className, mentions, interactiveCheckboxe
       checked?: boolean
     }) => {
       if (type === 'checkbox') {
-        return <input type="checkbox" defaultChecked={Boolean(checked)} readOnly />
+        // Uncontrolled (defaultChecked) so an optimistic click-toggle is not
+        // reverted before `source` re-renders. No `disabled` → clicks fire.
+        return <input type="checkbox" defaultChecked={Boolean(checked)} />
       }
       return <input type={type} />
     }
