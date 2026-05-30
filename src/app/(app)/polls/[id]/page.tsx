@@ -68,7 +68,7 @@ export default async function PollDetailPage({
   if (poll.is_closed) {
     const results = await getPollResults(id)
     return (
-      <div className="mx-auto max-w-2xl space-y-6">
+      <div className="mx-auto max-w-5xl space-y-6">
         {header}
         <p className="text-xs text-gray-400">
           Closed on {formatPollDateTime(poll.closed_at ?? poll.closes_at)}

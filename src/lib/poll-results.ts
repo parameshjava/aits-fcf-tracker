@@ -5,6 +5,77 @@ import type {
   PollVisibility,
 } from './polls-types'
 
+/**
+ * Rank result options for a leaderboard view: highest vote count first,
+ * ties broken by original position. Returns the ranked list plus the set
+ * of option ids that share the top vote count (the "leading" options).
+ * When no votes exist nothing leads, so `leadingIds` is empty. Mirrors the
+ * admin "Live breakdown" logic so closed-poll results get the same
+ * leaderboard treatment.
+ */
+export function rankPollOptions(options: PollResultsOption[]): {
+  ranked: PollResultsOption[]
+  leadingIds: Set<string>
+} {
+  const ranked = options
+    .slice()
+    .sort((a, b) => b.vote_count - a.vote_count || a.position - b.position)
+  const topCount = ranked[0]?.vote_count ?? 0
+  const leadingIds = new Set(
+    ranked
+      .filter((o) => o.vote_count > 0 && o.vote_count === topCount)
+      .map((o) => o.option_id),
+  )
+  return { ranked, leadingIds }
+}
+
+export type PollChartSlice = {
+  option_id: string
+  label: string
+  value: number
+  /** Share of ALL votes cast, in percent. Sums to 100 across slices. */
+  pct: number
+  color: string
+}
+
+/**
+ * Build donut-chart slices for a poll's results: one per option, ordered
+ * highest-votes-first (ties by position — same order as `rankPollOptions`),
+ * each carrying its share of ALL votes cast (`pct`, summing to 100% across
+ * slices) and a stable color from `palette` (cycled if there are more
+ * options than colors). For a single-select poll this share equals the
+ * per-voter percentage on the breakdown bars; for multi-select it's
+ * share-of-votes — the only basis under which pie slices sum to a whole.
+ */
+export function pollChartSlices(
+  options: PollResultsOption[],
+  palette: readonly string[],
+  other?: { count: number; color: string },
+): PollChartSlice[] {
+  const { ranked } = rankPollOptions(options)
+  const otherCount = other?.count ?? 0
+  const totalVotes = ranked.reduce((s, o) => s + o.vote_count, 0) + otherCount
+  const slices = ranked.map((o, i) => ({
+    option_id: o.option_id,
+    label: o.option_label,
+    value: o.vote_count,
+    pct: totalVotes > 0 ? (o.vote_count / totalVotes) * 100 : 0,
+    color: palette[i % palette.length] ?? palette[0] ?? '',
+  }))
+  if (other && otherCount > 0) {
+    // Free-text "Other" folded in as a final residual slice so the donut
+    // accounts for every vote cast. Always last, by convention.
+    slices.push({
+      option_id: '__other__',
+      label: 'Other',
+      value: otherCount,
+      pct: totalVotes > 0 ? (otherCount / totalVotes) * 100 : 0,
+      color: other.color,
+    })
+  }
+  return slices
+}
+
 export type RawOptionCount = {
   option_id: string
   option_label: string

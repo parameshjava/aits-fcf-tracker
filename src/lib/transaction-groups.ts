@@ -37,3 +37,23 @@ export const SECTION_BAR_COLOR: Record<SectionKey, string> = {
   loans:         '#E69F00',
   donations:     '#009E73',
 }
+
+// Generate `count` visually distinct donut-slice colors for a poll. Hues are
+// stepped by the golden angle (~137.5°) starting near the brand blue, so any
+// number of options — up to POLL_OPTION_MAX — gets well-separated colors and
+// adjacent (rank-neighbour) slices never look alike. The top slice lands on a
+// blue close to the "Leading" bar. Grey is reserved for the "Other" bucket
+// (POLL_OTHER_CHART_COLOR) and is never produced here.
+export function pollOptionColors(count: number): string[] {
+  const START_HUE = 217 // ≈ Tailwind blue-600
+  const GOLDEN_ANGLE = 137.508
+  return Array.from({ length: Math.max(0, count) }, (_, i) => {
+    const hue = Math.round((START_HUE + i * GOLDEN_ANGLE) % 360)
+    return `hsl(${hue}, 68%, 50%)`
+  })
+}
+
+// Slice color for the free-text "Other" bucket in a poll donut. A muted grey
+// (Tailwind gray-400) so it reads as the residual/uncategorised share and
+// never competes with a real option's color.
+export const POLL_OTHER_CHART_COLOR = '#9ca3af'
