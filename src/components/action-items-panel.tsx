@@ -5,7 +5,7 @@ import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { MarkdownView } from '@/components/markdown-view'
 import { ActionItemsEditor, type MentionOption } from '@/components/action-items-editor'
-import { countActionItems } from '@/lib/action-items'
+import { countActionItems, canToggleActionItems } from '@/lib/action-items'
 import { toggleActionItem } from '@/lib/actions/meetings'
 
 type Props = {
@@ -26,11 +26,12 @@ export function ActionItemsPanel({
   const [editing, setEditing] = useState(false)
   const [pending, startTransition] = useTransition()
   const { done, total } = countActionItems(source)
+  const canToggle = canToggleActionItems(meetingStatus, isAdmin)
 
   const slugToName = Object.fromEntries(mentionOptions.map((m) => [m.slug, m.name]))
 
   function onCheckboxClick(e: MouseEvent<HTMLDivElement>) {
-    if (meetingStatus === 'closed') return
+    if (!canToggle) return
     const target = e.target as HTMLElement
     if (target.tagName !== 'INPUT' || (target as HTMLInputElement).type !== 'checkbox') return
     const all = (e.currentTarget.querySelectorAll('input[type=checkbox]') as NodeListOf<HTMLInputElement>)
@@ -69,7 +70,8 @@ export function ActionItemsPanel({
             ({done} / {total} done)
           </span>
         </h2>
-        {isAdmin && meetingStatus === 'open' && (
+        {/* Admins can edit action items even after the meeting is closed. */}
+        {isAdmin && (
           <Button
             type="button"
             variant="outline"
@@ -86,7 +88,11 @@ export function ActionItemsPanel({
           {!source ? (
             <p className="py-2 text-xs text-gray-400">No action items yet.</p>
           ) : (
-            <MarkdownView source={source} mentions={{ slugToName }} />
+            <MarkdownView
+              source={source}
+              mentions={{ slugToName }}
+              interactiveCheckboxes={canToggle}
+            />
           )}
           {pending && <p className="mt-1 text-[11px] text-gray-400">Saving…</p>}
         </div>

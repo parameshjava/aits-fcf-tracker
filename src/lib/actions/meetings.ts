@@ -17,7 +17,7 @@ import {
   validateAttendedFlag,
 } from '@/lib/meetings-validation'
 import { seededShuffle } from '@/lib/shuffle'
-import { toggleCheckboxAt } from '@/lib/action-items'
+import { canToggleActionItems, toggleCheckboxAt } from '@/lib/action-items'
 
 async function getCurrentMemberId(): Promise<string | null> {
   const user = await getCurrentUser()
@@ -348,7 +348,10 @@ export async function toggleActionItem(
       .maybeSingle()
     if (mErr) return actionError(mErr.message)
     if (!m) return actionError('Meeting not found')
-    if (m.status !== 'open') return actionError('This meeting is closed')
+    const isAdmin = user.profile?.role === 'admin'
+    if (!canToggleActionItems(m.status, isAdmin)) {
+      return actionError('This meeting is closed')
+    }
 
     const result = toggleCheckboxAt(m.action_items_md ?? '', lineIndex, checked)
     if (!result.ok) return actionError(result.error)

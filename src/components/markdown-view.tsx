@@ -13,6 +13,13 @@ type Props = {
    * Unknown slugs (not present in `slugToName`) render as plain text.
    */
   mentions?: { slugToName: Record<string, string> }
+  /**
+   * When true, render GFM task-list checkboxes as interactive (no `disabled`
+   * attribute) so clicks fire. Uncontrolled (`defaultChecked`) so an optimistic
+   * toggle is not reverted before the source re-renders. Default false keeps
+   * every other consumer read-only.
+   */
+  interactiveCheckboxes?: boolean
 }
 
 const MENTION_TOKEN = /(?<![\w.@])@([a-z][a-z0-9-]{1,40})/g
@@ -58,17 +65,37 @@ function transformChildren(children: ReactNode, slugToName: Record<string, strin
   return children
 }
 
-export function MarkdownView({ source, className, mentions }: Props) {
-  const components = mentions
-    ? {
-        p: ({ children }: { children?: ReactNode }) => (
-          <p>{transformChildren(children, mentions.slugToName)}</p>
-        ),
-        li: ({ children }: { children?: ReactNode }) => (
-          <li>{transformChildren(children, mentions.slugToName)}</li>
-        ),
+export function MarkdownView({ source, className, mentions, interactiveCheckboxes }: Props) {
+  const components: Record<string, unknown> = {}
+
+  if (mentions) {
+    const slugToName = mentions.slugToName
+    components.p = ({ children }: { children?: ReactNode }) => (
+      <p>{transformChildren(children, slugToName)}</p>
+    )
+    components.li = ({ children }: { children?: ReactNode }) => (
+      <li>{transformChildren(children, slugToName)}</li>
+    )
+  }
+
+  if (interactiveCheckboxes) {
+    components.input = ({
+      type,
+      checked,
+    }: {
+      type?: string
+      checked?: boolean
+    }) => {
+      if (type === 'checkbox') {
+        // Uncontrolled (defaultChecked) so an optimistic click-toggle is not
+        // reverted before `source` re-renders. No `disabled` → clicks fire.
+        return <input type="checkbox" defaultChecked={Boolean(checked)} />
       }
-    : undefined
+      return <input type={type} />
+    }
+  }
+
+  const hasComponents = Boolean(mentions) || Boolean(interactiveCheckboxes)
 
   return (
     <div
@@ -79,7 +106,10 @@ export function MarkdownView({ source, className, mentions }: Props) {
         (className ?? '')
       }
     >
-      <ReactMarkdown remarkPlugins={[remarkGfm]} components={components as never}>
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
+        components={hasComponents ? (components as never) : undefined}
+      >
         {source}
       </ReactMarkdown>
     </div>

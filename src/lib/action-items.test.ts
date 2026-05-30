@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  canToggleActionItems,
   countActionItems,
   extractMentions,
   toggleCheckboxAt,
@@ -68,5 +69,20 @@ describe('extractMentions', () => {
 
   it('ignores emails and code-fence content', () => {
     expect(extractMentions('email me at foo@bar.com')).toEqual([])
+  })
+})
+
+describe('canToggleActionItems', () => {
+  it('allows any user on an open meeting', () => {
+    expect(canToggleActionItems('open', false)).toBe(true)
+    expect(canToggleActionItems('open', true)).toBe(true)
+  })
+
+  it('allows admins on a closed meeting', () => {
+    expect(canToggleActionItems('closed', true)).toBe(true)
+  })
+
+  it('blocks non-admins on a closed meeting', () => {
+    expect(canToggleActionItems('closed', false)).toBe(false)
   })
 })
