@@ -353,10 +353,40 @@ Finally, on an **open** meeting, confirm a non-admin can now toggle a checkbox (
 
 - [ ] **Step 5: No commit needed** — verification only. If any step failed, return to the relevant task, fix, and re-run this task.
 
+> **Discovered during final review:** the manual smoke check (Step 4) will FAIL until Task 6's migration is applied — the 027 lock trigger rejects the DB write. Run Step 4 only after the migration is live in the target environment.
+
+---
+
+### Task 6: Migration — unlock action-items edits on closed meetings
+
+**Files:**
+- Create: `scripts/prod/migrations/034_meetings_action_items_unlock.sql`
+
+**Why:** The 027 `fn_meetings_lock_closed` BEFORE-UPDATE trigger raises `'meeting is closed; reopen it before editing'` for any update to a closed meeting except a clean reopen. That blocks both `updateActionItems` and `toggleActionItem` for admins on closed meetings, so the app-layer changes (Tasks 1–4) don't work end-to-end without this. Scope: action-items-only (decided) — admins still reopen to edit anything else. `meetings.meetings` columns at time of writing: `id, title, meeting_date, status, random_seed, linked_poll_id, action_items_md, created_by, created_at, closed_at, closed_by, agenda_md`.
+
+- [ ] **Step 1: Write the migration**
+
+Create `scripts/prod/migrations/034_meetings_action_items_unlock.sql` that `CREATE OR REPLACE`s `public.fn_meetings_lock_closed()` (trigger binding from 027 is left intact), keeping the existing reopen branch and adding a second allowed branch: `new.status = 'closed'` AND every column except `action_items_md` equal to its `old` value (`=` for non-null columns, `is not distinct from` for nullable ones: `linked_poll_id`, `agenda_md`, `closed_at`, `closed_by`). Otherwise still `raise exception 'meeting is closed; reopen it before editing'`. Wrap in `begin; … commit;` and end with `notify pgrst, 'reload schema';`, matching the 027 file style.
+
+- [ ] **Step 2: Verify the SQL parses (no live DB needed here)**
+
+This repo applies migrations manually against Supabase. Sanity-check syntax by eye against 027 (same function shape). The build/test/lint suite does not execute SQL, so there is no automated gate; correctness is confirmed by the post-apply manual smoke check (Task 5, Step 4).
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add scripts/prod/migrations/034_meetings_action_items_unlock.sql
+git commit -m "feat(db): allow admins to edit action items on closed meetings
+
+Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
+```
+
+- [ ] **Step 4: Apply** — the repo owner runs the migration against staging/prod via their normal Supabase process. (Not done by the implementer.)
+
 ---
 
 ## Notes for the implementer
 
-- **Do not** add a DB migration. The `meetings_update_admin` RLS policy (`scripts/prod/migrations/028_meetings_rls.sql:40`) already lets admins update closed meetings; permissive policies combine with OR, so it grants the closed-meeting `action_items_md` write. Non-admin closed-meeting writes remain blocked at both the server (`canToggleActionItems`) and RLS layers (no permissive policy covers them) — defense in depth, unchanged.
+- **A DB migration IS required** (see Task 6). The original draft of this plan said "do not add a migration," reasoning only about RLS — but the 027 `fn_meetings_lock_closed` BEFORE-UPDATE trigger blocks all closed-meeting updates except a clean reopen, which defeats the app-layer changes. The `meetings_update_admin` RLS policy (`028_meetings_rls.sql:40`) does grant admins the row update; non-admin closed-meeting writes stay blocked at both the server (`canToggleActionItems`) and RLS layers — defense in depth, unchanged.
 - **`updateActionItems`** needs no change: it is already admin-only with no status check.
 - The two server pages (`src/app/(app)/meetings/[id]/page.tsx` and `src/app/(app)/admin/meetings/[id]/page.tsx`) already pass `meetingStatus` and `isAdmin` into `ActionItemsPanel` — no changes needed there.

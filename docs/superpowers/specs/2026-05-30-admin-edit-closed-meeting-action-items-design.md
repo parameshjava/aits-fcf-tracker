@@ -16,13 +16,14 @@ The action items live in `meetings.action_items_md` (markdown). Meetings have a
 
 Three layers gate action-item editing today:
 
-| Layer | Location | Current behavior |
-| :-- | :-- | :-- |
-| Full markdown edit (server) | `src/lib/actions/meetings.ts` `updateActionItems` (~303) | Admin-only; **no status check** — already works on closed meetings. |
-| Checkbox toggle (server) | `src/lib/actions/meetings.ts` `toggleActionItem` (~351) | `if (m.status !== 'open') return actionError('This meeting is closed')` — blocks **everyone**, including admins. |
-| "Edit list" button (UI) | `src/components/action-items-panel.tsx:72` | Shown only when `isAdmin && meetingStatus === 'open'`. |
-| Checkbox click handler (UI) | `src/components/action-items-panel.tsx:33` | `if (meetingStatus === 'closed') return`. |
-| RLS | `scripts/prod/migrations/028_meetings_rls.sql` | `meetings_update_admin` (permissive) already lets admins update any meeting regardless of status; permissive policies combine with OR. **No migration needed.** |
+| Layer                       | Location                                                 | Current behavior                                                                                                                                                |
+| :-------------------------- | :------------------------------------------------------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Full markdown edit (server) | `src/lib/actions/meetings.ts` `updateActionItems` (~303) | Admin-only; **no status check** — already works on closed meetings.                                                                                             |
+| Checkbox toggle (server)    | `src/lib/actions/meetings.ts` `toggleActionItem` (~351)  | `if (m.status !== 'open') return actionError('This meeting is closed')` — blocks **everyone**, including admins.                                                |
+| "Edit list" button (UI)     | `src/components/action-items-panel.tsx:72`               | Shown only when `isAdmin && meetingStatus === 'open'`.                                                                                                          |
+| Checkbox click handler (UI) | `src/components/action-items-panel.tsx:33`               | `if (meetingStatus === 'closed') return`.                                                                                                                       |
+| RLS                         | `scripts/prod/migrations/028_meetings_rls.sql`           | `meetings_update_admin` (permissive) already lets admins update any meeting regardless of status; permissive policies combine with OR. |
+| **DB trigger** (corrected)  | `scripts/prod/migrations/027_meetings_triggers.sql:34` `fn_meetings_lock_closed` | BEFORE UPDATE; for `old.status = 'closed'` it raises `'meeting is closed; reopen it before editing'` unless the update is a clean reopen. **This blocks admin action-item edits on closed meetings — a migration IS required.** (The original draft of this spec missed this trigger and wrongly concluded "no migration needed".) |
 
 ### Verified latent bug: checkboxes are non-functional
 
@@ -55,12 +56,12 @@ Define a single derived predicate in the panel:
 canToggle = isAdmin || meetingStatus === 'open'
 ```
 
-| State | `canToggle` | Checkbox toggle | "Edit list" button |
-| :-- | :-- | :-- | :-- |
-| Open, non-admin | true | ✅ | ❌ |
-| Open, admin | true | ✅ | ✅ |
-| Closed, non-admin | false | ❌ (read-only) | ❌ |
-| Closed, admin | true | ✅ | ✅ |
+| State             | `canToggle` | Checkbox toggle | "Edit list" button |
+| :---------------- | :---------- | :-------------- | :----------------- |
+| Open, non-admin   | true        | ✅               | ❌                  |
+| Open, admin       | true        | ✅               | ✅                  |
+| Closed, non-admin | false       | ❌ (read-only)   | ❌                  |
+| Closed, admin     | true        | ✅               | ✅                  |
 
 ### 1. `MarkdownView` — optional interactive checkboxes
 
@@ -124,6 +125,24 @@ No change. `updateActionItems` is already admin-only with no status check, and
 the `meetings_update_admin` RLS policy already permits admin updates of closed
 meetings.
 
+### 5. DB migration — relax the closed-meeting lock trigger (REQUIRED)
+
+File: `scripts/prod/migrations/034_meetings_action_items_unlock.sql`
+
+The 027 `fn_meetings_lock_closed` BEFORE-UPDATE trigger raises an exception on
+any update to a closed meeting except a clean reopen — so without this, both
+`updateActionItems` and `toggleActionItem` fail at the DB for admins on closed
+meetings. The migration recreates the function (via `CREATE OR REPLACE`; trigger
+binding unchanged) to add one more allowed branch: an update that keeps
+`status = 'closed'` and changes **only** `action_items_md`, with every other
+column unchanged. Scope is deliberately action-items-only (per decision) — to
+edit any other field, an admin still reopens the meeting first.
+
+Defense-in-depth is preserved: this widens only *what* may change on a closed
+row; *who* is still gated by `meetings_update_admin` RLS (admin-only for closed
+rows, since `meetings_update_action_items_open` requires `status = 'open'`) and
+by the server actions' role re-check.
+
 ## Testing
 
 Add/extend Vitest coverage (logic-only suite; no DOM rendering available):
@@ -141,7 +160,7 @@ and the change persists).
 
 ## Out of scope
 
-- No DB migration / RLS changes.
+- No RLS changes (a trigger migration IS needed — see section 5).
 - No change to attendee notes, agenda, or any other `MarkdownView` consumer.
 - No new "this meeting is closed" admin indicator beyond the reappearing
   "Edit list" button and interactive checkboxes.
