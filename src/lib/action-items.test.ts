@@ -46,12 +46,30 @@ describe('toggleCheckboxAt', () => {
     const out = toggleCheckboxAt(src, 99, true)
     expect(out.ok).toBe(false)
   })
+
+  it('handles CRLF line endings and normalizes to LF', () => {
+    const crlf = '- [ ] one\r\n- [x] two\r\n- [ ] three'
+    const out = toggleCheckboxAt(crlf, 0, true)
+    expect(out.ok).toBe(true)
+    if (out.ok) expect(out.value).toBe('- [x] one\n- [x] two\n- [ ] three')
+  })
+
+  it('toggles a middle line in a CRLF document', () => {
+    const crlf = '- [ ] one\r\n- [ ] two\r\n- [ ] three'
+    const out = toggleCheckboxAt(crlf, 1, true)
+    expect(out.ok).toBe(true)
+    if (out.ok) expect(out.value.split('\n')[1]).toBe('- [x] two')
+  })
 })
 
 describe('countActionItems', () => {
   it('counts done vs total', () => {
     const src = '- [x] a\n- [ ] b\n- [ ] c\nnot an item\n- [x] d'
     expect(countActionItems(src)).toEqual({ done: 2, total: 4 })
+  })
+
+  it('counts CRLF documents', () => {
+    expect(countActionItems('- [x] a\r\n- [ ] b\r\n- [x] c')).toEqual({ done: 2, total: 3 })
   })
 
   it('treats null/empty as zero', () => {

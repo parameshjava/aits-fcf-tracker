@@ -311,7 +311,9 @@ export async function updateActionItems(
     if (!id) return actionError('Missing meeting id')
 
     const raw = formData.get('action_items_md')
-    const text = raw == null ? '' : String(raw)
+    // Normalize line endings to LF on the way in — a CRLF value (e.g. pasted
+    // text) would otherwise leave a trailing \r that breaks checkbox toggling.
+    const text = (raw == null ? '' : String(raw)).replace(/\r\n?/g, '\n')
     if (text.length > 10_000) return actionError('Action items are too long (max 10000 chars)')
 
     const value = text.trim().length === 0 ? null : text
