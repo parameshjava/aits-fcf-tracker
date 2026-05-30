@@ -70,6 +70,7 @@ export function ActionItemsPanel({
             ({done} / {total} done)
           </span>
         </h2>
+        {/* Admins can edit action items even after the meeting is closed. */}
         {isAdmin && (
           <Button
             type="button"
