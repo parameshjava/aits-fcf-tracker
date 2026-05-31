@@ -6,12 +6,12 @@ import {
   Dialog,
   DialogClose,
   DialogContent,
-  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
 import { getLinkedPollDetail, type LinkedPollDetail } from '@/lib/actions/loans'
 import { LinkedPollResults } from '@/components/linked-poll-results'
+import { MarkdownView } from '@/components/markdown-view'
 
 type Variant = 'pill' | 'icon' | 'link'
 
@@ -90,20 +90,23 @@ export function PollModal({ pollId, pollQuestion, variant = 'pill' }: Props) {
           </DialogClose>
           <DialogHeader className="shrink-0">
             <DialogTitle className="pr-8">{detail?.question ?? pollQuestion}</DialogTitle>
-            {detail?.description ? (
-              <DialogDescription className="whitespace-pre-line">
-                {detail.description}
-              </DialogDescription>
-            ) : null}
           </DialogHeader>
 
-          <div className="min-h-0 flex-1 overflow-y-auto">
+          {/* Description + results scroll together; only the title stays
+              pinned, so a long markdown description never squeezes the
+              results out of view. */}
+          <div className="min-h-0 flex-1 space-y-4 overflow-y-auto">
             {pending && !detail ? (
               <p className="text-sm text-gray-500">Loading poll…</p>
             ) : error ? (
               <p className="text-sm text-rose-600">{error}</p>
             ) : detail ? (
-              <LinkedPollResults detail={detail} />
+              <>
+                {detail.description ? (
+                  <MarkdownView source={detail.description} />
+                ) : null}
+                <LinkedPollResults detail={detail} />
+              </>
             ) : null}
           </div>
         </DialogContent>
