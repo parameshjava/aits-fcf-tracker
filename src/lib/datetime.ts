@@ -50,13 +50,8 @@ export function zonedWallTimeToInstant(
   return new Date(guess - offset2)
 }
 
-/**
- * Format an ISO instant for display. Pass `tz` to render in a specific IANA
- * zone (e.g. the scheduling zone); omit it to render in the runtime's zone
- * (the browser's, in a client component). Locale is pinned to en-IN to match
- * the rest of the app and keep SSR output deterministic.
- */
-export function formatInstant(iso: string, tz?: string): string {
+/** Shared formatter options for meeting date/time display. */
+function meetingDtf(tz?: string): Intl.DateTimeFormat {
   return new Intl.DateTimeFormat('en-IN', {
     day: 'numeric',
     month: 'short',
@@ -66,5 +61,24 @@ export function formatInstant(iso: string, tz?: string): string {
     hour12: true,
     timeZoneName: 'short',
     ...(tz ? { timeZone: tz } : {}),
-  }).format(new Date(iso))
+  })
+}
+
+/**
+ * Format an ISO instant for display. Pass `tz` to render in a specific IANA
+ * zone (e.g. the scheduling zone); omit it to render in the runtime's zone
+ * (the browser's, in a client component). Locale is pinned to en-IN to match
+ * the rest of the app and keep SSR output deterministic.
+ */
+export function formatInstant(iso: string, tz?: string): string {
+  return meetingDtf(tz).format(new Date(iso))
+}
+
+/**
+ * Format a start→end instant range, collapsing shared parts (date, meridiem)
+ * the way Google/Outlook do (e.g. "31 May 2026, 7:00 – 8:00 pm IST"). Pass `tz`
+ * to render in a specific zone; omit it for the runtime's zone.
+ */
+export function formatInstantRange(startIso: string, endIso: string, tz?: string): string {
+  return meetingDtf(tz).formatRange(new Date(startIso), new Date(endIso))
 }

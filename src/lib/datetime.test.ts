@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { zonedWallTimeToInstant, formatInstant } from './datetime'
+import { zonedWallTimeToInstant, formatInstant, formatInstantRange } from './datetime'
 
 describe('zonedWallTimeToInstant', () => {
   it('converts an IST wall-clock to the correct UTC instant', () => {
@@ -47,6 +47,26 @@ describe('formatInstant', () => {
   it('formats the same instant differently in a different zone', () => {
     const ist = formatInstant('2026-05-31T13:30:00.000Z', 'Asia/Kolkata')
     const ny = formatInstant('2026-05-31T13:30:00.000Z', 'America/New_York')
+    expect(ist).not.toBe(ny)
+  })
+})
+
+describe('formatInstantRange', () => {
+  it('renders a same-day range in a single zone', () => {
+    // 13:30Z–14:30Z === 7:00–8:00 PM IST
+    const out = formatInstantRange(
+      '2026-05-31T13:30:00.000Z',
+      '2026-05-31T14:30:00.000Z',
+      'Asia/Kolkata',
+    )
+    expect(out).toMatch(/7:00/)
+    expect(out).toMatch(/8:00/)
+    expect(out).toMatch(/2026/)
+  })
+
+  it('differs across zones', () => {
+    const ist = formatInstantRange('2026-05-31T13:30:00.000Z', '2026-05-31T14:30:00.000Z', 'Asia/Kolkata')
+    const ny = formatInstantRange('2026-05-31T13:30:00.000Z', '2026-05-31T14:30:00.000Z', 'America/New_York')
     expect(ist).not.toBe(ny)
   })
 })
