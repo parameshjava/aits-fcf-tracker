@@ -13,10 +13,11 @@ type Props = {
   polls: PollOption[]
   defaultDate: string
   defaultTime: string
+  defaultEndTime: string
   defaultTz: string
 }
 
-export function NewMeetingForm({ polls, defaultDate, defaultTime, defaultTz }: Props) {
+export function NewMeetingForm({ polls, defaultDate, defaultTime, defaultEndTime, defaultTz }: Props) {
   const router = useRouter()
   const [state, formAction, pending] = useActionState(
     async (_prev: unknown, fd: FormData) => createMeeting(fd),
@@ -70,6 +71,16 @@ export function NewMeetingForm({ polls, defaultDate, defaultTime, defaultTz }: P
             className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
           />
           {errFor('meeting_time') && <p className="mt-1 text-xs text-red-600">{errFor('meeting_time')}</p>}
+        </div>
+
+        <div>
+          <label htmlFor="meeting_end_time" className="mb-1 block text-xs font-semibold text-gray-700">End time</label>
+          <input
+            id="meeting_end_time" name="meeting_end_time" type="time" required
+            defaultValue={defaultEndTime}
+            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+          />
+          {errFor('meeting_end_time') && <p className="mt-1 text-xs text-red-600">{errFor('meeting_end_time')}</p>}
         </div>
 
         <div>

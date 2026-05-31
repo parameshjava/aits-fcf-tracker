@@ -15,7 +15,7 @@ export default async function NewMeetingPage() {
   return (
     <div className="mx-auto max-w-3xl px-4 py-6 sm:px-6">
       <h1 className="mb-4 text-xl font-semibold text-gray-900">New meeting</h1>
-      <NewMeetingForm polls={polls} defaultDate={today} defaultTime="19:00" defaultTz={DEFAULT_MEETING_TZ} />
+      <NewMeetingForm polls={polls} defaultDate={today} defaultTime="19:00" defaultEndTime="20:00" defaultTz={DEFAULT_MEETING_TZ} />
     </div>
   )
 }
