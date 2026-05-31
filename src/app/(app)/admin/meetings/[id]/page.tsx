@@ -3,6 +3,7 @@ import { getCurrentUser } from '@/lib/actions/auth'
 import { getMeeting } from '@/lib/actions/meetings-reads'
 import { ActionItemsPanel } from '@/components/action-items-panel'
 import { LinkedPollModal } from '@/components/linked-poll-modal'
+import { MeetingTime } from '@/components/meeting-time'
 import { CapturePage } from './capture-page'
 import { MeetingControls } from './meeting-controls'
 
@@ -24,7 +25,7 @@ export default async function AdminMeetingDetailPage(
           <div>
             <h1 className="text-lg font-semibold text-gray-900">{meeting.title}</h1>
             <div className="mt-1 text-xs text-gray-500">
-              {meeting.meeting_date} · {meeting.attendee_count} attendees
+              <MeetingTime meetingAt={meeting.meeting_at} meetingTz={meeting.meeting_tz} /> · {meeting.attendee_count} attendees
               {meeting.linked_poll && (
                 <>
                   {' · linked poll: '}
