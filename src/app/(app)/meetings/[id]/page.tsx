@@ -3,7 +3,7 @@ import { getCurrentUser } from '@/lib/actions/auth'
 import { getMeeting } from '@/lib/actions/meetings-reads'
 import { createClient } from '@/lib/supabase/server'
 import { ActionItemsPanel } from '@/components/action-items-panel'
-import { LinkedPollModal } from '@/components/linked-poll-modal'
+import { PollModal } from '@/components/poll-modal'
 import { MarkdownView } from '@/components/markdown-view'
 import { MeetingTime } from '@/components/meeting-time'
 import { ConsolidatedView } from './consolidated-view'
@@ -55,7 +55,7 @@ export default async function MeetingDetailPage(
               {meeting.linked_poll && (
                 <>
                   {' · linked poll: '}
-                  <LinkedPollModal poll={meeting.linked_poll} />
+                  <PollModal pollId={meeting.linked_poll.id} pollQuestion={meeting.linked_poll.question} variant="link" />
                 </>
               )}
             </div>

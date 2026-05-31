@@ -2,7 +2,7 @@ import { notFound, redirect } from 'next/navigation'
 import { getCurrentUser } from '@/lib/actions/auth'
 import { getMeeting } from '@/lib/actions/meetings-reads'
 import { ActionItemsPanel } from '@/components/action-items-panel'
-import { LinkedPollModal } from '@/components/linked-poll-modal'
+import { PollModal } from '@/components/poll-modal'
 import { MeetingTime } from '@/components/meeting-time'
 import { instantToZonedParts } from '@/lib/datetime'
 import { CapturePage } from './capture-page'
@@ -39,7 +39,7 @@ export default async function AdminMeetingDetailPage(
               {meeting.linked_poll && (
                 <>
                   {' · linked poll: '}
-                  <LinkedPollModal poll={meeting.linked_poll} />
+                  <PollModal pollId={meeting.linked_poll.id} pollQuestion={meeting.linked_poll.question} variant="link" />
                 </>
               )}
             </div>
