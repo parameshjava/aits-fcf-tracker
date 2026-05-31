@@ -12,6 +12,7 @@ describe('validateMeetingCreate', () => {
       title: '   ',
       meeting_date: '2026-05-27',
       meeting_time: '19:00',
+      meeting_end_time: '20:00',
       meeting_tz: 'Asia/Kolkata',
       linked_poll_id: null,
     })
@@ -24,6 +25,7 @@ describe('validateMeetingCreate', () => {
       title: 'ab',
       meeting_date: '2026-05-27',
       meeting_time: '19:00',
+      meeting_end_time: '20:00',
       meeting_tz: 'Asia/Kolkata',
       linked_poll_id: null,
     })
@@ -45,6 +47,7 @@ describe('validateMeetingCreate', () => {
       title: 'Fund rules review',
       meeting_date: '2026-05-27',
       meeting_time: '19:00',
+      meeting_end_time: '20:00',
       meeting_tz: 'Asia/Kolkata',
       linked_poll_id: '33333333-3333-3333-3333-333333333333',
     })
@@ -56,6 +59,7 @@ describe('validateMeetingCreate', () => {
       title: 'OK title',
       meeting_date: '2026-05-27',
       meeting_time: '19:00',
+      meeting_end_time: '20:00',
       meeting_tz: 'Asia/Kolkata',
       linked_poll_id: 'not-a-uuid',
     })
@@ -68,6 +72,7 @@ describe('validateMeetingCreate', () => {
       title: 'Quarterly review',
       meeting_date: '2026-05-27',
       meeting_time: '7pm',
+      meeting_end_time: '20:00',
       meeting_tz: 'Asia/Kolkata',
     })
     expect(r.ok).toBe(false)
@@ -79,10 +84,23 @@ describe('validateMeetingCreate', () => {
       title: 'Quarterly review',
       meeting_date: '2026-05-27',
       meeting_time: '19:00',
+      meeting_end_time: '20:00',
       meeting_tz: 'Mars/Olympus',
     })
     expect(r.ok).toBe(false)
     if (!r.ok) expect(r.field).toBe('meeting_tz')
+  })
+
+  it('rejects a malformed end time', () => {
+    const r = validateMeetingCreate({
+      title: 'Quarterly review',
+      meeting_date: '2026-05-27',
+      meeting_time: '19:00',
+      meeting_end_time: 'half eight',
+      meeting_tz: 'Asia/Kolkata',
+    })
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.field).toBe('meeting_end_time')
   })
 })
 
@@ -111,6 +129,7 @@ describe('validateMeetingCreate with agenda', () => {
       title: 'OK title',
       meeting_date: '2026-05-27',
       meeting_time: '19:00',
+      meeting_end_time: '20:00',
       meeting_tz: 'Asia/Kolkata',
       linked_poll_id: null,
       agenda_md: null,
@@ -124,6 +143,7 @@ describe('validateMeetingCreate with agenda', () => {
       title: 'OK title',
       meeting_date: '2026-05-27',
       meeting_time: '19:00',
+      meeting_end_time: '20:00',
       meeting_tz: 'Asia/Kolkata',
       linked_poll_id: null,
       agenda_md: '# Topics\n1. Item one',
@@ -137,6 +157,7 @@ describe('validateMeetingCreate with agenda', () => {
       title: 'OK title',
       meeting_date: '2026-05-27',
       meeting_time: '19:00',
+      meeting_end_time: '20:00',
       meeting_tz: 'Asia/Kolkata',
       linked_poll_id: null,
       agenda_md: 'a'.repeat(10_001),

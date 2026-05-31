@@ -55,6 +55,7 @@ export async function createMeeting(
       title: formData.get('title'),
       meeting_date: formData.get('meeting_date'),
       meeting_time: formData.get('meeting_time'),
+      meeting_end_time: formData.get('meeting_end_time'),
       meeting_tz: formData.get('meeting_tz'),
       linked_poll_id: formData.get('linked_poll_id'),
       agenda_md: formData.get('agenda_md'),
@@ -66,6 +67,15 @@ export async function createMeeting(
       v.value.meeting_time,
       v.value.meeting_tz,
     ).toISOString()
+
+    const meetingEndsAt = zonedWallTimeToInstant(
+      v.value.meeting_date,
+      v.value.meeting_end_time,
+      v.value.meeting_tz,
+    ).toISOString()
+    if (new Date(meetingEndsAt) <= new Date(meetingAt)) {
+      return actionError('End time must be after the start time', 'meeting_end_time')
+    }
 
     const supabase = await createClient()
 
@@ -85,6 +95,7 @@ export async function createMeeting(
       .insert({
         title: v.value.title,
         meeting_at: meetingAt,
+        meeting_ends_at: meetingEndsAt,
         meeting_tz: v.value.meeting_tz,
         random_seed,
         linked_poll_id: v.value.linked_poll_id,
@@ -137,7 +148,15 @@ export async function updateMeeting(
       if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return actionError('Pick a valid date', 'meeting_date')
       if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(t)) return actionError('Pick a valid time', 'meeting_time')
       if (!isValidMeetingTz(tz)) return actionError('Pick a valid timezone', 'meeting_tz')
-      patch.meeting_at = zonedWallTimeToInstant(d, t, tz).toISOString()
+      const et = String(formData.get('meeting_end_time') ?? '').trim()
+      if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(et)) return actionError('Pick a valid end time', 'meeting_end_time')
+      const startsAt = zonedWallTimeToInstant(d, t, tz).toISOString()
+      const endsAt = zonedWallTimeToInstant(d, et, tz).toISOString()
+      if (new Date(endsAt) <= new Date(startsAt)) {
+        return actionError('End time must be after the start time', 'meeting_end_time')
+      }
+      patch.meeting_at = startsAt
+      patch.meeting_ends_at = endsAt
       patch.meeting_tz = tz
     }
     if (formData.has('linked_poll_id')) {

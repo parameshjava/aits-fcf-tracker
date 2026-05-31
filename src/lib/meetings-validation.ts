@@ -6,6 +6,7 @@ export type MeetingCreateInput = {
   title: string
   meeting_date: string
   meeting_time: string
+  meeting_end_time: string
   meeting_tz: string
   linked_poll_id: string | null
   agenda_md: string | null
@@ -38,6 +39,11 @@ export function validateMeetingCreate(
     return { ok: false, error: 'Pick a valid time', field: 'meeting_time' }
   }
 
+  const meeting_end_time = String(r.meeting_end_time ?? '').trim()
+  if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(meeting_end_time)) {
+    return { ok: false, error: 'Pick a valid end time', field: 'meeting_end_time' }
+  }
+
   const meeting_tz = String(r.meeting_tz ?? '').trim()
   if (!isValidMeetingTz(meeting_tz)) {
     return { ok: false, error: 'Pick a valid timezone', field: 'meeting_tz' }
@@ -63,7 +69,7 @@ export function validateMeetingCreate(
     agenda_md = a.trim().length === 0 ? null : a
   }
 
-  return { ok: true, value: { title, meeting_date, meeting_time, meeting_tz, linked_poll_id, agenda_md } }
+  return { ok: true, value: { title, meeting_date, meeting_time, meeting_end_time, meeting_tz, linked_poll_id, agenda_md } }
 }
 
 export function validateNotes(raw: unknown): Validated<string | null> {
