@@ -50,6 +50,33 @@ export function zonedWallTimeToInstant(
   return new Date(guess - offset2)
 }
 
+/**
+ * True if the given wall-clock time actually exists in `tz`. Returns false for
+ * times that fall in a DST spring-forward gap (e.g. 02:30 on a US "spring
+ * forward" night), which `zonedWallTimeToInstant` would otherwise silently
+ * resolve to the wrong side of the transition. Works by round-tripping: convert
+ * to an instant, format that instant back in `tz`, and confirm the wall-clock
+ * components are unchanged.
+ */
+export function wallTimeExistsInZone(dateISO: string, timeHHMM: string, tz: string): boolean {
+  const instant = zonedWallTimeToInstant(dateISO, timeHHMM, tz)
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: tz,
+    hour12: false,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).formatToParts(instant)
+  const get = (t: string) => parts.find((p) => p.type === t)?.value ?? ''
+  const roundTrippedDate = `${get('year')}-${get('month')}-${get('day')}`
+  // en-GB hour can render '24' at midnight in some ICU builds; normalise.
+  const hh = (Number(get('hour')) % 24).toString().padStart(2, '0')
+  const roundTrippedTime = `${hh}:${get('minute')}`
+  return roundTrippedDate === dateISO && roundTrippedTime === timeHHMM
+}
+
 /** Shared formatter options for meeting date/time display. */
 function meetingDtf(tz?: string): Intl.DateTimeFormat {
   return new Intl.DateTimeFormat('en-IN', {

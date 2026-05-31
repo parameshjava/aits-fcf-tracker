@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { zonedWallTimeToInstant, formatInstant, formatInstantRange } from './datetime'
+import { zonedWallTimeToInstant, formatInstant, formatInstantRange, wallTimeExistsInZone } from './datetime'
 
 describe('zonedWallTimeToInstant', () => {
   it('converts an IST wall-clock to the correct UTC instant', () => {
@@ -68,5 +68,29 @@ describe('formatInstantRange', () => {
     const ist = formatInstantRange('2026-05-31T13:30:00.000Z', '2026-05-31T14:30:00.000Z', 'Asia/Kolkata')
     const ny = formatInstantRange('2026-05-31T13:30:00.000Z', '2026-05-31T14:30:00.000Z', 'America/New_York')
     expect(ist).not.toBe(ny)
+  })
+
+  it('formats a range that crosses midnight', () => {
+    // 23:30 -> 00:30 IST next day === 18:00Z -> 19:00Z
+    const out = formatInstantRange('2026-05-31T18:00:00.000Z', '2026-05-31T19:00:00.000Z', 'Asia/Kolkata')
+    expect(out).toMatch(/11:30/)   // 23:30 IST shown as 11:30 pm
+    expect(out).toMatch(/12:30/)   // 00:30 IST shown as 12:30 am
+  })
+})
+
+describe('wallTimeExistsInZone', () => {
+  it('accepts a normal wall time', () => {
+    expect(wallTimeExistsInZone('2026-05-31', '19:00', 'Asia/Kolkata')).toBe(true)
+    expect(wallTimeExistsInZone('2026-07-01', '09:00', 'America/New_York')).toBe(true)
+  })
+
+  it('rejects a time inside a US spring-forward gap', () => {
+    // 2026-03-08 02:30 America/New_York does not exist (clocks jump 02:00 -> 03:00)
+    expect(wallTimeExistsInZone('2026-03-08', '02:30', 'America/New_York')).toBe(false)
+  })
+
+  it('accepts times either side of the gap', () => {
+    expect(wallTimeExistsInZone('2026-03-08', '01:30', 'America/New_York')).toBe(true)
+    expect(wallTimeExistsInZone('2026-03-08', '03:30', 'America/New_York')).toBe(true)
   })
 })

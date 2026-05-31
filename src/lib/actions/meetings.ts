@@ -17,7 +17,7 @@ import {
   validateAttendedFlag,
 } from '@/lib/meetings-validation'
 import { seededShuffle } from '@/lib/shuffle'
-import { zonedWallTimeToInstant } from '@/lib/datetime'
+import { zonedWallTimeToInstant, wallTimeExistsInZone } from '@/lib/datetime'
 import { isValidMeetingTz } from '@/lib/timezones'
 import { canToggleActionItems, toggleCheckboxAt } from '@/lib/action-items'
 
@@ -61,6 +61,13 @@ export async function createMeeting(
       agenda_md: formData.get('agenda_md'),
     })
     if (!v.ok) return actionError(v.error, v.field)
+
+    if (!wallTimeExistsInZone(v.value.meeting_date, v.value.meeting_time, v.value.meeting_tz)) {
+      return actionError('That start time does not exist in the selected timezone (clocks change that day)', 'meeting_time')
+    }
+    if (!wallTimeExistsInZone(v.value.meeting_date, v.value.meeting_end_time, v.value.meeting_tz)) {
+      return actionError('That end time does not exist in the selected timezone (clocks change that day)', 'meeting_end_time')
+    }
 
     const meetingAt = zonedWallTimeToInstant(
       v.value.meeting_date,
@@ -141,6 +148,7 @@ export async function updateMeeting(
       patch.title = t
     }
     const meeting_date = formData.get('meeting_date')
+    // Timing is only updated when a date is supplied; partial time-only updates are intentionally ignored (no edit UI sends them).
     if (typeof meeting_date === 'string' && meeting_date.trim()) {
       const d = meeting_date.trim()
       const t = String(formData.get('meeting_time') ?? '').trim()
@@ -150,6 +158,8 @@ export async function updateMeeting(
       if (!isValidMeetingTz(tz)) return actionError('Pick a valid timezone', 'meeting_tz')
       const et = String(formData.get('meeting_end_time') ?? '').trim()
       if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(et)) return actionError('Pick a valid end time', 'meeting_end_time')
+      if (!wallTimeExistsInZone(d, t, tz)) return actionError('That start time does not exist in the selected timezone (clocks change that day)', 'meeting_time')
+      if (!wallTimeExistsInZone(d, et, tz)) return actionError('That end time does not exist in the selected timezone (clocks change that day)', 'meeting_end_time')
       const startsAt = zonedWallTimeToInstant(d, t, tz).toISOString()
       const endsAt = zonedWallTimeToInstant(d, et, tz).toISOString()
       if (new Date(endsAt) <= new Date(startsAt)) {
