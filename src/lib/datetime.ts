@@ -103,13 +103,23 @@ function meetingDtf(tz?: string): Intl.DateTimeFormat {
 }
 
 /**
+ * Collapse the narrow / no-break spaces ICU emits (e.g. U+202F before "pm") to
+ * a regular space. Node and the browser ship different ICU versions, so the
+ * same instant can format with different invisible whitespace — which trips
+ * React hydration. Normalising makes SSR and client output byte-identical.
+ */
+function normalizeSpaces(s: string): string {
+  return s.replace(/[  ]/g, ' ')
+}
+
+/**
  * Format an ISO instant for display. Pass `tz` to render in a specific IANA
  * zone (e.g. the scheduling zone); omit it to render in the runtime's zone
  * (the browser's, in a client component). Locale is pinned to en-IN to match
  * the rest of the app and keep SSR output deterministic.
  */
 export function formatInstant(iso: string, tz?: string): string {
-  return meetingDtf(tz).format(new Date(iso))
+  return normalizeSpaces(meetingDtf(tz).format(new Date(iso)))
 }
 
 /**
@@ -118,5 +128,5 @@ export function formatInstant(iso: string, tz?: string): string {
  * to render in a specific zone; omit it for the runtime's zone.
  */
 export function formatInstantRange(startIso: string, endIso: string, tz?: string): string {
-  return meetingDtf(tz).formatRange(new Date(startIso), new Date(endIso))
+  return normalizeSpaces(meetingDtf(tz).formatRange(new Date(startIso), new Date(endIso)))
 }

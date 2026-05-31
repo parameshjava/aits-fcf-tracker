@@ -37,7 +37,7 @@ export function MeetingTime({ meetingAt, meetingEndsAt, meetingTz }: Props) {
   const display = local ? format(meetingAt, meetingEndsAt) : scheduled
 
   return (
-    <time dateTime={meetingAt} title={`Scheduled: ${scheduled}`}>
+    <time dateTime={meetingAt} title={`Scheduled: ${scheduled}`} suppressHydrationWarning>
       {display}
     </time>
   )
