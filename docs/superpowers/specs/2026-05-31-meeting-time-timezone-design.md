@@ -15,13 +15,13 @@ browser's* timezone.
 
 ## Decisions (locked)
 
-| Decision | Choice |
-| :-- | :-- |
+| Decision                | Choice                                                                                                               |
+| :---------------------- | :------------------------------------------------------------------------------------------------------------------- |
 | Existing date-only rows | **Replace** `meeting_date` with an absolute instant; backfill existing rows to **7:00 PM IST** on their stored date. |
-| Time on new meetings | **Required** (date + time both mandatory). |
-| Admin timezone input | Timezone **dropdown, default `Asia/Kolkata` (IST)**. |
-| Viewer display | Browser-local time **+ short zone label**; the **originally-scheduled time + zone shown on hover**. |
-| Conversion location | **Tested JS utility** using `Intl` (Option A), not a Postgres trigger. |
+| Time on new meetings    | **Required** (date + time both mandatory).                                                                           |
+| Admin timezone input    | Timezone **dropdown, default `Asia/Kolkata` (IST)**.                                                                 |
+| Viewer display          | Browser-local time **+ short zone label**; the **originally-scheduled time + zone shown on hover**.                  |
+| Conversion location     | **Tested JS utility** using `Intl` (Option A), not a Postgres trigger.                                               |
 
 ## Schema change
 
@@ -131,10 +131,25 @@ Replace the raw `{m.meeting_date}` interpolations on:
 - `src/app/(app)/admin/meetings/page.tsx`
 - `src/app/(app)/admin/meetings/[id]/page.tsx`
 
+## End time (added 2026-05-31, post-initial-design)
+
+Meetings carry a **start and an end time**, like Google/Outlook. The admin
+chooses the duration by picking the end time.
+
+- Schema: add `meeting_ends_at timestamptz NOT NULL`. It shares the meeting's
+  `meeting_tz` (end is scheduled in the same zone as start). Folded into the
+  same migration `035` (not yet applied to the DB).
+- Both start and end are **required** on new meetings. The form prefills the end
+  to start + 1 hour as a convenience; the admin can change it.
+- Existing rows backfill to **start + 1 hour** (7:00–8:00 PM IST).
+- Validation: end must be **strictly after** start (compared as instants).
+- Display: a **range** in the viewer's browser zone, collapsing shared parts via
+  `Intl.DateTimeFormat.prototype.formatRange` (e.g. `31 May 2026, 7:00 – 8:00 PM
+  IST`), with the originally-scheduled range on hover.
+
 ## Out of scope
 
 - Per-member saved timezone preferences (we use the browser zone, like Google).
-- End time / duration.
 - Recurring meetings.
 - Calendar invites / .ics export.
 
