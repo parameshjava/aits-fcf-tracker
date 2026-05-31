@@ -1,12 +1,18 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { formatInstantRange } from '@/lib/datetime'
+import { formatInstant, formatInstantRange } from '@/lib/datetime'
 
 type Props = {
   meetingAt: string
-  meetingEndsAt: string
+  meetingEndsAt?: string | null
   meetingTz: string
+}
+
+/** A start–end range, falling back to start-only when the end is absent. */
+function format(meetingAt: string, meetingEndsAt: string | null | undefined, tz?: string): string {
+  const hasEnd = meetingEndsAt != null && !Number.isNaN(new Date(meetingEndsAt).getTime())
+  return hasEnd ? formatInstantRange(meetingAt, meetingEndsAt, tz) : formatInstant(meetingAt, tz)
 }
 
 /**
@@ -27,8 +33,8 @@ export function MeetingTime({ meetingAt, meetingEndsAt, meetingTz }: Props) {
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => setLocal(true), [])
 
-  const scheduled = formatInstantRange(meetingAt, meetingEndsAt, meetingTz)
-  const display = local ? formatInstantRange(meetingAt, meetingEndsAt) : scheduled
+  const scheduled = format(meetingAt, meetingEndsAt, meetingTz)
+  const display = local ? format(meetingAt, meetingEndsAt) : scheduled
 
   return (
     <time dateTime={meetingAt} title={`Scheduled: ${scheduled}`}>
