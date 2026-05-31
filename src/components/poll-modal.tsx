@@ -1,9 +1,10 @@
 'use client'
 
 import { useState, useTransition } from 'react'
-import { Vote } from 'lucide-react'
+import { Vote, X } from 'lucide-react'
 import {
   Dialog,
+  DialogClose,
   DialogContent,
   DialogDescription,
   DialogHeader,
@@ -80,9 +81,15 @@ export function PollModal({ pollId, pollQuestion, variant = 'pill' }: Props) {
       </button>
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="sm:max-w-lg">
+        <DialogContent className="sm:max-w-lg" showCloseButton={false}>
+          <DialogClose
+            aria-label="Close"
+            className="absolute right-3 top-3 inline-flex h-7 w-7 items-center justify-center rounded-md text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-300"
+          >
+            <X className="h-4 w-4" aria-hidden />
+          </DialogClose>
           <DialogHeader>
-            <DialogTitle>{detail?.question ?? pollQuestion}</DialogTitle>
+            <DialogTitle className="pr-8">{detail?.question ?? pollQuestion}</DialogTitle>
             {detail?.description ? (
               <DialogDescription className="whitespace-pre-line">
                 {detail.description}
