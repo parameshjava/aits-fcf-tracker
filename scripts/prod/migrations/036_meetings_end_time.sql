@@ -1,51 +1,50 @@
 -- =============================================================================
--- 035 — Meetings: replace date-only meeting_date with a precise instant.
+-- 036 — Meetings: add an end time (start + end, like Google/Outlook).
 --
--- meetings.meeting_date (date) is replaced by:
---   meeting_at  timestamptz  — the absolute instant (source of truth)
---   meeting_tz  text         — IANA zone it was scheduled in (for "original"
---                              display; the app shows each viewer their own zone)
+-- Builds on 035 (which replaced meeting_date with meeting_at + meeting_tz).
+-- Adds meeting_ends_at (absolute instant, same zone as meeting_at) and rebuilds
+-- the view + close-lock trigger to carry it.
 --
--- Existing rows are backfilled to 7:00 PM IST on their stored date.
+-- IDEMPOTENT: safe to re-run. The column add, backfill, NOT NULL, and the CHECK
+-- constraint are all guarded; the view and function use drop/replace. It reads
+-- meeting_at (NOT the dropped meeting_date), so it converges from the post-035
+-- schema regardless of how many times it runs.
 --
--- Dependent objects rebuilt here:
---   - index meetings_status_date_idx   (was on meeting_date)
---   - view  meetings_with_progress     (current def: migration 031)
---   - func  fn_meetings_lock_closed     (current def: migration 034 — referenced
---                                         meeting_date in BOTH guard branches)
+-- Dependent objects rebuilt here (current defs from 035):
+--   - view  meetings_with_progress     — gains meeting_ends_at
+--   - func  fn_meetings_lock_closed      — locks meeting_ends_at on closed rows
 -- =============================================================================
 
 begin;
 
--- 1. Add the new columns (nullable while we backfill).
+-- 1. Add the end-time column (nullable while we backfill).
 alter table public.meetings
-  add column if not exists meeting_at timestamptz,
-  add column if not exists meeting_tz text;
+  add column if not exists meeting_ends_at timestamptz;
 
--- 2. Backfill existing rows: 7:00 PM IST on the stored date.
+-- 2. Backfill: end = start + 1 hour (only rows not yet set).
 update public.meetings
-set
-  meeting_at = (meeting_date + time '19:00') at time zone 'Asia/Kolkata',
-  meeting_tz = 'Asia/Kolkata'
-where meeting_at is null;
+set meeting_ends_at = meeting_at + interval '1 hour'
+where meeting_ends_at is null;
 
--- 3. Enforce NOT NULL now that every row has values.
+-- 3. Enforce NOT NULL (idempotent — no-op if already set).
 alter table public.meetings
-  alter column meeting_at set not null,
-  alter column meeting_tz set not null;
+  alter column meeting_ends_at set not null;
 
--- 4. Drop the view (depends on meeting_date) before dropping the column.
+-- 4. Add the end-after-start CHECK, guarded so re-runs don't error.
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint where conname = 'meetings_ends_after_start'
+  ) then
+    alter table public.meetings
+      add constraint meetings_ends_after_start check (meeting_ends_at > meeting_at);
+  end if;
+end $$;
+
+-- 5. Rebuild the view to expose meeting_ends_at (drop + create: adding a column
+--    to the middle of the select list is not allowed by create-or-replace).
 drop view if exists public.meetings_with_progress;
 
--- 5. Drop the old index, then the old column.
-drop index if exists public.meetings_status_date_idx;
-alter table public.meetings drop column meeting_date;
-
--- 6. Recreate the index on the new instant.
-create index if not exists meetings_status_date_idx
-  on public.meetings (status, meeting_at desc);
-
--- 7. Recreate the view (031's definition, with meeting_date -> meeting_at + meeting_tz).
 create view public.meetings_with_progress
 with (security_invoker = true)
 as
@@ -54,6 +53,7 @@ select
   m.title,
   m.meeting_at,
   m.meeting_tz,
+  m.meeting_ends_at,
   m.status,
   m.linked_poll_id,
   m.action_items_md,
@@ -75,8 +75,8 @@ left join lateral (
   where ma.meeting_id = m.id
 ) a on true;
 
--- 8. Recreate the close-lock trigger (034's definition). Both guard branches
---    compared new.meeting_date = old.meeting_date; swap to meeting_at + meeting_tz.
+-- 6. Recreate the close-lock trigger so meeting_ends_at is also frozen on a
+--    closed meeting (both guard branches). Mirrors 035's function, +end time.
 create or replace function public.fn_meetings_lock_closed()
 returns trigger
 language plpgsql
@@ -90,6 +90,7 @@ begin
        and new.title = old.title
        and new.meeting_at = old.meeting_at
        and new.meeting_tz = old.meeting_tz
+       and new.meeting_ends_at = old.meeting_ends_at
        and new.linked_poll_id is not distinct from old.linked_poll_id
     then
       return new;
@@ -102,6 +103,7 @@ begin
        and new.title         =  old.title
        and new.meeting_at    =  old.meeting_at
        and new.meeting_tz    =  old.meeting_tz
+       and new.meeting_ends_at =  old.meeting_ends_at
        and new.random_seed   =  old.random_seed
        and new.linked_poll_id is not distinct from old.linked_poll_id
        and new.agenda_md      is not distinct from old.agenda_md
