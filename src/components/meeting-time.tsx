@@ -19,6 +19,12 @@ type Props = {
  */
 export function MeetingTime({ meetingAt, meetingTz }: Props) {
   const [local, setLocal] = useState(false)
+  // One-shot post-hydration swap to the viewer's timezone. Server and first
+  // client render use meetingTz (deterministic) to avoid a hydration mismatch;
+  // this effect flips to the browser zone exactly once. This is React's
+  // documented server/client-divergence pattern — the cascading-render warning
+  // does not apply.
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => setLocal(true), [])
 
   const scheduled = formatInstant(meetingAt, meetingTz)
