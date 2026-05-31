@@ -81,14 +81,14 @@ export function PollModal({ pollId, pollQuestion, variant = 'pill' }: Props) {
       </button>
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="sm:max-w-lg" showCloseButton={false}>
+        <DialogContent className="flex max-h-[85vh] flex-col overflow-hidden sm:max-w-lg" showCloseButton={false}>
           <DialogClose
             aria-label="Close"
-            className="absolute right-3 top-3 inline-flex h-7 w-7 items-center justify-center rounded-md text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-300"
+            className="absolute right-3 top-3 z-10 inline-flex h-7 w-7 items-center justify-center rounded-md bg-popover text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-300"
           >
             <X className="h-4 w-4" aria-hidden />
           </DialogClose>
-          <DialogHeader>
+          <DialogHeader className="shrink-0">
             <DialogTitle className="pr-8">{detail?.question ?? pollQuestion}</DialogTitle>
             {detail?.description ? (
               <DialogDescription className="whitespace-pre-line">
@@ -97,13 +97,15 @@ export function PollModal({ pollId, pollQuestion, variant = 'pill' }: Props) {
             ) : null}
           </DialogHeader>
 
-          {pending && !detail ? (
-            <p className="text-sm text-gray-500">Loading poll…</p>
-          ) : error ? (
-            <p className="text-sm text-rose-600">{error}</p>
-          ) : detail ? (
-            <LinkedPollResults detail={detail} />
-          ) : null}
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            {pending && !detail ? (
+              <p className="text-sm text-gray-500">Loading poll…</p>
+            ) : error ? (
+              <p className="text-sm text-rose-600">{error}</p>
+            ) : detail ? (
+              <LinkedPollResults detail={detail} />
+            ) : null}
+          </div>
         </DialogContent>
       </Dialog>
     </>
