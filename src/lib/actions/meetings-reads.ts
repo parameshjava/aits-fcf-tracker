@@ -21,6 +21,7 @@ export type MeetingRow = {
   id: string
   title: string
   meeting_at: string
+  meeting_ends_at: string
   meeting_tz: string
   status: 'open' | 'closed'
   linked_poll_id: string | null

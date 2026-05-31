@@ -38,7 +38,7 @@ export default async function AdminMeetingsListPage() {
             <tbody className="divide-y divide-gray-100">
               {meetings.map((m) => (
                 <tr key={m.id}>
-                  <td className="px-4 py-2 whitespace-nowrap"><MeetingTime meetingAt={m.meeting_at} meetingTz={m.meeting_tz} /></td>
+                  <td className="px-4 py-2 whitespace-nowrap"><MeetingTime meetingAt={m.meeting_at} meetingEndsAt={m.meeting_ends_at} meetingTz={m.meeting_tz} /></td>
                   <td className="px-4 py-2 font-medium text-gray-900">{m.title}</td>
                   <td className="px-4 py-2">
                     <span

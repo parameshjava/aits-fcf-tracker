@@ -25,7 +25,7 @@ export default async function AdminMeetingDetailPage(
           <div>
             <h1 className="text-lg font-semibold text-gray-900">{meeting.title}</h1>
             <div className="mt-1 text-xs text-gray-500">
-              <MeetingTime meetingAt={meeting.meeting_at} meetingTz={meeting.meeting_tz} /> · {meeting.attendee_count} attendees
+              <MeetingTime meetingAt={meeting.meeting_at} meetingEndsAt={meeting.meeting_ends_at} meetingTz={meeting.meeting_tz} /> · {meeting.attendee_count} attendees
               {meeting.linked_poll && (
                 <>
                   {' · linked poll: '}

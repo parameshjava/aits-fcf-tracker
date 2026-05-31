@@ -28,7 +28,7 @@ export default async function MeetingsListPage() {
                 <div>
                   <div className="font-semibold text-gray-900">{m.title}</div>
                   <div className="mt-0.5 text-xs text-gray-500">
-                    <MeetingTime meetingAt={m.meeting_at} meetingTz={m.meeting_tz} /> · {m.captured_count} / {m.attendee_count} captured
+                    <MeetingTime meetingAt={m.meeting_at} meetingEndsAt={m.meeting_ends_at} meetingTz={m.meeting_tz} /> · {m.captured_count} / {m.attendee_count} captured
                   </div>
                 </div>
                 <span
