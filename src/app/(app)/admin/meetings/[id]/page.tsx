@@ -2,9 +2,12 @@ import { notFound, redirect } from 'next/navigation'
 import { getCurrentUser } from '@/lib/actions/auth'
 import { getMeeting } from '@/lib/actions/meetings-reads'
 import { ActionItemsPanel } from '@/components/action-items-panel'
-import { LinkedPollModal } from '@/components/linked-poll-modal'
+import { PollModal } from '@/components/poll-modal'
+import { MeetingTime } from '@/components/meeting-time'
+import { instantToZonedParts } from '@/lib/datetime'
 import { CapturePage } from './capture-page'
 import { MeetingControls } from './meeting-controls'
+import { EditMeetingTimeDialog } from './edit-meeting-time-dialog'
 
 export default async function AdminMeetingDetailPage(
   { params }: { params: Promise<{ id: string }> },
@@ -17,6 +20,14 @@ export default async function AdminMeetingDetailPage(
   const meeting = await getMeeting(id)
   if (!meeting) notFound()
 
+  // Prefill the edit form in the meeting's own timezone (the Google model:
+  // edit the originally-scheduled wall time). End falls back to start if the
+  // end instant is somehow absent (e.g. before migration 036).
+  const startParts = instantToZonedParts(meeting.meeting_at, meeting.meeting_tz)
+  const endParts = meeting.meeting_ends_at
+    ? instantToZonedParts(meeting.meeting_ends_at, meeting.meeting_tz)
+    : startParts
+
   return (
     <div className="mx-auto max-w-4xl space-y-3 px-4 py-6 sm:px-6">
       <div className="rounded-lg border border-gray-200 bg-white px-4 py-3">
@@ -24,11 +35,11 @@ export default async function AdminMeetingDetailPage(
           <div>
             <h1 className="text-lg font-semibold text-gray-900">{meeting.title}</h1>
             <div className="mt-1 text-xs text-gray-500">
-              {meeting.meeting_date} · {meeting.attendee_count} attendees
+              <MeetingTime meetingAt={meeting.meeting_at} meetingEndsAt={meeting.meeting_ends_at} meetingTz={meeting.meeting_tz} /> · {meeting.attendee_count} attendees
               {meeting.linked_poll && (
                 <>
                   {' · linked poll: '}
-                  <LinkedPollModal poll={meeting.linked_poll} />
+                  <PollModal pollId={meeting.linked_poll.id} pollQuestion={meeting.linked_poll.question} variant="link" />
                 </>
               )}
             </div>
@@ -44,6 +55,15 @@ export default async function AdminMeetingDetailPage(
             >
               {meeting.status === 'open' ? 'In progress' : 'Closed'}
             </span>
+            {meeting.status === 'open' && (
+              <EditMeetingTimeDialog
+                meetingId={meeting.id}
+                defaultDate={startParts.date}
+                defaultStartTime={startParts.time}
+                defaultEndTime={endParts.time}
+                defaultTz={meeting.meeting_tz}
+              />
+            )}
             <MeetingControls meetingId={meeting.id} status={meeting.status} />
           </div>
         </div>

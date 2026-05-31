@@ -3,8 +3,9 @@ import { getCurrentUser } from '@/lib/actions/auth'
 import { getMeeting } from '@/lib/actions/meetings-reads'
 import { createClient } from '@/lib/supabase/server'
 import { ActionItemsPanel } from '@/components/action-items-panel'
-import { LinkedPollModal } from '@/components/linked-poll-modal'
+import { PollModal } from '@/components/poll-modal'
 import { MarkdownView } from '@/components/markdown-view'
+import { MeetingTime } from '@/components/meeting-time'
 import { ConsolidatedView } from './consolidated-view'
 
 async function resolveViewerMemberId(email: string | undefined): Promise<string | null> {
@@ -50,11 +51,11 @@ export default async function MeetingDetailPage(
           <div>
             <h1 className="text-lg font-semibold text-gray-900">{meeting.title}</h1>
             <div className="mt-1 text-xs text-gray-500">
-              {meeting.meeting_date}
+              <MeetingTime meetingAt={meeting.meeting_at} meetingEndsAt={meeting.meeting_ends_at} meetingTz={meeting.meeting_tz} />
               {meeting.linked_poll && (
                 <>
                   {' · linked poll: '}
-                  <LinkedPollModal poll={meeting.linked_poll} />
+                  <PollModal pollId={meeting.linked_poll.id} pollQuestion={meeting.linked_poll.question} variant="link" />
                 </>
               )}
             </div>

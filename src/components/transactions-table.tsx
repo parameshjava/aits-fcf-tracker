@@ -2,7 +2,7 @@
 
 import { useCallback } from 'react'
 import { formatRupees } from '@/lib/format'
-import { LoanPollModal } from '@/components/loan-poll-modal'
+import { PollModal } from '@/components/poll-modal'
 import {
   SortableHeader,
   TableSearch,
@@ -235,10 +235,10 @@ export function TransactionsTable({
                         </td>
                         <td className="px-3 py-2 align-middle text-sm">
                           {t.poll ? (
-                            <LoanPollModal
+                            <PollModal
                               pollId={t.poll.id}
                               pollQuestion={t.poll.question}
-                              compact
+                              variant="icon"
                             />
                           ) : (
                             <span className="text-gray-300">—</span>

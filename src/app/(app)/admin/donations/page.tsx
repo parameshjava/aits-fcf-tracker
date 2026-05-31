@@ -2,7 +2,7 @@ import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { formatRupees } from '@/lib/format'
-import { LoanPollModal } from '@/components/loan-poll-modal'
+import { PollModal } from '@/components/poll-modal'
 
 type RawDonationRow = {
   id: string
@@ -135,10 +135,10 @@ export default async function AdminDonationsPage() {
                     </td>
                     <td className="px-4 py-3 text-sm">
                       {r.poll ? (
-                        <LoanPollModal
+                        <PollModal
                           pollId={r.poll.id}
                           pollQuestion={r.poll.question}
-                          compact
+                          variant="icon"
                         />
                       ) : (
                         <span className="text-gray-300">—</span>

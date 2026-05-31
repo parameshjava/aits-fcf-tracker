@@ -1,7 +1,7 @@
 import { formatRupees } from '@/lib/format'
 import type { LoanDetailData } from '@/lib/actions/loans'
 import { LoanTimelineSection } from '@/components/loan-timeline-section'
-import { LoanPollModal } from '@/components/loan-poll-modal'
+import { PollModal } from '@/components/poll-modal'
 
 const STATUS_PILL: Record<string, string> = {
   active:    'bg-blue-50 text-blue-700 ring-blue-200',
@@ -173,7 +173,7 @@ export function LoanDetailPanel({ data }: { data: LoanDetailData }) {
             {TYPE_LABEL[loan.loan_type] ?? loan.loan_type}
           </span>
           {loan.poll ? (
-            <LoanPollModal
+            <PollModal
               pollId={loan.poll.id}
               pollQuestion={loan.poll.question}
             />

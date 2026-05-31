@@ -20,7 +20,9 @@ import { getCurrentUser } from './auth'
 export type MeetingRow = {
   id: string
   title: string
-  meeting_date: string
+  meeting_at: string
+  meeting_ends_at: string
+  meeting_tz: string
   status: 'open' | 'closed'
   linked_poll_id: string | null
   agenda_md: string | null
@@ -43,7 +45,7 @@ export async function getMeetings(): Promise<MeetingRow[]> {
   const { data, error } = await supabase
     .from('meetings_with_progress')
     .select('*')
-    .order('meeting_date', { ascending: false })
+    .order('meeting_at', { ascending: false })
     .order('created_at', { ascending: false })
 
   if (error) throw new Error(error.message)
