@@ -20,19 +20,23 @@ begin;
 -- 1. Add the new columns (nullable while we backfill).
 alter table public.meetings
   add column if not exists meeting_at timestamptz,
-  add column if not exists meeting_tz text;
+  add column if not exists meeting_tz text,
+  add column if not exists meeting_ends_at timestamptz;
 
 -- 2. Backfill existing rows: 7:00 PM IST on the stored date.
 update public.meetings
 set
   meeting_at = (meeting_date + time '19:00') at time zone 'Asia/Kolkata',
+  meeting_ends_at = (meeting_date + time '19:00') at time zone 'Asia/Kolkata' + interval '1 hour',
   meeting_tz = 'Asia/Kolkata'
 where meeting_at is null;
 
 -- 3. Enforce NOT NULL now that every row has values.
 alter table public.meetings
   alter column meeting_at set not null,
-  alter column meeting_tz set not null;
+  alter column meeting_tz set not null,
+  alter column meeting_ends_at set not null,
+  add constraint meetings_ends_after_start check (meeting_ends_at > meeting_at);
 
 -- 4. Drop the view (depends on meeting_date) before dropping the column.
 drop view if exists public.meetings_with_progress;
@@ -54,6 +58,7 @@ select
   m.title,
   m.meeting_at,
   m.meeting_tz,
+  m.meeting_ends_at,
   m.status,
   m.linked_poll_id,
   m.action_items_md,
@@ -90,6 +95,7 @@ begin
        and new.title = old.title
        and new.meeting_at = old.meeting_at
        and new.meeting_tz = old.meeting_tz
+       and new.meeting_ends_at = old.meeting_ends_at
        and new.linked_poll_id is not distinct from old.linked_poll_id
     then
       return new;
@@ -102,6 +108,7 @@ begin
        and new.title         =  old.title
        and new.meeting_at    =  old.meeting_at
        and new.meeting_tz    =  old.meeting_tz
+       and new.meeting_ends_at =  old.meeting_ends_at
        and new.random_seed   =  old.random_seed
        and new.linked_poll_id is not distinct from old.linked_poll_id
        and new.agenda_md      is not distinct from old.agenda_md
