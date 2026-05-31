@@ -17,6 +17,8 @@ import {
   validateAttendedFlag,
 } from '@/lib/meetings-validation'
 import { seededShuffle } from '@/lib/shuffle'
+import { zonedWallTimeToInstant } from '@/lib/datetime'
+import { isValidMeetingTz } from '@/lib/timezones'
 import { canToggleActionItems, toggleCheckboxAt } from '@/lib/action-items'
 
 async function getCurrentMemberId(): Promise<string | null> {
@@ -52,10 +54,18 @@ export async function createMeeting(
     const v = validateMeetingCreate({
       title: formData.get('title'),
       meeting_date: formData.get('meeting_date'),
+      meeting_time: formData.get('meeting_time'),
+      meeting_tz: formData.get('meeting_tz'),
       linked_poll_id: formData.get('linked_poll_id'),
       agenda_md: formData.get('agenda_md'),
     })
     if (!v.ok) return actionError(v.error, v.field)
+
+    const meetingAt = zonedWallTimeToInstant(
+      v.value.meeting_date,
+      v.value.meeting_time,
+      v.value.meeting_tz,
+    ).toISOString()
 
     const supabase = await createClient()
 
@@ -74,7 +84,8 @@ export async function createMeeting(
       .from('meetings')
       .insert({
         title: v.value.title,
-        meeting_date: v.value.meeting_date,
+        meeting_at: meetingAt,
+        meeting_tz: v.value.meeting_tz,
         random_seed,
         linked_poll_id: v.value.linked_poll_id,
         agenda_md: v.value.agenda_md,
@@ -121,8 +132,13 @@ export async function updateMeeting(
     const meeting_date = formData.get('meeting_date')
     if (typeof meeting_date === 'string' && meeting_date.trim()) {
       const d = meeting_date.trim()
+      const t = String(formData.get('meeting_time') ?? '').trim()
+      const tz = String(formData.get('meeting_tz') ?? '').trim()
       if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return actionError('Pick a valid date', 'meeting_date')
-      patch.meeting_date = d
+      if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(t)) return actionError('Pick a valid time', 'meeting_time')
+      if (!isValidMeetingTz(tz)) return actionError('Pick a valid timezone', 'meeting_tz')
+      patch.meeting_at = zonedWallTimeToInstant(d, t, tz).toISOString()
+      patch.meeting_tz = tz
     }
     if (formData.has('linked_poll_id')) {
       const raw = String(formData.get('linked_poll_id') ?? '').trim()
