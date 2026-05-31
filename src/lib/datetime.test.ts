@@ -41,6 +41,7 @@ describe('formatInstant', () => {
     // 13:30 UTC === 19:00 IST
     expect(out).toMatch(/7:00/)      // 12-hour clock shows 7:00 PM
     expect(out).toMatch(/2026/)
+    expect(formatInstant('2026-05-31T13:30:00.000Z', 'America/New_York')).toMatch(/(EDT|GMT|EST)/)
   })
 
   it('formats the same instant differently in a different zone', () => {

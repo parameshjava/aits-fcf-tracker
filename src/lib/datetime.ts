@@ -58,8 +58,13 @@ export function zonedWallTimeToInstant(
  */
 export function formatInstant(iso: string, tz?: string): string {
   return new Intl.DateTimeFormat('en-IN', {
-    dateStyle: 'medium',
-    timeStyle: 'short',
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+    timeZoneName: 'short',
     ...(tz ? { timeZone: tz } : {}),
   }).format(new Date(iso))
 }
