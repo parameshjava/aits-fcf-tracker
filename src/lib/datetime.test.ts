@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { zonedWallTimeToInstant, formatInstant, formatInstantRange, wallTimeExistsInZone } from './datetime'
+import { zonedWallTimeToInstant, formatInstant, formatInstantRange, wallTimeExistsInZone, instantToZonedParts } from './datetime'
 
 describe('zonedWallTimeToInstant', () => {
   it('converts an IST wall-clock to the correct UTC instant', () => {
@@ -92,5 +92,28 @@ describe('wallTimeExistsInZone', () => {
   it('accepts times either side of the gap', () => {
     expect(wallTimeExistsInZone('2026-03-08', '01:30', 'America/New_York')).toBe(true)
     expect(wallTimeExistsInZone('2026-03-08', '03:30', 'America/New_York')).toBe(true)
+  })
+})
+
+describe('instantToZonedParts', () => {
+  it('decomposes an instant into wall-clock date + time in a zone', () => {
+    // 13:30Z === 19:00 IST on 2026-05-31
+    expect(instantToZonedParts('2026-05-31T13:30:00.000Z', 'Asia/Kolkata')).toEqual({
+      date: '2026-05-31',
+      time: '19:00',
+    })
+  })
+
+  it('renders the same instant differently per zone', () => {
+    // 13:30Z === 09:30 EDT on 2026-05-31 in New York
+    expect(instantToZonedParts('2026-05-31T13:30:00.000Z', 'America/New_York')).toEqual({
+      date: '2026-05-31',
+      time: '09:30',
+    })
+  })
+
+  it('round-trips with zonedWallTimeToInstant', () => {
+    const iso = zonedWallTimeToInstant('2026-12-25', '08:05', 'Asia/Kolkata').toISOString()
+    expect(instantToZonedParts(iso, 'Asia/Kolkata')).toEqual({ date: '2026-12-25', time: '08:05' })
   })
 })

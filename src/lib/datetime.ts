@@ -51,15 +51,12 @@ export function zonedWallTimeToInstant(
 }
 
 /**
- * True if the given wall-clock time actually exists in `tz`. Returns false for
- * times that fall in a DST spring-forward gap (e.g. 02:30 on a US "spring
- * forward" night), which `zonedWallTimeToInstant` would otherwise silently
- * resolve to the wrong side of the transition. Works by round-tripping: convert
- * to an instant, format that instant back in `tz`, and confirm the wall-clock
- * components are unchanged.
+ * Decompose an instant into its wall-clock date ('YYYY-MM-DD') and time
+ * ('HH:MM', 24-hour) in the given IANA zone. The inverse of
+ * `zonedWallTimeToInstant` — used to prefill date/time form inputs from a
+ * stored instant so the admin edits in the meeting's own zone.
  */
-export function wallTimeExistsInZone(dateISO: string, timeHHMM: string, tz: string): boolean {
-  const instant = zonedWallTimeToInstant(dateISO, timeHHMM, tz)
+export function instantToZonedParts(iso: string, tz: string): { date: string; time: string } {
   const parts = new Intl.DateTimeFormat('en-GB', {
     timeZone: tz,
     hour12: false,
@@ -68,13 +65,27 @@ export function wallTimeExistsInZone(dateISO: string, timeHHMM: string, tz: stri
     day: '2-digit',
     hour: '2-digit',
     minute: '2-digit',
-  }).formatToParts(instant)
+  }).formatToParts(new Date(iso))
   const get = (t: string) => parts.find((p) => p.type === t)?.value ?? ''
-  const roundTrippedDate = `${get('year')}-${get('month')}-${get('day')}`
   // en-GB hour can render '24' at midnight in some ICU builds; normalise.
   const hh = (Number(get('hour')) % 24).toString().padStart(2, '0')
-  const roundTrippedTime = `${hh}:${get('minute')}`
-  return roundTrippedDate === dateISO && roundTrippedTime === timeHHMM
+  return {
+    date: `${get('year')}-${get('month')}-${get('day')}`,
+    time: `${hh}:${get('minute')}`,
+  }
+}
+
+/**
+ * True if the given wall-clock time actually exists in `tz`. Returns false for
+ * times that fall in a DST spring-forward gap (e.g. 02:30 on a US "spring
+ * forward" night), which `zonedWallTimeToInstant` would otherwise silently
+ * resolve to the wrong side of the transition. Works by round-tripping: convert
+ * to an instant, read it back in `tz`, and confirm the wall-clock is unchanged.
+ */
+export function wallTimeExistsInZone(dateISO: string, timeHHMM: string, tz: string): boolean {
+  const instant = zonedWallTimeToInstant(dateISO, timeHHMM, tz)
+  const { date, time } = instantToZonedParts(instant.toISOString(), tz)
+  return date === dateISO && time === timeHHMM
 }
 
 /** Shared formatter options for meeting date/time display. */

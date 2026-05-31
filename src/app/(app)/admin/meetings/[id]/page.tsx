@@ -4,8 +4,10 @@ import { getMeeting } from '@/lib/actions/meetings-reads'
 import { ActionItemsPanel } from '@/components/action-items-panel'
 import { LinkedPollModal } from '@/components/linked-poll-modal'
 import { MeetingTime } from '@/components/meeting-time'
+import { instantToZonedParts } from '@/lib/datetime'
 import { CapturePage } from './capture-page'
 import { MeetingControls } from './meeting-controls'
+import { EditMeetingTimeDialog } from './edit-meeting-time-dialog'
 
 export default async function AdminMeetingDetailPage(
   { params }: { params: Promise<{ id: string }> },
@@ -17,6 +19,14 @@ export default async function AdminMeetingDetailPage(
 
   const meeting = await getMeeting(id)
   if (!meeting) notFound()
+
+  // Prefill the edit form in the meeting's own timezone (the Google model:
+  // edit the originally-scheduled wall time). End falls back to start if the
+  // end instant is somehow absent (e.g. before migration 036).
+  const startParts = instantToZonedParts(meeting.meeting_at, meeting.meeting_tz)
+  const endParts = meeting.meeting_ends_at
+    ? instantToZonedParts(meeting.meeting_ends_at, meeting.meeting_tz)
+    : startParts
 
   return (
     <div className="mx-auto max-w-4xl space-y-3 px-4 py-6 sm:px-6">
@@ -45,6 +55,15 @@ export default async function AdminMeetingDetailPage(
             >
               {meeting.status === 'open' ? 'In progress' : 'Closed'}
             </span>
+            {meeting.status === 'open' && (
+              <EditMeetingTimeDialog
+                meetingId={meeting.id}
+                defaultDate={startParts.date}
+                defaultStartTime={startParts.time}
+                defaultEndTime={endParts.time}
+                defaultTz={meeting.meeting_tz}
+              />
+            )}
             <MeetingControls meetingId={meeting.id} status={meeting.status} />
           </div>
         </div>
