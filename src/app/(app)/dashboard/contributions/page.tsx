@@ -1,7 +1,6 @@
-import { getTransactions } from '@/lib/actions/transactions'
+import { getTransactions, type TransactionFilters } from '@/lib/actions/transactions'
 import { createClient } from '@/lib/supabase/server'
 import type { RawTxn } from '@/lib/aggregate'
-import { SECTION_TYPES } from '@/lib/transaction-groups'
 import { ContributionsFilters } from './contributions-filters'
 import { ContributionsTable } from './contributions-table'
 
@@ -15,11 +14,13 @@ type Row = RawTxn & {
   member_name?: string | null
 }
 
-function rowMatchesType(row: Row, t: TypeKey): boolean {
-  if (t === 'contribution') return row.transaction_type === 'contribution'
-  if (t === 'interest_loans') return row.transaction_type === 'interest' && row.interest_source === 'loans'
-  if (t === 'interest_bank')  return row.transaction_type === 'interest' && row.interest_source === 'bank'
-  return false
+// Map a UI type chip to a server-side `getTransactions` type clause. With no
+// chips selected we fall back to the full section whitelist (contributions +
+// interest, either source) — see the call site.
+function chipToClause(t: TypeKey): NonNullable<TransactionFilters['typeClauses']>[number] {
+  if (t === 'interest_loans') return { type: 'interest', interestSource: 'loans' }
+  if (t === 'interest_bank') return { type: 'interest', interestSource: 'bank' }
+  return { type: 'contribution' }
 }
 
 export default async function ContributionsPage({
@@ -57,30 +58,42 @@ export default async function ContributionsPage({
     ? (params.types.split(',').filter(Boolean) as TypeKey[])
     : []
 
-  // Load and filter transactions.
-  const all = (await getTransactions()) as Row[]
-  const allowed = new Set(SECTION_TYPES.contributions)
-  const rows = all
-    .filter((t) => allowed.has(t.transaction_type))
-    .filter((t) => {
-      // Date range (inclusive)
-      if (t.transaction_date < from) return false
-      if (t.transaction_date > to)   return false
-      // Member multi-select
-      if (memberIds.length > 0) {
-        if (!t.member_id || !memberIds.includes(t.member_id)) return false
-      }
-      // Type chips
-      if (typeKeys.length > 0) {
-        if (!typeKeys.some((tk) => rowMatchesType(t, tk))) return false
-      }
-      return true
-    })
-    .sort(
-      (a, b) =>
-        new Date(b.transaction_date).getTime() -
-        new Date(a.transaction_date).getTime(),
-    )
+  // Build server-side filters. Type clauses default to the full section
+  // whitelist (contributions + interest from either source) when no chip is
+  // selected; otherwise each chip becomes one OR'd clause. The DB returns rows
+  // already ordered by date desc, so no client-side sort/filter is needed.
+  const typeClauses: NonNullable<TransactionFilters['typeClauses']> =
+    typeKeys.length > 0
+      ? typeKeys.map(chipToClause)
+      : [
+          { type: 'contribution' },
+          { type: 'interest', interestSource: 'loans' },
+          { type: 'interest', interestSource: 'bank' },
+        ]
+
+  const rows = (await getTransactions({
+    from,
+    to,
+    memberIds,
+    typeClauses,
+  })) as Row[]
+
+  // Applied filters, recorded atop any CSV/PDF export so the download is
+  // self-describing.
+  const TYPE_LABELS: Record<TypeKey, string> = {
+    contribution: 'Contribution',
+    interest_loans: 'Loan interest',
+    interest_bank: 'Bank interest',
+  }
+  const memberNames = memberIds
+    .map((id) => members.find((m) => m.id === id)?.name)
+    .filter(Boolean) as string[]
+  const exportCriteria = [
+    { label: 'Members', value: memberNames.length > 0 ? memberNames.join(', ') : 'All members' },
+    { label: 'Types', value: typeKeys.length > 0 ? typeKeys.map((t) => TYPE_LABELS[t]).join(', ') : 'All types' },
+    { label: 'From', value: from },
+    { label: 'To', value: to },
+  ]
 
   return (
     <div className="space-y-6">
@@ -97,7 +110,7 @@ export default async function ContributionsPage({
         defaultTo={to}
       />
 
-      <ContributionsTable rows={rows} />
+      <ContributionsTable rows={rows} exportCriteria={exportCriteria} />
     </div>
   )
 }

@@ -3,6 +3,8 @@
 import { useCallback } from 'react'
 import { formatRupees } from '@/lib/format'
 import { PollModal } from '@/components/poll-modal'
+import { TableExportMenu } from '@/components/table-export'
+import type { Cell, ExportCriterion } from '@/lib/table-export'
 import {
   SortableHeader,
   TableSearch,
@@ -59,11 +61,21 @@ export function TransactionsTable({
   enableSearch = true,
   memberColumnLabel = 'Member',
   showDonationColumns = false,
+  exportName = 'transactions',
+  exportTitle = 'Transactions',
+  exportCriteria = [],
 }: {
   rows: TxnRow[]
   showType?: boolean
   emptyLabel?: string
   enableSearch?: boolean
+  /** Base file name for the CSV/PDF export (without extension). */
+  exportName?: string
+  /** Heading rendered at the top of the exported PDF. */
+  exportTitle?: string
+  /** Page-level filters (e.g. date range) recorded atop the export. The live
+   *  table search query is appended automatically. */
+  exportCriteria?: ExportCriterion[]
   /** Header label for the column rendering `member_name`. Defaults to
    *  "Member"; the Donations section overrides it to "Referred by" since
    *  the joined member there is the referring fund member, not the
@@ -107,16 +119,60 @@ export function TransactionsTable({
     accessor,
   )
 
+  // Export reflects exactly what's on screen (current sort + search filter).
+  const exportColumns = [
+    'Date',
+    memberColumnLabel,
+    'Type',
+    ...(showDonationColumns ? ['Beneficiary', 'Poll'] : []),
+    'Amount (₹)',
+    'Transaction ID',
+    'Bank reference',
+    'Description',
+  ]
+  const exportRows: Cell[][] = sorted.map((t) => [
+    new Date(t.transaction_date).toLocaleDateString('en-IN', {
+      day: '2-digit', month: 'short', year: 'numeric',
+    }),
+    t.member_name ?? '',
+    typeLabel(t),
+    ...(showDonationColumns ? [t.beneficiary_name ?? '', t.poll?.question ?? ''] : []),
+    Number(t.amount) || 0,
+    t.transaction_id,
+    t.bank_transaction_id ?? '',
+    t.description ?? '',
+  ])
+  const amountIdx = exportColumns.indexOf('Amount (₹)')
+  const exportFooter: Cell[] = exportColumns.map((_, i) =>
+    i === 0 ? 'Total' : i === amountIdx ? sorted.reduce((s, r) => s + (Number(r.amount) || 0), 0) : '',
+  )
+  const allCriteria: ExportCriterion[] = [
+    ...exportCriteria,
+    ...(query.trim() ? [{ label: 'Search', value: query.trim() }] : []),
+  ]
+
   return (
     <div className="overflow-clip rounded-2xl border border-gray-200 bg-white">
-      {enableSearch && rows.length > 0 && (
-        <div className="border-b border-gray-200 bg-gray-50/30 px-4 py-2.5">
-          <TableSearch
-            value={query}
-            onChange={setQuery}
-            placeholder={`Search by ${memberColumnLabel.toLowerCase()}, description, ID…`}
-            matched={filtered.length}
-            total={rows.length}
+      {rows.length > 0 && (
+        <div className="flex items-center justify-between gap-3 border-b border-gray-200 bg-gray-50/30 px-3 py-2">
+          {enableSearch ? (
+            <TableSearch
+              value={query}
+              onChange={setQuery}
+              placeholder={`Search by ${memberColumnLabel.toLowerCase()}, description, ID…`}
+              matched={filtered.length}
+              total={rows.length}
+            />
+          ) : (
+            <span />
+          )}
+          <TableExportMenu
+            filename={exportName}
+            title={exportTitle}
+            columns={exportColumns}
+            rows={exportRows}
+            footer={exportFooter}
+            criteria={allCriteria}
           />
         </div>
       )}
@@ -215,12 +271,12 @@ export function TransactionsTable({
                         {meta.emoji}
                       </span>
                     </td>
-                    <td className="whitespace-nowrap px-3 py-2 text-gray-600">
+                    <td className="whitespace-nowrap px-3 py-1.5 text-gray-600">
                       {new Date(t.transaction_date).toLocaleDateString('en-IN', {
                         day: '2-digit', month: 'short', year: 'numeric',
                       })}
                     </td>
-                    <td className="px-3 py-2 align-middle">
+                    <td className="px-3 py-1.5 align-middle">
                       <div className="text-sm font-medium text-gray-900">
                         {t.member_name ?? <span className="text-gray-400">—</span>}
                       </div>
@@ -230,10 +286,10 @@ export function TransactionsTable({
                     </td>
                     {showDonationColumns && (
                       <>
-                        <td className="px-3 py-2 align-middle text-sm text-gray-700">
+                        <td className="px-3 py-1.5 align-middle text-sm text-gray-700">
                           {t.beneficiary_name || <span className="text-gray-300">—</span>}
                         </td>
-                        <td className="px-3 py-2 align-middle text-sm">
+                        <td className="px-3 py-1.5 align-middle text-sm">
                           {t.poll ? (
                             <PollModal
                               pollId={t.poll.id}
@@ -246,10 +302,10 @@ export function TransactionsTable({
                         </td>
                       </>
                     )}
-                    <td className="whitespace-nowrap px-3 py-2 text-right font-semibold tabular-nums text-gray-900">
+                    <td className="whitespace-nowrap px-3 py-1.5 text-right font-semibold tabular-nums text-gray-900">
                       {formatRupees(t.amount)}
                     </td>
-                    <td className="whitespace-nowrap px-3 py-2 font-mono text-xs text-gray-500">
+                    <td className="whitespace-nowrap px-3 py-1.5 font-mono text-xs text-gray-500">
                       <div>{t.transaction_id}</div>
                       {t.bank_transaction_id && (
                         <div className="text-[11px] text-gray-400" title="Bank reference">
@@ -257,11 +313,11 @@ export function TransactionsTable({
                         </div>
                       )}
                     </td>
-                    <td className="max-w-[280px] truncate px-3 py-2 text-gray-600">
+                    <td className="max-w-[280px] truncate px-3 py-1.5 text-gray-600">
                       {t.description || <span className="text-gray-300">—</span>}
                     </td>
                     {showActions && (
-                      <td className="whitespace-nowrap px-3 py-2 text-right">
+                      <td className="whitespace-nowrap px-3 py-1.5 text-right">
                         {t.manage_href ? (
                           <a
                             href={t.manage_href}

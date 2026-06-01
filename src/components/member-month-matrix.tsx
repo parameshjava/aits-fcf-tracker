@@ -2,6 +2,8 @@
 
 import { useCallback } from 'react'
 import { formatRupees } from '@/lib/format'
+import { TableExportMenu } from '@/components/table-export'
+import type { Cell } from '@/lib/table-export'
 import {
   SortableHeader,
   TableSearch,
@@ -25,7 +27,14 @@ const MONTH_LABELS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct
 
 type SortKey = 'member' | 'total'
 
-export function MemberMonthMatrix({ rows }: { rows: DashboardMemberMonthRow[] }) {
+export function MemberMonthMatrix({
+  rows,
+  year,
+}: {
+  rows: DashboardMemberMonthRow[]
+  /** Contribution year, used to label the export file. */
+  year?: number
+}) {
   const stringify = useCallback(
     (r: DashboardMemberMonthRow) => r.member_name,
     [],
@@ -55,6 +64,19 @@ export function MemberMonthMatrix({ rows }: { rows: DashboardMemberMonthRow[] })
   )
   const grandTotal = filtered.reduce((s, r) => s + r.total, 0)
 
+  // Export reflects the current sort + search filter (uses `sorted`).
+  const exportColumns = ['Member', ...MONTH_LABELS.map((m) => `${m} (₹)`), 'Total (₹)']
+  const exportRows: Cell[][] = sorted.map((r) => [
+    r.member_name,
+    ...MONTHS.map((k) => r[k] ?? 0),
+    r.total,
+  ])
+  const exportFooter: Cell[] = ['Total', ...MONTHS.map((k) => colTotals[k]), grandTotal]
+  const exportCriteria = [
+    ...(year ? [{ label: 'Year', value: String(year) }] : []),
+    ...(query.trim() ? [{ label: 'Search', value: query.trim() }] : []),
+  ]
+
   if (rows.length === 0) {
     return (
       <p className="rounded-md border border-dashed border-gray-200 px-3 py-6 text-center text-xs text-gray-400">
@@ -65,13 +87,21 @@ export function MemberMonthMatrix({ rows }: { rows: DashboardMemberMonthRow[] })
 
   return (
     <div className="overflow-clip rounded-2xl border border-gray-200 bg-white">
-      <div className="border-b border-gray-200 bg-gray-50/30 px-4 py-2.5">
+      <div className="flex items-center justify-between gap-3 border-b border-gray-200 bg-gray-50/30 px-3 py-2">
         <TableSearch
           value={query}
           onChange={setQuery}
           placeholder="Search by member name…"
           matched={filtered.length}
           total={rows.length}
+        />
+        <TableExportMenu
+          filename={year ? `member-month-${year}` : 'member-month-matrix'}
+          title={year ? `Member × Month contributions — ${year}` : 'Member × Month contributions'}
+          columns={exportColumns}
+          rows={exportRows}
+          footer={exportFooter}
+          criteria={exportCriteria}
         />
       </div>
 
@@ -85,6 +115,7 @@ export function MemberMonthMatrix({ rows }: { rows: DashboardMemberMonthRow[] })
           <thead>
             <tr className="border-b border-gray-200 bg-gray-50/60">
               <SortableHeader
+                compact
                 col="member"
                 label="Member"
                 sort={sort}
@@ -94,12 +125,13 @@ export function MemberMonthMatrix({ rows }: { rows: DashboardMemberMonthRow[] })
                 <th
                   key={m}
                   scope="col"
-                  className="px-2 py-3 text-right text-[11px] font-semibold uppercase tracking-wider text-gray-500"
+                  className="px-2 py-2 text-right text-[11px] font-semibold uppercase tracking-wider text-gray-500"
                 >
                   {m}
                 </th>
               ))}
               <SortableHeader
+                compact
                 col="total"
                 label="Total"
                 align="right"
@@ -124,7 +156,7 @@ export function MemberMonthMatrix({ rows }: { rows: DashboardMemberMonthRow[] })
                   key={r.member_id ?? r.member_name}
                   className="transition-colors hover:bg-gray-50"
                 >
-                  <td className="whitespace-nowrap px-4 py-3 text-sm font-medium text-gray-900">
+                  <td className="whitespace-nowrap px-3 py-1.5 text-sm font-medium text-gray-900">
                     {r.member_name}
                   </td>
                   {MONTHS.map((k) => {
@@ -133,7 +165,7 @@ export function MemberMonthMatrix({ rows }: { rows: DashboardMemberMonthRow[] })
                       <td
                         key={k}
                         className={
-                          'whitespace-nowrap px-2 py-3 text-right tabular-nums ' +
+                          'whitespace-nowrap px-2 py-1.5 text-right tabular-nums ' +
                           (v > 0 ? 'text-gray-700' : 'text-gray-300')
                         }
                       >
@@ -141,7 +173,7 @@ export function MemberMonthMatrix({ rows }: { rows: DashboardMemberMonthRow[] })
                       </td>
                     )
                   })}
-                  <td className="whitespace-nowrap px-4 py-3 text-right font-semibold tabular-nums text-gray-900">
+                  <td className="whitespace-nowrap px-3 py-1.5 text-right font-semibold tabular-nums text-gray-900">
                     {formatRupees(r.total)}
                   </td>
                 </tr>
@@ -151,16 +183,16 @@ export function MemberMonthMatrix({ rows }: { rows: DashboardMemberMonthRow[] })
           {sorted.length > 0 && (
             <tfoot className="bg-gray-50 text-sm">
               <tr>
-                <td className="px-4 py-3 font-medium text-gray-700">Total</td>
+                <td className="px-3 py-2 font-medium text-gray-700">Total</td>
                 {MONTHS.map((k) => (
                   <td
                     key={k}
-                    className="whitespace-nowrap px-2 py-3 text-right tabular-nums font-medium text-gray-900"
+                    className="whitespace-nowrap px-2 py-2 text-right tabular-nums font-medium text-gray-900"
                   >
                     {colTotals[k] > 0 ? formatRupees(colTotals[k]) : '—'}
                   </td>
                 ))}
-                <td className="whitespace-nowrap px-4 py-3 text-right font-semibold tabular-nums text-gray-900">
+                <td className="whitespace-nowrap px-3 py-2 text-right font-semibold tabular-nums text-gray-900">
                   {formatRupees(grandTotal)}
                 </td>
               </tr>

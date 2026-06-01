@@ -82,6 +82,7 @@ export async function payLoanInterest(
   transactionDate: string,
   notes?: string,
   bankBalance?: { apply: boolean; direction: BalanceDirection },
+  bankTransactionId?: string,
 ): Promise<ActionResult<{ transactionId: string; balanceUpdateFailed: boolean }>> {
   return runAction('payLoanInterest', async () => {
     const user = await getCurrentUser()
@@ -103,6 +104,18 @@ export async function payLoanInterest(
     })
     if (error) return actionError(error.message)
 
+    const txnId = data as string
+
+    // The RPC doesn't set the bank reference; stamp it on the created row.
+    const bankRef = bankTransactionId?.trim() || null
+    if (bankRef) {
+      const { error: refErr } = await supabase
+        .from('transactions')
+        .update({ bank_transaction_id: bankRef })
+        .eq('id', txnId)
+      if (refErr) return actionError(refErr.message)
+    }
+
     let balanceUpdateFailed = false
     if (bankBalance?.apply) {
       const total = allocations.reduce((s, a) => s + a.amount, 0)
@@ -120,7 +133,7 @@ export async function payLoanInterest(
     updateTag('dashboard')
 
     return actionOk(
-      { transactionId: data as string, balanceUpdateFailed },
+      { transactionId: txnId, balanceUpdateFailed },
       'Interest payment recorded',
     )
   })

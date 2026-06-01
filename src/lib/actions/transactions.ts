@@ -113,16 +113,75 @@ export async function createTransaction(
   })
 }
 
-export async function getTransactions() {
-  const supabase = await createClient()
-  const { data, error } = await supabase
-    .from('transactions')
-    .select(
-      '*, beneficiary_name, poll_id, member:member_id (name, slug), poll:poll_id (id, question)',
-    )
-    .order('transaction_date', { ascending: false })
+/**
+ * Server-side filters for {@link getTransactions}. All fields are optional;
+ * omit them to fetch the whole table. Pushing these into the Supabase query
+ * (rather than fetching everything and filtering in JS) keeps the response
+ * small and lets the DB do the work.
+ */
+export type TransactionFilters = {
+  /** Inclusive lower bound on `transaction_date` (YYYY-MM-DD). */
+  from?: string
+  /** Inclusive upper bound on `transaction_date` (YYYY-MM-DD). */
+  to?: string
+  /** Restrict to these member ids (`member_id IN (…)`). Empty = no constraint. */
+  memberIds?: string[]
+  /**
+   * OR'd type predicates. A clause with no `interestSource` matches the type
+   * outright; a clause with one matches `type = interest AND interest_source = …`.
+   * Empty/undefined = no type constraint.
+   */
+  typeClauses?: Array<{ type: TransactionType; interestSource?: 'loans' | 'bank' }>
+}
 
-  if (error) throw new Error(error.message)
+export async function getTransactions(filters?: TransactionFilters) {
+  const supabase = await createClient()
+
+  // PostgREST caps a single response at the project's `db-max-rows` (1000 by
+  // default on Supabase). We hold ~1.3K+ rows, and the DESC order means an
+  // unbounded select silently drops the OLDEST rows (the 2016 history). Page
+  // through with `.range()` until a short page comes back so callers see every
+  // matching transaction even when the filtered set still exceeds one page.
+  const PAGE = 1000
+
+  // Translate the OR'd type clauses into a single PostgREST `or=(…)` string.
+  // `interest_loans`/`interest_bank` become nested `and(…)` groups.
+  const orFilter =
+    filters?.typeClauses && filters.typeClauses.length > 0
+      ? filters.typeClauses
+          .map((c) =>
+            c.interestSource
+              ? `and(transaction_type.eq.${c.type},interest_source.eq.${c.interestSource})`
+              : `transaction_type.eq.${c.type}`,
+          )
+          .join(',')
+      : null
+
+  const rows: Record<string, unknown>[] = []
+  for (let offset = 0; ; offset += PAGE) {
+    let query = supabase
+      .from('transactions')
+      .select(
+        '*, beneficiary_name, poll_id, member:member_id (name, slug), poll:poll_id (id, question)',
+      )
+      .order('transaction_date', { ascending: false })
+      .order('transaction_id', { ascending: false })
+
+    if (filters?.from) query = query.gte('transaction_date', filters.from)
+    if (filters?.to) query = query.lte('transaction_date', filters.to)
+    if (filters?.memberIds && filters.memberIds.length > 0) {
+      query = query.in('member_id', filters.memberIds)
+    }
+    if (orFilter) query = query.or(orFilter)
+
+    const { data, error } = await query.range(offset, offset + PAGE - 1)
+
+    if (error) throw new Error(error.message)
+    const page = data ?? []
+    rows.push(...page)
+    if (page.length < PAGE) break
+  }
+  const data = rows
 
   type MemberRef = { name: string; slug: string } | null
   type PollRef = { id: string; question: string } | null
