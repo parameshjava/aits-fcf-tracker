@@ -2,10 +2,12 @@ import { notFound, redirect } from 'next/navigation'
 import { getCurrentUser } from '@/lib/actions/auth'
 import { getMeeting } from '@/lib/actions/meetings-reads'
 import { ActionItemsPanel } from '@/components/action-items-panel'
+import { MarkdownView } from '@/components/markdown-view'
 import { PollModal } from '@/components/poll-modal'
 import { MeetingTime } from '@/components/meeting-time'
 import { instantToZonedParts } from '@/lib/datetime'
 import { CapturePage } from './capture-page'
+import { MeetingNotesViewer } from './meeting-notes-viewer'
 import { MeetingControls } from './meeting-controls'
 import { EditMeetingTimeDialog } from './edit-meeting-time-dialog'
 
@@ -69,7 +71,26 @@ export default async function AdminMeetingDetailPage(
         </div>
       </div>
 
-      <CapturePage meeting={meeting} />
+      {meeting.status === 'open' ? (
+        <CapturePage meeting={meeting} />
+      ) : (
+        <div className="rounded-lg border border-gray-200 bg-white">
+          <div className="border-b border-gray-100 px-4 py-2">
+            <h2 className="text-sm font-semibold text-gray-900">Agenda</h2>
+          </div>
+          <div className="px-4 py-3">
+            {meeting.agenda_md ? (
+              <MarkdownView source={meeting.agenda_md} />
+            ) : (
+              <p className="py-2 text-xs text-gray-400">No agenda was set.</p>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Consolidated / member-wise notes viewer — available in any status, so
+          notes can be reviewed while the meeting is still in progress too. */}
+      <MeetingNotesViewer meeting={meeting} />
 
       <ActionItemsPanel
         meetingId={meeting.id}

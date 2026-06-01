@@ -8,6 +8,7 @@ import {
   MemberContributionBars,
 } from '@/components/charts/dashboard-bars'
 import { TransactionsTable, type TxnRow } from '@/components/transactions-table'
+import { TableExportMenu } from '@/components/table-export'
 import { MemberMonthMatrix } from '@/components/member-month-matrix'
 import { YearPicker } from '@/components/year-picker'
 import { DASHBOARD_BAR_COLORS } from '@/lib/transaction-groups'
@@ -261,7 +262,7 @@ export default async function DashboardPage({
                 contribution recorded that month.
               </p>
             </div>
-            <MemberMonthMatrix rows={memberMonthRows} />
+            <MemberMonthMatrix rows={memberMonthRows} year={year} />
           </div>
         }
         membersChart={
@@ -329,12 +330,21 @@ export default async function DashboardPage({
         eligibilitySection={<DonationEligibilityLedger years={eligibilityYears} />}
         membersSection={
           <div>
-            <div className="mb-3">
-              <h2 className="text-base font-semibold text-gray-900">Member leaderboard</h2>
-              <p className="text-xs text-gray-500">
-                {memberTotals.length} {memberTotals.length === 1 ? 'member' : 'members'} ·{' '}
-                {formatRupees(memberTotals.reduce((s, m) => s + m.total, 0))} total
-              </p>
+            <div className="mb-3 flex items-start justify-between gap-3">
+              <div>
+                <h2 className="text-base font-semibold text-gray-900">Member leaderboard</h2>
+                <p className="text-xs text-gray-500">
+                  {memberTotals.length} {memberTotals.length === 1 ? 'member' : 'members'} ·{' '}
+                  {formatRupees(memberTotals.reduce((s, m) => s + m.total, 0))} total
+                </p>
+              </div>
+              <TableExportMenu
+                filename="member-leaderboard"
+                title="Member leaderboard"
+                columns={['Rank', 'Member', 'Contributions (count)', 'Total (₹)']}
+                rows={memberTotals.map((m, i) => [i + 1, m.member_name, m.count, m.total])}
+                footer={['', 'Total', memberTotals.reduce((s, m) => s + m.count, 0), memberTotals.reduce((s, m) => s + m.total, 0)]}
+              />
             </div>
             <MemberTotalsTable rows={memberTotals} />
           </div>

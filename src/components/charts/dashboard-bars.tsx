@@ -65,13 +65,25 @@ export function DashboardBars({
     router.push(`${pathname}?${sp.toString()}`, { scroll: false })
   }
 
-  // Precomputed stack total for the top-of-bar label. LabelList on the
-  // topmost stacked Bar pulls from this `total` field, so the rendered
-  // amount reflects the whole month's inflow, not just bank interest.
+  // Precomputed stack total for the top-of-bar label.
   const shaped = data.map((d) => ({
     ...d,
     total: (d.contributions ?? 0) + (d.loanInterest ?? 0) + (d.bankInterest ?? 0),
   }))
+
+  // The total label must sit at the very top of the stack. A LabelList only
+  // emits a label for a segment that actually renders, so attaching it to a
+  // fixed series (e.g. the top `bankInterest` bar) drops the label for any
+  // month where that series is zero (e.g. a month with no bank interest).
+  // Instead, attach a label to EVERY series and let each one emit the total
+  // only when it is the topmost non-zero segment for that month — that
+  // segment's top is, by definition, the top of the whole stack.
+  function topNonZeroSeries(d: (typeof shaped)[number]): SeriesKey | null {
+    if ((d.bankInterest ?? 0) > 0) return 'bankInterest'
+    if ((d.loanInterest ?? 0) > 0) return 'loanInterest'
+    if ((d.contributions ?? 0) > 0) return 'contributions'
+    return null
+  }
 
   return (
     // ChartContainer wraps Recharts' ResponsiveContainer and:
@@ -117,19 +129,18 @@ export function DashboardBars({
                 pick(d?.payload?.monthIndex, s.key)
               }
             >
-              {isTop && (
-                <LabelList
-                  dataKey="total"
-                  position="top"
-                  offset={6}
-                  className="fill-foreground"
-                  fontSize={10}
-                  formatter={(v) => {
-                    const n = Number(v ?? 0)
-                    return n > 0 ? formatRupeesCompact(n) : ''
-                  }}
-                />
-              )}
+              <LabelList
+                position="top"
+                offset={6}
+                className="fill-foreground"
+                fontSize={10}
+                valueAccessor={(entry) => {
+                  const row = (entry as { payload?: (typeof shaped)[number] })
+                    ?.payload
+                  if (!row || topNonZeroSeries(row) !== s.key) return ''
+                  return row.total > 0 ? formatRupeesCompact(row.total) : ''
+                }}
+              />
             </Bar>
           )
         })}

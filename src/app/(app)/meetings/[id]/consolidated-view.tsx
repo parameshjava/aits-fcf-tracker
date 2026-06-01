@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useTransition } from 'react'
+import { useMemo, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
@@ -9,6 +9,7 @@ import { MarkdownEditor, type MarkdownEditorMode } from '@/components/markdown-e
 import { saveAttendeeNotes } from '@/lib/actions/meetings'
 import type { MeetingDetail } from '@/lib/actions/meetings-reads'
 import { ExpandToggle } from '@/components/ui/expand-toggle'
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 
 type Props = {
   meeting: MeetingDetail
@@ -25,6 +26,37 @@ export function ConsolidatedView({ meeting, viewerMemberId }: Props) {
   const [pending, startTransition] = useTransition()
 
   const canEditOwn = meeting.status === 'open' && viewerMemberId != null
+
+  // @mention chips resolve against every attendee.
+  const slugToName = useMemo(
+    () => Object.fromEntries(meeting.attendees.map((a) => [a.member_slug, a.member_name])),
+    [meeting.attendees],
+  )
+
+  // Attendees who actually captured notes (already ordered by `position`).
+  const withNotes = useMemo(
+    () => meeting.attendees.filter((a) => (a.notes_md ?? '').trim().length > 0),
+    [meeting.attendees],
+  )
+
+  // One markdown document: a `## n. Name` heading per member, notes verbatim,
+  // separated by rules. This is the exact text the Copy button writes.
+  const consolidatedMd = useMemo(
+    () =>
+      withNotes
+        .map((a) => `## ${a.position}. ${a.member_name}\n\n${(a.notes_md ?? '').trim()}`)
+        .join('\n\n---\n\n'),
+    [withNotes],
+  )
+
+  async function copyConsolidated() {
+    try {
+      await navigator.clipboard.writeText(consolidatedMd)
+      toast.success('Copied', { description: 'Consolidated notes copied as markdown.' })
+    } catch {
+      toast.error("Couldn't copy", { description: 'Clipboard access was blocked.' })
+    }
+  }
 
   if (meeting.attendees.length === 0) {
     return (
@@ -60,28 +92,34 @@ export function ConsolidatedView({ meeting, viewerMemberId }: Props) {
   }
 
   return (
-    <div className="space-y-3">
-      <div className="flex items-center justify-between px-1">
-        <p className="text-xs text-gray-500">Click any member to expand · sections appear in the order captured</p>
-        <div className="flex gap-2">
-          <Button
-            type="button"
-            variant="outline"
-            size="xs"
-            onClick={() => setOpen(Object.fromEntries(meeting.attendees.map((a) => [a.member_id, true])))}
-          >
-            Expand all
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            size="xs"
-            onClick={() => setOpen({})}
-          >
-            Collapse all
-          </Button>
+    <Tabs defaultValue="member" className="space-y-3">
+      <TabsList className="self-start">
+        <TabsTrigger value="member">By member</TabsTrigger>
+        <TabsTrigger value="consolidated">Consolidated</TabsTrigger>
+      </TabsList>
+
+      <TabsContent value="member" keepMounted className="space-y-2">
+        <div className="flex items-center justify-between px-1">
+          <p className="text-xs text-gray-500">Click any member to expand · sections appear in the order captured</p>
+          <div className="flex gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="xs"
+              onClick={() => setOpen(Object.fromEntries(meeting.attendees.map((a) => [a.member_id, true])))}
+            >
+              Expand all
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="xs"
+              onClick={() => setOpen({})}
+            >
+              Collapse all
+            </Button>
+          </div>
         </div>
-      </div>
 
       <div className="space-y-2">
         {meeting.attendees.map((a) => {
@@ -166,6 +204,24 @@ export function ConsolidatedView({ meeting, viewerMemberId }: Props) {
           )
         })}
       </div>
-    </div>
+      </TabsContent>
+
+      <TabsContent value="consolidated" className="space-y-3">
+        <div className="flex items-center justify-end px-1">
+          <Button type="button" variant="outline" size="xs" onClick={copyConsolidated} disabled={withNotes.length === 0}>
+            Copy markdown
+          </Button>
+        </div>
+        {withNotes.length === 0 ? (
+          <div className="rounded-lg border border-dashed border-gray-300 bg-white px-4 py-6 text-center text-xs text-gray-400">
+            No notes captured yet.
+          </div>
+        ) : (
+          <div className="rounded-lg border border-gray-200 bg-white px-4 py-3">
+            <MarkdownView source={consolidatedMd} mentions={{ slugToName }} />
+          </div>
+        )}
+      </TabsContent>
+    </Tabs>
   )
 }

@@ -71,7 +71,7 @@ export function TopBar({ fullName, email, avatarUrl }: Props) {
             onClick={() => setMenuOpen((v) => !v)}
             aria-haspopup="menu"
             aria-expanded={menuOpen}
-            className="flex items-center gap-3 rounded-2xl border border-gray-200/80 bg-white py-1.5 pl-1.5 pr-3 text-left text-sm text-gray-700 transition-colors hover:bg-gray-50"
+            className="flex cursor-pointer items-center gap-3 rounded-2xl border border-gray-200/80 bg-white py-1.5 pl-1.5 pr-3 text-left text-sm text-gray-700 transition-colors hover:bg-gray-50"
           >
             {avatarUrl ? (
               <Image
@@ -104,9 +104,22 @@ export function TopBar({ fullName, email, avatarUrl }: Props) {
               <form action={signOut}>
                 <button
                   type="submit"
-                  className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm text-gray-700 hover:bg-gray-50"
+                  className="flex w-full cursor-pointer items-center gap-2 px-4 py-2.5 text-left text-sm text-gray-700 hover:bg-gray-50"
                 >
-                  <span className="text-base">🚪</span>
+                  <svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    className="h-4 w-4 text-gray-400"
+                    aria-hidden="true"
+                  >
+                    <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                    <polyline points="16 17 21 12 16 7" />
+                    <line x1="21" y1="12" x2="9" y2="12" />
+                  </svg>
                   Sign out
                 </button>
               </form>
