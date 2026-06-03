@@ -130,6 +130,9 @@ export default async function DashboardPage({
     getDashboardEligibilityLedger(),
   ])
   const eligibilityYears = aggregateEligibilityByYear(eligibilityLedger, thisYear)
+  // Total Donations tile = lifetime donations paid out + lifetime bad debts
+  // written off (both consume donation eligibility).
+  const totalDonations = eligibilitySummary.totalDonated + eligibilitySummary.totalBadDebt
 
   // Monthly stacked bar dataset for the selected year:
   //   • carryIn = lifetime cumulative EARNED eligibility BEFORE this month
@@ -194,7 +197,7 @@ export default async function DashboardPage({
   return (
     <div className="space-y-8">
       <h1 className="text-lg font-semibold text-gray-900">Dashboard</h1>
-      <section className="grid grid-cols-2 gap-4 lg:grid-cols-5">
+      <section className="grid grid-cols-2 gap-4 lg:grid-cols-3 xl:grid-cols-6">
         <KpiTile
           label="Total contributions"
           value={formatRupees(overall.contributions)}
@@ -228,6 +231,12 @@ export default async function DashboardPage({
           value={formatRupees(availableBalance)}
           hint="Bank balance + outstanding loan principal"
           accent="amber"
+        />
+        <KpiTile
+          label="Total donations"
+          value={formatRupees(totalDonations)}
+          hint="Donations paid out + bad debts written off"
+          accent="rose"
         />
       </section>
 
