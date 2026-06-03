@@ -65,13 +65,34 @@ export function DashboardBars({
     router.push(`${pathname}?${sp.toString()}`, { scroll: false })
   }
 
-  // Precomputed stack total for the top-of-bar label. LabelList on the
-  // topmost stacked Bar pulls from this `total` field, so the rendered
-  // amount reflects the whole month's inflow, not just bank interest.
-  const shaped = data.map((d) => ({
-    ...d,
-    total: (d.contributions ?? 0) + (d.loanInterest ?? 0) + (d.bankInterest ?? 0),
-  }))
+  // Precomputed stack total for the top-of-bar label. The total label rides
+  // on the topmost NON-ZERO segment rather than always the top series:
+  // recharts drops the label for a zero-height segment, so a month whose
+  // bank interest is 0 (the top series) would otherwise lose its total label
+  // even though the bar itself has height. We pin the total onto whichever
+  // series is the highest one with a value, and leave the others null so
+  // exactly one label renders per bar, at the top of the visible stack.
+  const shaped = data.map((d) => {
+    const contributions = d.contributions ?? 0
+    const loanInterest = d.loanInterest ?? 0
+    const bankInterest = d.bankInterest ?? 0
+    const total = contributions + loanInterest + bankInterest
+    const topKey: SeriesKey =
+      bankInterest > 0 ? 'bankInterest' : loanInterest > 0 ? 'loanInterest' : 'contributions'
+    return {
+      ...d,
+      total,
+      labelContributions: topKey === 'contributions' ? total : null,
+      labelLoanInterest: topKey === 'loanInterest' ? total : null,
+      labelBankInterest: topKey === 'bankInterest' ? total : null,
+    }
+  })
+
+  const LABEL_KEYS: Record<SeriesKey, string> = {
+    contributions: 'labelContributions',
+    loanInterest: 'labelLoanInterest',
+    bankInterest: 'labelBankInterest',
+  }
 
   return (
     // ChartContainer wraps Recharts' ResponsiveContainer and:
@@ -117,19 +138,21 @@ export function DashboardBars({
                 pick(d?.payload?.monthIndex, s.key)
               }
             >
-              {isTop && (
-                <LabelList
-                  dataKey="total"
-                  position="top"
-                  offset={6}
-                  className="fill-foreground"
-                  fontSize={10}
-                  formatter={(v) => {
-                    const n = Number(v ?? 0)
-                    return n > 0 ? formatRupeesCompact(n) : ''
-                  }}
-                />
-              )}
+              {/* Total label attached to every series via its own label
+                  field; only the topmost non-zero segment for a given month
+                  carries the value, so exactly one label renders per bar even
+                  when the top series (bank interest) is 0 that month. */}
+              <LabelList
+                dataKey={LABEL_KEYS[s.key]}
+                position="top"
+                offset={6}
+                className="fill-foreground"
+                fontSize={10}
+                formatter={(v) => {
+                  const n = Number(v ?? 0)
+                  return n > 0 ? formatRupeesCompact(n) : ''
+                }}
+              />
             </Bar>
           )
         })}
