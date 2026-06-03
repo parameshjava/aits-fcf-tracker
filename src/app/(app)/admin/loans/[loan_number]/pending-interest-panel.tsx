@@ -39,6 +39,7 @@ export function PendingInterestPanel({ loanId, accruals }: Props) {
   )
   const [txnDate, setTxnDate] = useState<string>(todayISO())
   const [notes, setNotes] = useState<string>('')
+  const [bankTxnId, setBankTxnId] = useState<string>('')
   const [applyToBank, setApplyToBank] = useState(false)
   const [bankDirection, setBankDirection] = useState<BalanceDirection>('add')
 
@@ -59,6 +60,7 @@ export function PendingInterestPanel({ loanId, accruals }: Props) {
         txnDate,
         notes || undefined,
         applyToBank ? { apply: true, direction: bankDirection } : undefined,
+        bankTxnId || undefined,
       ),
     null,
   )
@@ -230,6 +232,16 @@ export function PendingInterestPanel({ loanId, accruals }: Props) {
               type="text"
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
+              className="mt-1 rounded-md border border-gray-300 px-2 py-1 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            />
+          </label>
+          <label className="flex min-w-[180px] flex-1 flex-col text-xs">
+            <span className="text-gray-500">Bank Transaction ID (optional)</span>
+            <input
+              type="text"
+              value={bankTxnId}
+              onChange={(e) => setBankTxnId(e.target.value)}
+              placeholder="e.g. UPI ref / NEFT UTR"
               className="mt-1 rounded-md border border-gray-300 px-2 py-1 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
             />
           </label>

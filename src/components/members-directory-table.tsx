@@ -3,6 +3,8 @@
 import { Fragment, useState } from 'react'
 import { ContactChip, MemberContactsList } from '@/components/member-contacts'
 import { ExpandToggle } from '@/components/ui/expand-toggle'
+import { TableExportMenu } from '@/components/table-export'
+import type { Cell } from '@/lib/table-export'
 import { ManageContactsList } from '@/components/manage-contacts-list'
 import { AddContactForm } from '@/components/add-contact-form'
 import { MemberBankAccountsManager } from '@/components/member-bank-accounts-manager'
@@ -63,8 +65,34 @@ export function MembersDirectoryTable({
     })
   }
 
+  const exportColumns = ['Name', 'Status', 'Primary phone', 'Primary email', 'Login email', 'Member since']
+  const exportRows: Cell[][] = members.map((m) => {
+    const phones = m.contacts.filter((c) => c.kind === 'phone')
+    const emails = m.contacts.filter((c) => c.kind === 'email')
+    const primaryPhone = phones.find((c) => c.is_primary) ?? phones[0]
+    const primaryEmail = emails.find((c) => c.is_primary) ?? emails[0]
+    return [
+      m.name,
+      STATUS_LABEL[m.status] ?? m.status,
+      primaryPhone?.value ?? '',
+      primaryEmail?.value ?? '',
+      m.email ?? '',
+      formatMemberSince(m.created_at),
+    ]
+  })
+
   return (
     <div className="overflow-clip rounded-2xl border border-gray-200 bg-white">
+      {members.length > 0 && (
+        <div className="flex items-center justify-end border-b border-gray-200 bg-gray-50/30 px-3 py-2">
+          <TableExportMenu
+            filename="members"
+            title="Members directory"
+            columns={exportColumns}
+            rows={exportRows}
+          />
+        </div>
+      )}
       <div className="overflow-x-auto lg:overflow-x-visible">
         <table className="sticky-thead min-w-full text-sm">
           <thead>

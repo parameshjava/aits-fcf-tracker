@@ -52,6 +52,7 @@ export function NewTransactionForm({
   const [type, setType] = useState<string>(initialType)
   const [interestSource, setInterestSource] = useState<'loans' | 'bank'>('loans')
   const [memberId, setMemberId] = useState<string>('')
+  const [loanId, setLoanId] = useState<string>('')
   const [pollId, setPollId] = useState<string>('')
   const [formKey, setFormKey] = useState(0)
   const pollOptions = buildPollPickerOptions(polls)
@@ -75,6 +76,7 @@ export function NewTransactionForm({
       setType('')
       setInterestSource('loans')
       setMemberId('')
+      setLoanId('')
       setPollId('')
       setFormKey((k) => k + 1)
     }
@@ -85,6 +87,13 @@ export function NewTransactionForm({
   const needsLoan =
     TYPES_NEEDING_LOAN.has(type) ||
     (type === 'interest' && interestSource === 'loans')
+
+  // Loan interest can't be recorded from this generic form — it must be
+  // allocated against specific accrual rows on the loan's Pending interest
+  // panel (createTransaction blocks it server-side). Disable submit and guide
+  // the admin to the right screen instead of letting them hit the error.
+  const isLoanInterest = type === 'interest' && interestSource === 'loans'
+  const selectedLoan = loanId ? loans.find((l) => l.id === loanId) ?? null : null
 
   // Show only the loans that belong to the chosen member; if no member is
   // selected, show every active loan (admin can override).
@@ -100,17 +109,27 @@ export function NewTransactionForm({
     <form key={formKey} ref={formRef} action={action} className="space-y-4 rounded-lg border bg-white p-6">
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <div>
-          <label htmlFor="transaction_date" className="block text-sm font-medium text-gray-700">
-            Transaction date
+          <label htmlFor="member_id" className="block text-sm font-medium text-gray-700">
+            {isDonation ? 'Referred by' : 'Member'}
+            <span className="ml-1 text-xs font-normal text-gray-400">
+              {isDonation
+                ? '(optional · fund member who proposed this donation)'
+                : '(optional · type to search)'}
+            </span>
           </label>
-          <input
-            id="transaction_date"
-            name="transaction_date"
-            type="date"
-            required
-            max={todayISO()}
-            className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-          />
+          <div className="mt-1">
+            <SearchableSelect
+              name="member_id"
+              options={members}
+              value={memberId}
+              onChange={(v) => {
+                setMemberId(v)
+                setLoanId('')
+              }}
+              emptyOption={isDonation ? '— No referrer —' : '— No member —'}
+              placeholder={isDonation ? 'Search members…' : 'Search members…'}
+            />
+          </div>
         </div>
 
         <div>
@@ -125,6 +144,20 @@ export function NewTransactionForm({
             required
             className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
             placeholder="0.00"
+          />
+        </div>
+
+        <div>
+          <label htmlFor="transaction_date" className="block text-sm font-medium text-gray-700">
+            Transaction date
+          </label>
+          <input
+            id="transaction_date"
+            name="transaction_date"
+            type="date"
+            required
+            max={todayISO()}
+            className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
           />
         </div>
 
@@ -147,27 +180,6 @@ export function NewTransactionForm({
               </option>
             ))}
           </select>
-        </div>
-
-        <div>
-          <label htmlFor="member_id" className="block text-sm font-medium text-gray-700">
-            {isDonation ? 'Referred by' : 'Member'}
-            <span className="ml-1 text-xs font-normal text-gray-400">
-              {isDonation
-                ? '(optional · fund member who proposed this donation)'
-                : '(optional · type to search)'}
-            </span>
-          </label>
-          <div className="mt-1">
-            <SearchableSelect
-              name="member_id"
-              options={members}
-              value={memberId}
-              onChange={setMemberId}
-              emptyOption={isDonation ? '— No referrer —' : '— No member —'}
-              placeholder={isDonation ? 'Search members…' : 'Search members…'}
-            />
-          </div>
         </div>
 
         {isDonation && (
@@ -252,9 +264,9 @@ export function NewTransactionForm({
               id="loan_id"
               name="loan_id"
               required
-              defaultValue=""
+              value={loanId}
+              onChange={(e) => setLoanId(e.target.value)}
               className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-              key={memberId /* reset selection when the member changes */}
             >
               <option value="">
                 {visibleLoans.length === 0
@@ -269,6 +281,30 @@ export function NewTransactionForm({
                 </option>
               ))}
             </select>
+          </div>
+        )}
+
+        {isLoanInterest && (
+          <div className="sm:col-span-2 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm">
+            <p className="font-medium text-amber-900">
+              Loan interest can’t be recorded here.
+            </p>
+            <p className="mt-1 text-amber-800">
+              Loan interest must be applied to specific monthly accruals on the
+              loan’s <strong>Pending interest</strong> panel — this generic form
+              can’t do that.
+              {selectedLoan
+                ? ' Open the selected loan to record it:'
+                : ' Pick a loan above, then open it to record the payment.'}
+            </p>
+            {selectedLoan && (
+              <a
+                href={`/admin/loans/${selectedLoan.loan_number}`}
+                className="mt-2 inline-block rounded-md bg-amber-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-700"
+              >
+                Open {selectedLoan.loan_number} → Pending interest
+              </a>
+            )}
           </div>
         )}
 
@@ -326,7 +362,7 @@ export function NewTransactionForm({
         </a>
         <button
           type="submit"
-          disabled={pending}
+          disabled={pending || isLoanInterest}
           className="rounded-md bg-blue-600 px-6 py-2 text-sm font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50"
         >
           {pending ? 'Saving...' : 'Save transaction'}

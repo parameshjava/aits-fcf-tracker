@@ -270,6 +270,8 @@ export async function SectionView({
           emptyLabel={`No ${SECTION_LABELS[section].toLowerCase()} yet`}
           memberColumnLabel={section === 'donations' ? 'Referred by' : 'Member'}
           showDonationColumns={section === 'donations'}
+          exportName={section}
+          exportTitle={SECTION_LABELS[section]}
         />
       </section>
     </div>

@@ -2,6 +2,8 @@
 
 import { useCallback } from 'react'
 import { formatRupees } from '@/lib/format'
+import { TableExportMenu } from '@/components/table-export'
+import type { Cell, ExportCriterion } from '@/lib/table-export'
 import {
   SortableHeader,
   TableSearch,
@@ -44,7 +46,15 @@ function typeLabel(row: ContributionRow): string {
   return base
 }
 
-export function ContributionsTable({ rows }: { rows: ContributionRow[] }) {
+export function ContributionsTable({
+  rows,
+  exportCriteria = [],
+}: {
+  rows: ContributionRow[]
+  /** Applied page filters (member/type/date range) recorded atop the export.
+   *  The live table search query is appended automatically. */
+  exportCriteria?: ExportCriterion[]
+}) {
   const stringify = useCallback(
     (r: ContributionRow) =>
       [
@@ -77,10 +87,26 @@ export function ContributionsTable({ rows }: { rows: ContributionRow[] }) {
 
   const total = sorted.reduce((s, r) => s + Number(r.amount || 0), 0)
 
+  // Export reflects exactly what's on screen (current sort + search filter).
+  const exportColumns = ['Date', 'Member', 'Transaction type', 'Transaction ID', 'Bank reference', 'Amount (₹)']
+  const exportRows: Cell[][] = sorted.map((t) => [
+    formatDate(t.transaction_date),
+    t.member_name ?? '',
+    typeLabel(t),
+    t.transaction_id,
+    t.bank_transaction_id ?? '',
+    Number(t.amount) || 0,
+  ])
+  const exportFooter: Cell[] = ['', '', '', '', 'Total', total]
+  const allCriteria: ExportCriterion[] = [
+    ...exportCriteria,
+    ...(query.trim() ? [{ label: 'Search', value: query.trim() }] : []),
+  ]
+
   return (
     <div className="overflow-clip rounded-2xl border border-gray-200 bg-white">
       {rows.length > 0 && (
-        <div className="border-b border-gray-200 bg-gray-50/30 px-4 py-2.5">
+        <div className="flex items-center justify-between gap-3 border-b border-gray-200 bg-gray-50/30 px-3 py-2">
           <TableSearch
             value={query}
             onChange={setQuery}
@@ -88,23 +114,31 @@ export function ContributionsTable({ rows }: { rows: ContributionRow[] }) {
             matched={filtered.length}
             total={rows.length}
           />
+          <TableExportMenu
+            filename="contributions"
+            title="Contributions"
+            columns={exportColumns}
+            rows={exportRows}
+            footer={exportFooter}
+            criteria={allCriteria}
+          />
         </div>
       )}
       <div className="overflow-x-auto lg:overflow-x-visible">
         <table className="sticky-thead min-w-full text-sm">
           <thead>
             <tr className="border-b border-gray-200 bg-gray-50/60">
-              <SortableHeader col="date"      label="Date"             sort={sort} onToggle={toggleSort} />
-              <SortableHeader col="member"    label="Member"           sort={sort} onToggle={toggleSort} />
-              <SortableHeader col="type"      label="Transaction type" sort={sort} onToggle={toggleSort} />
-              <SortableHeader col="reference" label="Transaction ID"   sort={sort} onToggle={toggleSort} />
-              <SortableHeader col="amount"    label="Amount" align="right" sort={sort} onToggle={toggleSort} />
+              <SortableHeader compact col="date"      label="Date"             sort={sort} onToggle={toggleSort} />
+              <SortableHeader compact col="member"    label="Member"           sort={sort} onToggle={toggleSort} />
+              <SortableHeader compact col="type"      label="Transaction type" sort={sort} onToggle={toggleSort} />
+              <SortableHeader compact col="reference" label="Transaction ID"   sort={sort} onToggle={toggleSort} />
+              <SortableHeader compact col="amount"    label="Amount" align="right" sort={sort} onToggle={toggleSort} />
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
             {sorted.length === 0 ? (
               <tr>
-                <td colSpan={5} className="px-4 py-12 text-center text-sm text-gray-400">
+                <td colSpan={5} className="px-3 py-12 text-center text-sm text-gray-400">
                   {query
                     ? `No matches for "${query}"`
                     : 'No contributions matching the current filters'}
@@ -113,22 +147,22 @@ export function ContributionsTable({ rows }: { rows: ContributionRow[] }) {
             ) : (
               sorted.map((t) => (
                 <tr key={t.id} className="transition-colors hover:bg-gray-50">
-                  <td className="whitespace-nowrap px-4 py-3 text-gray-600">
+                  <td className="whitespace-nowrap px-3 py-1.5 text-gray-600">
                     {formatDate(t.transaction_date)}
                   </td>
-                  <td className="px-4 py-3 font-medium text-gray-900">
+                  <td className="px-3 py-1.5 font-medium text-gray-900">
                     {t.member_name ?? <span className="text-gray-400">—</span>}
                   </td>
-                  <td className="px-4 py-3 text-gray-700">{typeLabel(t)}</td>
-                  <td className="whitespace-nowrap px-4 py-3 font-mono text-xs text-gray-500">
-                    <div>{t.transaction_id}</div>
+                  <td className="px-3 py-1.5 text-gray-700">{typeLabel(t)}</td>
+                  <td className="whitespace-nowrap px-3 py-1.5 font-mono text-xs text-gray-500">
+                    <span>{t.transaction_id}</span>
                     {t.bank_transaction_id && (
-                      <div className="text-[11px] text-gray-400" title="Bank reference">
+                      <span className="ml-2 text-[11px] text-gray-400" title="Bank reference">
                         {t.bank_transaction_id}
-                      </div>
+                      </span>
                     )}
                   </td>
-                  <td className="whitespace-nowrap px-4 py-3 text-right font-semibold tabular-nums text-gray-900">
+                  <td className="whitespace-nowrap px-3 py-1.5 text-right font-semibold tabular-nums text-gray-900">
                     {formatRupees(t.amount)}
                   </td>
                 </tr>

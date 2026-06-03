@@ -3,6 +3,8 @@ import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { formatRupees } from '@/lib/format'
 import { PollModal } from '@/components/poll-modal'
+import { TableExportMenu } from '@/components/table-export'
+import type { Cell } from '@/lib/table-export'
 
 type RawDonationRow = {
   id: string
@@ -65,6 +67,19 @@ export default async function AdminDonationsPage() {
 
   const totalAmount = rows.reduce((sum, r) => sum + r.amount, 0)
 
+  const exportColumns = ['Date', 'Amount (₹)', 'Beneficiary', 'Referred by', 'Poll', 'Description']
+  const exportRows: Cell[][] = rows.map((r) => [
+    new Date(r.transaction_date).toLocaleDateString('en-IN', {
+      day: '2-digit', month: 'short', year: 'numeric',
+    }),
+    r.amount,
+    r.beneficiary_name ?? '',
+    r.referrer_name ?? '',
+    r.poll?.question ?? '',
+    r.description ?? '',
+  ])
+  const exportFooter: Cell[] = ['Total', totalAmount, '', '', '', '']
+
   return (
     <div className="space-y-6">
       <h1 className="text-lg font-semibold text-gray-900">Manage donations</h1>
@@ -73,12 +88,21 @@ export default async function AdminDonationsPage() {
           Admin view — edit or delete any donation transaction. Beneficiary,
           referrer, and approval poll all live on the row.
         </p>
-        <Link
-          href="/admin/transactions/new?type=donation"
-          className="rounded-md bg-rose-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-rose-700"
-        >
-          + New donation
-        </Link>
+        <div className="flex items-center gap-2">
+          <TableExportMenu
+            filename="donations"
+            title="Donations"
+            columns={exportColumns}
+            rows={exportRows}
+            footer={exportFooter}
+          />
+          <Link
+            href="/admin/transactions/new?type=donation"
+            className="rounded-md bg-rose-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-rose-700"
+          >
+            + New donation
+          </Link>
+        </div>
       </div>
 
       <div className="overflow-clip rounded-2xl border border-gray-200 bg-white">

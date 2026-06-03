@@ -20,9 +20,12 @@ export default async function NewTransactionPage({
     .single()
   if (profile?.role !== 'admin') redirect('/dashboard')
 
+  // Only active members can pay — inactive/archived members never contribute,
+  // so keep them out of the picker.
   const { data: members } = await supabase
     .from('members')
     .select('id, name')
+    .eq('status', 'active')
     .order('name', { ascending: true })
 
   // Only feed active loans into the dropdown — admins can re-open a closed

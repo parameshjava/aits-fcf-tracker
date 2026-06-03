@@ -65,33 +65,24 @@ export function DashboardBars({
     router.push(`${pathname}?${sp.toString()}`, { scroll: false })
   }
 
-  // Precomputed stack total for the top-of-bar label. The total label rides
-  // on the topmost NON-ZERO segment rather than always the top series:
-  // recharts drops the label for a zero-height segment, so a month whose
-  // bank interest is 0 (the top series) would otherwise lose its total label
-  // even though the bar itself has height. We pin the total onto whichever
-  // series is the highest one with a value, and leave the others null so
-  // exactly one label renders per bar, at the top of the visible stack.
-  const shaped = data.map((d) => {
-    const contributions = d.contributions ?? 0
-    const loanInterest = d.loanInterest ?? 0
-    const bankInterest = d.bankInterest ?? 0
-    const total = contributions + loanInterest + bankInterest
-    const topKey: SeriesKey =
-      bankInterest > 0 ? 'bankInterest' : loanInterest > 0 ? 'loanInterest' : 'contributions'
-    return {
-      ...d,
-      total,
-      labelContributions: topKey === 'contributions' ? total : null,
-      labelLoanInterest: topKey === 'loanInterest' ? total : null,
-      labelBankInterest: topKey === 'bankInterest' ? total : null,
-    }
-  })
+  // Precomputed stack total for the top-of-bar label.
+  const shaped = data.map((d) => ({
+    ...d,
+    total: (d.contributions ?? 0) + (d.loanInterest ?? 0) + (d.bankInterest ?? 0),
+  }))
 
-  const LABEL_KEYS: Record<SeriesKey, string> = {
-    contributions: 'labelContributions',
-    loanInterest: 'labelLoanInterest',
-    bankInterest: 'labelBankInterest',
+  // The total label must sit at the very top of the stack. A LabelList only
+  // emits a label for a segment that actually renders, so attaching it to a
+  // fixed series (e.g. the top `bankInterest` bar) drops the label for any
+  // month where that series is zero (e.g. a month with no bank interest).
+  // Instead, attach a label to EVERY series and let each one emit the total
+  // only when it is the topmost non-zero segment for that month — that
+  // segment's top is, by definition, the top of the whole stack.
+  function topNonZeroSeries(d: (typeof shaped)[number]): SeriesKey | null {
+    if ((d.bankInterest ?? 0) > 0) return 'bankInterest'
+    if ((d.loanInterest ?? 0) > 0) return 'loanInterest'
+    if ((d.contributions ?? 0) > 0) return 'contributions'
+    return null
   }
 
   return (
@@ -138,19 +129,16 @@ export function DashboardBars({
                 pick(d?.payload?.monthIndex, s.key)
               }
             >
-              {/* Total label attached to every series via its own label
-                  field; only the topmost non-zero segment for a given month
-                  carries the value, so exactly one label renders per bar even
-                  when the top series (bank interest) is 0 that month. */}
               <LabelList
-                dataKey={LABEL_KEYS[s.key]}
                 position="top"
                 offset={6}
                 className="fill-foreground"
                 fontSize={10}
-                formatter={(v) => {
-                  const n = Number(v ?? 0)
-                  return n > 0 ? formatRupeesCompact(n) : ''
+                valueAccessor={(entry) => {
+                  const row = (entry as { payload?: (typeof shaped)[number] })
+                    ?.payload
+                  if (!row || topNonZeroSeries(row) !== s.key) return ''
+                  return row.total > 0 ? formatRupeesCompact(row.total) : ''
                 }}
               />
             </Bar>

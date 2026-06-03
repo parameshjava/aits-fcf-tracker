@@ -3,6 +3,8 @@ import { redirect } from 'next/navigation'
 import { getCurrentUser } from '@/lib/actions/auth'
 import { getMeetings } from '@/lib/actions/meetings-reads'
 import { MeetingTime } from '@/components/meeting-time'
+import { TableExportMenu } from '@/components/table-export'
+import type { Cell } from '@/lib/table-export'
 
 export default async function AdminMeetingsListPage() {
   const user = await getCurrentUser()
@@ -10,13 +12,30 @@ export default async function AdminMeetingsListPage() {
 
   const meetings = await getMeetings()
 
+  const exportColumns = ['Date', 'Title', 'Status', 'Captured', 'Attendees']
+  const exportRows: Cell[][] = meetings.map((m) => [
+    new Date(m.meeting_at).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }),
+    m.title,
+    m.status === 'open' ? 'Open' : 'Closed',
+    m.captured_count,
+    m.attendee_count,
+  ])
+
   return (
     <div className="mx-auto max-w-5xl px-4 py-6 sm:px-6">
       <div className="mb-4 flex items-center justify-between">
         <h1 className="text-xl font-semibold text-gray-900">Manage meetings</h1>
-        <Link href="/admin/meetings/new" className="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-blue-700">
-          New meeting
-        </Link>
+        <div className="flex items-center gap-2">
+          <TableExportMenu
+            filename="meetings"
+            title="Meetings"
+            columns={exportColumns}
+            rows={exportRows}
+          />
+          <Link href="/admin/meetings/new" className="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-blue-700">
+            New meeting
+          </Link>
+        </div>
       </div>
 
       {meetings.length === 0 ? (

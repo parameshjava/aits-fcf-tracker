@@ -16,9 +16,12 @@ export default async function NewLoanPage() {
   if (profile?.role !== 'admin') redirect('/dashboard')
 
   const [{ data: members }, interestPerLakh, polls] = await Promise.all([
+    // Only active members can take a new loan — inactive/archived members are
+    // kept out of the borrower picker (mirrors the Add transaction form).
     supabase
       .from('members')
       .select('id, name')
+      .eq('status', 'active')
       .order('name', { ascending: true }),
     getInterestPerLakh(),
     getPollsForLoanPicker(),

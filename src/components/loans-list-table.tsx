@@ -6,6 +6,8 @@ import { formatRupees } from '@/lib/format'
 import { getLoanDetail, type LoanDetailData } from '@/lib/actions/loans'
 import { LoanDetailPanel } from '@/components/loan-detail-panel'
 import { ExpandToggle } from '@/components/ui/expand-toggle'
+import { TableExportMenu } from '@/components/table-export'
+import type { Cell } from '@/lib/table-export'
 import {
   SortableHeader,
   TableSearch,
@@ -129,6 +131,29 @@ export function LoansListTable({
 
   const totalOutstanding = sorted.reduce((s, l) => s + l.balance, 0)
 
+  // Export reflects the current sort + search filter.
+  const exportColumns = [
+    'Loan #', 'Member', 'Type', 'Principal (₹)', 'Start date',
+    ...(showEndDate ? ['End date'] : []),
+    'Status', 'Interest paid (₹)', 'Interest due (₹)', 'Outstanding (₹)',
+  ]
+  const exportRows: Cell[][] = sorted.map((l) => [
+    l.loan_number,
+    l.member_name ?? '',
+    TYPE_LABEL[l.loan_type] ?? l.loan_type,
+    l.principal_amount,
+    formatDate(l.start_date),
+    ...(showEndDate ? [formatDate(l.end_date ?? null)] : []),
+    STATUS_LABEL[l.status] ?? l.status,
+    l.paid_interest,
+    l.status === 'paid' || l.status === 'write_off' ? '' : l.interest_due,
+    l.balance,
+  ])
+  const exportFooter: Cell[] = exportColumns.map((c, i) =>
+    i === 0 ? 'Total' : c === 'Outstanding (₹)' ? totalOutstanding : '',
+  )
+  const exportCriteria = query.trim() ? [{ label: 'Search', value: query.trim() }] : []
+
   // --- Accordion state -----------------------------------------------------
   // Detail is fetched once per loan and stored in `cache`. Re-expanding the
   // same row reads from cache instantly. `loading` and `errors` drive the
@@ -198,13 +223,21 @@ export function LoansListTable({
   return (
     <div className="overflow-clip rounded-2xl border border-gray-200 bg-white">
       {loans.length > 0 && (
-        <div className="border-b border-gray-200 bg-gray-50/30 px-4 py-2.5">
+        <div className="flex items-center justify-between gap-3 border-b border-gray-200 bg-gray-50/30 px-3 py-2">
           <TableSearch
             value={query}
             onChange={setQuery}
             placeholder="Search by loan #, member, status…"
             matched={filtered.length}
             total={loans.length}
+          />
+          <TableExportMenu
+            filename={mode === 'past' ? 'loans-closed' : 'loans'}
+            title={mode === 'past' ? 'Closed loans' : 'Loans'}
+            columns={exportColumns}
+            rows={exportRows}
+            footer={exportFooter}
+            criteria={exportCriteria}
           />
         </div>
       )}
