@@ -42,7 +42,7 @@ export function InfoTooltip({
       {/* Tooltip — always above the icon. */}
       <span
         role="tooltip"
-        className="pointer-events-none invisible absolute bottom-full left-1/2 z-50 mb-3 w-64 -translate-x-1/2 translate-y-2 text-left opacity-0 transition-all duration-300 ease-out group-hover/info:visible group-hover/info:translate-y-0 group-hover/info:opacity-100 group-focus-within/info:visible group-focus-within/info:translate-y-0 group-focus-within/info:opacity-100"
+        className="pointer-events-none invisible absolute bottom-full left-1/2 z-50 mb-3 w-64 -translate-x-1/2 translate-y-2 whitespace-normal break-words text-left font-normal normal-case tracking-normal opacity-0 transition-all duration-300 ease-out group-hover/info:visible group-hover/info:translate-y-0 group-hover/info:opacity-100 group-focus-within/info:visible group-focus-within/info:translate-y-0 group-focus-within/info:opacity-100"
       >
         <span className="relative block rounded-2xl border border-white/10 bg-gradient-to-br from-gray-900/95 to-gray-800/95 p-4 shadow-[0_0_30px_rgba(79,70,229,0.25)] backdrop-blur-md">
           <span className="mb-1.5 flex items-center gap-2.5">
