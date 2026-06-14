@@ -13,6 +13,7 @@ import type { ActionResult } from '@/lib/actions/action-result'
 import { formatRupees, todayISO } from '@/lib/format'
 import { overdueParts, formatDueLabel } from '@/lib/due'
 import { recomputeAfterPrepayment } from '@/lib/emi-math'
+import { Accordion } from '@/components/ui/accordion'
 import {
   Dialog,
   DialogClose,
@@ -448,7 +449,6 @@ function PrepaymentWhatIf({
   interestRatePct: number
   emiAmount: number
 }) {
-  const [open, setOpen] = useState(false)
   const [amount, setAmount] = useState('')
   const [mode, setMode] = useState<'reduce_tenure' | 'reduce_emi'>('reduce_tenure')
 
@@ -483,19 +483,8 @@ function PrepaymentWhatIf({
   if (!nextDue) return null
 
   return (
-    <div className="mt-4 rounded-xl border border-gray-200 bg-gray-50/40">
-      <button
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        className="flex w-full items-center justify-between px-4 py-2.5 text-sm font-medium text-gray-700"
-      >
-        <span>🧮 Prepayment what-if (estimate)</span>
-        <span className="text-gray-400">{open ? '▲' : '▼'}</span>
-      </button>
-
-      {open && (
-        <div className="space-y-4 border-t border-gray-200 px-4 py-4">
-          <p className="text-xs text-gray-500">
+    <div className="space-y-4">
+      <p className="text-xs text-gray-500">
             See how an advance payment would change your remaining schedule. This is an estimate —
             nothing is saved. Current outstanding principal:{' '}
             <span className="font-medium text-gray-700">{formatRupees(outstanding)}</span>.
@@ -585,8 +574,6 @@ function PrepaymentWhatIf({
               </div>
             </>
           )}
-        </div>
-      )}
     </div>
   )
 }
@@ -668,8 +655,14 @@ export function EmiSchedulePanel({
         </p>
       )}
 
-      <div className="mt-4 overflow-x-auto">
-        <table className="w-full table-fixed text-sm">
+      <div className="mt-4 space-y-3">
+        <Accordion
+          title="Repayment schedule"
+          defaultOpen
+          subtitle={`${schedule.length} installment${schedule.length === 1 ? '' : 's'}`}
+        >
+          <div className="overflow-x-auto">
+            <table className="w-full table-fixed text-sm">
           <colgroup>
             <col className="w-[6%]" />
             <col className="w-[15%]" />
@@ -755,16 +748,20 @@ export function EmiSchedulePanel({
               </tr>
             )}
           </tbody>
-        </table>
-      </div>
+            </table>
+          </div>
+        </Accordion>
 
-      {loan.interest_rate_pct != null && (
-        <PrepaymentWhatIf
-          schedule={schedule}
-          interestRatePct={Number(loan.interest_rate_pct)}
-          emiAmount={Number(loan.emi_amount ?? 0)}
-        />
-      )}
+        {loan.interest_rate_pct != null && schedule.some((r) => UNPAID.has(r.status)) && (
+          <Accordion title="Prepayment estimate" subtitle="Estimate the impact of an advance payment">
+            <PrepaymentWhatIf
+              schedule={schedule}
+              interestRatePct={Number(loan.interest_rate_pct)}
+              emiAmount={Number(loan.emi_amount ?? 0)}
+            />
+          </Accordion>
+        )}
+      </div>
     </section>
   )
 }
