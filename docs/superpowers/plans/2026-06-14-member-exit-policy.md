@@ -1257,3 +1257,19 @@ git commit -m "chore(exit): lint + final verification"
 - §7 actions, views, palette, UI → **Tasks 3–8**.
 - **Open confirmation for reviewer:** `L` = principal only (interest waived on close) — a refinement of spec §2; update the spec if you want interest charged instead.
 - **#5 disjoint-P check:** confirmed by the exploration (donations are `donation` txns; bad debt is `loans.bad_debt` on write-off; no double-write) — no code needed, documented here.
+
+---
+
+## Addendum (2026-06-14): exit narrative fields
+
+Mid-execution the user added two member-supplied free-text fields to the exit proposal:
+1. **Reasons for leaving** — markdown.
+2. **What you'd want changed in the FCF to retain you** — markdown.
+
+Both use the EXISTING in-repo components (no new dependency): `MarkdownEditor` (`@/components/markdown-editor`, controlled `value`/`onChange`, client-only) for capture and `MarkdownView` (`@/components/markdown-view`, `source` prop) for rendering on the admin page.
+
+Threaded through:
+- **Migration 048** (done, commit `7f310ba`): two nullable columns `reasons_for_leaving text`, `retention_suggestions text` on `public.member_exits`. Not referenced by views or the approval function — descriptive only.
+- **Task 4** (`proposeExit`): read `reasons_for_leaving` (required, non-empty) + `retention_suggestions` (optional) from `FormData` and insert. `ExitProposal` type + `getExitProposals` expose both.
+- **Task 5** (member card): two `MarkdownEditor` instances; because the form submits via a server action, each editor mirrors its `value` state into a hidden `<input name=...>` so it lands in `FormData`.
+- **Task 6** (admin page): render both via `MarkdownView` so the admin reads them before deciding.
