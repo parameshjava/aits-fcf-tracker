@@ -5,6 +5,7 @@ export const TRANSACTION_TYPES = [
   'penalty',
   'donation',
   'other',
+  'exit_settlement',
 ] as const
 
 export type TransactionType = (typeof TRANSACTION_TYPES)[number]
