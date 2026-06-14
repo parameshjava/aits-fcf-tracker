@@ -168,7 +168,7 @@ export function LoanCalculator({
             <Stat label="Installments" value={String(result.rows.length)} />
           </div>
 
-          <div className="mt-5 overflow-x-auto">
+          <div className="mt-5 overflow-x-auto sm:overflow-visible">
             <table className="w-full table-fixed text-sm">
               <colgroup>
                 <col className="w-[6%]" />
@@ -195,7 +195,12 @@ export function LoanCalculator({
                     <td className="whitespace-nowrap py-2 pr-6 text-gray-700">
                       {formatDate(r.dueDate)}
                       {r.isStub && (
-                        <InfoTooltip label="Pro-rated for the first month" size="sm" className="ml-1.5" />
+                        <InfoTooltip
+                          title="Pro-rated installment"
+                          label="This installment covers only the partial first month, so its EMI is smaller than the rest."
+                          size="sm"
+                          className="ml-1.5"
+                        />
                       )}
                     </td>
                     <td className="whitespace-nowrap py-2 pr-4 text-right text-gray-900">{formatRupees(r.emiAmount)}</td>
