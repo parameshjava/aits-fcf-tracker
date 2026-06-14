@@ -47,6 +47,8 @@ create table if not exists public.member_exits (
   reviewed_by                     uuid references public.profiles(id),
   reviewed_at                     timestamptz,
   discussion_notes                text,
+  reasons_for_leaving             text,
+  retention_suggestions           text,
   total_donations                 numeric(12,2) not null,
   total_bad_debt                  numeric(12,2) not null,
   settled_before                  numeric(12,2) not null,
@@ -70,13 +72,16 @@ create index if not exists member_exits_status_idx on public.member_exits (statu
 -- 3. RLS. Mirror pending_payments: self-insert for the proposer, admin for the rest.
 alter table public.member_exits enable row level security;
 
+drop policy if exists "member_exits_select" on public.member_exits;
 create policy "member_exits_select" on public.member_exits
   for select to authenticated using (true);
 
+drop policy if exists "member_exits_insert_self" on public.member_exits;
 create policy "member_exits_insert_self" on public.member_exits
   for insert to authenticated
   with check (proposed_by = auth.uid());
 
+drop policy if exists "member_exits_write_admin" on public.member_exits;
 create policy "member_exits_write_admin" on public.member_exits
   for all to authenticated
   using      (public.is_admin())
@@ -240,8 +245,8 @@ begin
         update public.loans set status = 'paid', end_date = current_date
         where id = v_loan.loan_id;
 
-        -- EMI loans: settle remaining installment rows so the loan stops showing
-        -- a phantom balance in loan_emi_balances (which has no status filter).
+        -- EMI loans: settle remaining installment rows so the EMI balances view
+        -- (which counts every row except 'waived') stops showing a phantom balance.
         if v_loan.model = 'emi' then
           update public.loan_emi_schedule
           set status = 'waived'
