@@ -111,6 +111,7 @@ const adminGroup: NavGroup = {
     { label: 'Add Transaction',     href: '/admin/transactions/new', icon: <Emoji char="➕" label="Add Transaction" /> },
     { label: 'Manage Transactions', href: '/admin/transactions',     icon: <Emoji char="💸" label="Manage Transactions" />, exact: true },
     { label: 'Pending Payments',    href: '/admin/pending',          icon: <Emoji char="📥" label="Pending Payments" /> },
+    { label: 'Member Exits',        href: '/admin/exits',            icon: <Emoji char="👋" label="Member Exits" /> },
     { label: 'Bank Accounts',       href: '/admin/bank-accounts',    icon: <Emoji char="💳" label="Bank Accounts" /> },
     { label: 'Reference Values',    href: '/admin/reference',        icon: <Emoji char="⚙️" label="Reference Values" /> },
     { label: 'New Poll',            href: '/admin/polls/new',        icon: <Emoji char="🗳️" label="New Poll" /> },
