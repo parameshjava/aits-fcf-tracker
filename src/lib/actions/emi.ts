@@ -210,13 +210,41 @@ export async function prepayLoan(formData: FormData): Promise<ActionResult> {
     }
 
     if (newOutstanding === 0) {
-      // Fully paid off — waive remaining scheduled/overdue rows.
-      const { error } = await supabase
+      // Fully paid off. The advance covers the entire outstanding principal,
+      // which includes the unpaid remainder of any partially-paid installment —
+      // complete those rows so they stop reporting a dangling balance, then
+      // drop the never-paid rows entirely (cleaner than leaving "waived" rows
+      // for installments the member actually settled in cash).
+      const { data: partials, error: partialsErr } = await supabase
         .from('loan_emi_schedule')
-        .update({ status: 'waived' })
+        .select('id, principal_due')
+        .eq('loan_id', loanId)
+        .eq('status', 'partially_paid')
+      if (partialsErr) return actionError(partialsErr.message)
+      const settledAt = new Date().toISOString()
+      for (const row of partials ?? []) {
+        const { error } = await supabase
+          .from('loan_emi_schedule')
+          .update({ principal_paid: row.principal_due, status: 'paid', paid_at: settledAt })
+          .eq('id', row.id)
+        if (error) return actionError(error.message)
+      }
+
+      // Delete remaining scheduled/overdue rows. They have no payment junction
+      // rows, so the ON DELETE RESTRICT FK on loan_emi_payments won't block this.
+      const { error: delErr } = await supabase
+        .from('loan_emi_schedule')
+        .delete()
         .eq('loan_id', loanId)
         .in('status', ['scheduled', 'overdue'])
-      if (error) return actionError(error.message)
+      if (delErr) return actionError(delErr.message)
+
+      // Formally close the loan.
+      const { error: closeErr } = await supabase
+        .from('loans')
+        .update({ status: 'paid' })
+        .eq('id', loanId)
+      if (closeErr) return actionError(closeErr.message)
     } else {
       // Count remaining unpaid installments for reduce_emi tenure.
       const { count } = await supabase
