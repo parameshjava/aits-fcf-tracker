@@ -248,3 +248,13 @@ export async function relockExit(exitId: string): Promise<ActionResult> {
     return actionOk(undefined, 'Exit request re-locked to current figures')
   })
 }
+
+export async function getSocialContributionReserve(): Promise<number> {
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .from('social_contribution_reserve')
+    .select('reserve_amount')
+    .maybeSingle()
+  if (error) throw new Error(error.message)
+  return Number(data?.reserve_amount ?? 0)
+}
