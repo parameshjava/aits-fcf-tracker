@@ -31,6 +31,8 @@ import { Admonition } from '@/components/ui/admonition'
 import { SubmitPaymentForm } from './submit-payment-form'
 import { DashboardTabs } from './dashboard-tabs'
 import { EligibilityMonthlyChart } from './eligibility-monthly-chart'
+import { getCurrentMember, getExitEstimate } from '@/lib/actions/exits'
+import { ExitProposalCard } from './exit-proposal-card'
 
 type SeriesKey = 'contributions' | 'loanInterest' | 'bankInterest'
 
@@ -78,6 +80,9 @@ export default async function DashboardPage({
 
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
+
+  const exitMember = await getCurrentMember()
+  const exitEstimate = exitMember ? await getExitEstimate(exitMember.id) : null
 
   // All aggregates come from views — see scripts/create-dashboard-views.sql.
   const [overall, yearly, memberTotals, bankBalanceRow, pendingPrincipal] = await Promise.all([
@@ -380,6 +385,8 @@ export default async function DashboardPage({
           <SubmitPaymentForm />
         </div>
       )}
+
+      {user && <ExitProposalCard estimate={exitEstimate} />}
     </div>
   )
 }
