@@ -18,7 +18,7 @@ const ROUTES: Record<string, RouteMeta> = {
   },
   '/dashboard/loan-calculator': {
     title: 'Loan Calculator',
-    crumbs: [{ label: 'Transactions' }, { label: 'Loan Calculator' }],
+    crumbs: [{ label: 'Information' }, { label: 'Loan Calculator' }],
   },
   '/dashboard/donations': {
     title: 'Donations',
