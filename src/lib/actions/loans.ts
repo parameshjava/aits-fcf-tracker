@@ -16,6 +16,7 @@ import {
   type ActionResult,
 } from './action-result'
 import type { LoanInterestAccrual } from './loan-interest'
+import type { EmiScheduleRow } from './emi'
 import type { LoanTimelineRow } from './loan-timeline'
 import {
   buildLoanTimeline,
@@ -45,6 +46,8 @@ export type LoanDetailData = {
   timeline: LoanTimelineRow[]
   interestPerLakh: number
   financials: LoanFinancials
+  /** EMI installment schedule (empty for accrual-model loans). */
+  emiSchedule: EmiScheduleRow[]
 }
 
 export type LoanRow = {
@@ -57,6 +60,11 @@ export type LoanRow = {
   status: LoanStatus
   /** Personal (no waiver) or Medical (admin may waive up to 12 months). */
   loan_type: LoanType
+  term_months: number | null
+  interest_rate_pct: number | null
+  emi_amount: number | null
+  repayment_model: 'accrual' | 'emi'
+  schedule_generated_at: string | null
   bad_debt: number
   /** Months from start_date during which no interest accrues. 0 = none. */
   interest_waiver_months: number
@@ -376,7 +384,7 @@ export async function getActiveLoansWithBalance(): Promise<ActiveLoanOption[]> {
 
 export async function getLoanDetail(loanId: string): Promise<LoanDetailData | null> {
   const supabase = await createClient()
-  const [loanRes, txnRes, accrualRes, paymentRes, interestPerLakh] = await Promise.all([
+  const [loanRes, txnRes, accrualRes, paymentRes, interestPerLakh, emiRes] = await Promise.all([
     supabase
       .from('loans')
       .select(LOAN_ROW_SELECT)
@@ -401,12 +409,18 @@ export async function getLoanDetail(loanId: string): Promise<LoanDetailData | nu
       .select('accrual_id, transaction_id, amount_applied, accrual:accrual_id!inner(loan_id)')
       .eq('accrual.loan_id', loanId),
     getInterestPerLakh(),
+    supabase
+      .from('loan_emi_schedule')
+      .select('id, installment_no, due_date, opening_balance, emi_amount, principal_due, interest_due, closing_balance, principal_paid, interest_paid, status, late_fee_charged, late_fee_waived')
+      .eq('loan_id', loanId)
+      .order('installment_no', { ascending: true }),
   ])
   if (loanRes.error) throw new Error(loanRes.error.message)
   if (!loanRes.data) return null
   if (txnRes.error) throw new Error(txnRes.error.message)
   if (accrualRes.error) throw new Error(accrualRes.error.message)
   if (paymentRes.error) throw new Error(paymentRes.error.message)
+  if (emiRes.error) throw new Error(emiRes.error.message)
 
   const loan = loanRes.data as LoanRow
   const transactions = (txnRes.data ?? []) as LoanDetailTxn[]
@@ -469,7 +483,9 @@ export async function getLoanDetail(loanId: string): Promise<LoanDetailData | nu
     ...baseFinancials,
     interestDue: baseFinancials.isClosed ? 0 : pendingFromAccruals,
   }
-  return { loan, transactions, accruals, timeline, interestPerLakh, financials }
+  const emiSchedule = (emiRes.data ?? []) as EmiScheduleRow[]
+
+  return { loan, transactions, accruals, timeline, interestPerLakh, financials, emiSchedule }
 }
 
 export async function createLoan(
@@ -491,6 +507,7 @@ export async function createLoan(
     const waiverRaw = (formData.get('interest_waiver_months') as string | null)?.trim() || ''
     const interestWaiverMonths = waiverRaw === '' ? 0 : Math.floor(Number(waiverRaw))
     const pollId = ((formData.get('poll_id') as string | null) ?? '').trim() || null
+    const termMonths = Number(formData.get('term_months'))
 
     if (!memberId) return actionError('Member is required', 'member_id')
     if (!Number.isFinite(principal) || principal <= 0) {
@@ -512,22 +529,30 @@ export async function createLoan(
         'interest_waiver_months',
       )
     }
+    const maxTerm = await getReference('loan_max_term_months').then(Number).catch(() => 30)
+    if (!Number.isInteger(termMonths) || termMonths < 1 || termMonths > maxTerm) {
+      return actionError(`Term must be between 1 and ${maxTerm} months`, 'term_months')
+    }
 
     // A new loan starts clean: active, no end date, no bad debt. Past payments
     // (including any pre-tracking interest) get added later as transactions
     // tagged to this loan. Close-out happens via the Close form.
-    const { error } = await supabase.from('loans').insert({
-      member_id: memberId,
-      principal_amount: principal,
-      start_date: startDate,
-      end_date: null,
-      status: 'active',
-      loan_type: loanType,
-      bad_debt: 0,
-      interest_waiver_months: interestWaiverMonths,
-      notes,
-      poll_id: pollId,
-    })
+    const { data: inserted, error } = await supabase
+      .from('loans')
+      .insert({
+        member_id: memberId,
+        principal_amount: principal,
+        start_date: startDate,
+        end_date: null,
+        status: 'active',
+        loan_type: loanType,
+        bad_debt: 0,
+        interest_waiver_months: interestWaiverMonths,
+        notes,
+        poll_id: pollId,
+      })
+      .select('id')
+      .single()
 
     if (error) {
       if (isPollAlreadyLinkedError(error)) {
@@ -538,6 +563,19 @@ export async function createLoan(
       }
       return actionError(error.message)
     }
+
+    // Generate the EMI schedule for the new loan. The generator's upsert is
+    // idempotent and never overwrites paid/partially_paid/waived rows.
+    const ratePct = await getReference('loan_interest_rate_pct').then(Number).catch(() => 8)
+    const { error: schedErr } = await supabase.rpc('fn_generate_emi_schedule', {
+      p_loan_id: inserted.id,
+      p_principal: principal,
+      p_start: startDate,
+      p_term: termMonths,
+      p_waiver_months: interestWaiverMonths,
+      p_rate_pct: ratePct,
+    })
+    if (schedErr) return actionError(schedErr.message)
 
     const applyToBankBalance = formData.get('applyToBankBalance') === '1'
     const balanceDirectionRaw = formData.get('balanceDirection') as BalanceDirection | null
@@ -629,6 +667,35 @@ export async function updateLoan(formData: FormData): Promise<ActionResult> {
         )
       }
       return actionError(error.message)
+    }
+
+    // Regenerate the EMI schedule for EMI loans so principal/start/waiver/term
+    // edits take effect. The generator preserves paid/partially_paid/waived
+    // rows, so re-running is safe. Accrual-model loans are left untouched.
+    const { data: updatedLoan, error: fetchErr } = await supabase
+      .from('loans')
+      .select('repayment_model, principal_amount, start_date, interest_waiver_months, term_months')
+      .eq('id', loanId)
+      .maybeSingle()
+    if (fetchErr) return actionError(fetchErr.message)
+    if (updatedLoan && updatedLoan.repayment_model === 'emi') {
+      const termRaw = formData.get('term_months')
+      const termMonths =
+        termRaw == null || String(termRaw).trim() === ''
+          ? Number(updatedLoan.term_months)
+          : Number(termRaw)
+      if (Number.isInteger(termMonths) && termMonths >= 1) {
+        const ratePct = await getReference('loan_interest_rate_pct').then(Number).catch(() => 8)
+        const { error: schedErr } = await supabase.rpc('fn_generate_emi_schedule', {
+          p_loan_id: loanId,
+          p_principal: Number(updatedLoan.principal_amount),
+          p_start: updatedLoan.start_date,
+          p_term: termMonths,
+          p_waiver_months: Number(updatedLoan.interest_waiver_months) || 0,
+          p_rate_pct: ratePct,
+        })
+        if (schedErr) return actionError(schedErr.message)
+      }
     }
 
     revalidatePath('/dashboard/loans')

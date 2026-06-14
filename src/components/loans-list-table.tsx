@@ -3,6 +3,7 @@
 import { Fragment, useCallback, useRef, useState } from 'react'
 import Link from 'next/link'
 import { formatRupees } from '@/lib/format'
+import { overdueParts, formatOverdueDuration } from '@/lib/due'
 import { getLoanDetail, type LoanDetailData } from '@/lib/actions/loans'
 import { LoanDetailPanel } from '@/components/loan-detail-panel'
 import { ExpandToggle } from '@/components/ui/expand-toggle'
@@ -25,6 +26,15 @@ export type LoansListRow = {
   end_date?: string | null
   status: 'active' | 'paid' | 'write_off'
   loan_type: 'personal' | 'medical'
+  /** Repayment model. EMI loans get an "EMI" badge + a next-due hint;
+   *  the full read-only schedule lives on the detail page. */
+  repayment_model?: 'accrual' | 'emi'
+  /** Next unpaid EMI due date (ISO) — only set for EMI loans. */
+  next_due_date?: string | null
+  /** Count of EMI installments past their due date (overdue by date). */
+  overdue_count?: number
+  /** Earliest past-due installment's due date (drives the overdue duration). */
+  oldest_overdue_date?: string | null
   paid_interest: number
   interest_due: number
   balance: number
@@ -79,8 +89,11 @@ export function LoansListTable({
   emptyMessage,
   expandable = false,
   mode,
+  todayIso,
 }: {
   loans: LoansListRow[]
+  /** Server's IST date (YYYY-MM-DD) used to compute overdue durations. */
+  todayIso?: string
   /** Action link text per row — "View →" (read-only) or "Manage →" (admin). */
   linkLabel?: string
   /** Custom empty-state message (JSX allowed). */
@@ -282,26 +295,60 @@ export function LoansListTable({
                   <Fragment key={l.id}>
                     <tr className={`${rowBaseClasses} ${rowOpenClasses}`}>
                       <td className="whitespace-nowrap px-3 py-2.5 font-mono text-xs text-gray-700">
-                        {l.loan_number}
+                        <span className="inline-flex items-center gap-1.5">
+                          {l.loan_number}
+                          {(l.overdue_count ?? 0) > 0 && (() => {
+                            const parts =
+                              todayIso && l.oldest_overdue_date
+                                ? overdueParts(l.oldest_overdue_date, todayIso)
+                                : null
+                            const dur = parts ? formatOverdueDuration(parts) : null
+                            const n = l.overdue_count ?? 0
+                            const title =
+                              `${n} EMI ${n === 1 ? 'payment is' : 'payments are'} overdue` +
+                              (dur ? ` · oldest overdue by ${dur}` : '')
+                            return (
+                              <span
+                                title={title}
+                                aria-label={title}
+                                className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-rose-100 text-rose-600"
+                              >
+                                <AlertIcon />
+                              </span>
+                            )
+                          })()}
+                        </span>
                       </td>
                       <td className="px-3 py-2.5 font-medium text-gray-900">
                         {l.member_name ?? <span className="text-gray-400">—</span>}
                       </td>
                       <td className="whitespace-nowrap px-3 py-2.5">
-                        <span
-                          className={
-                            'rounded-full px-2 py-0.5 text-xs font-medium ring-1 ' +
-                            (TYPE_PILL[l.loan_type] ?? TYPE_PILL.personal)
-                          }
-                        >
-                          {TYPE_LABEL[l.loan_type] ?? l.loan_type}
-                        </span>
+                        <div className="flex items-center gap-1.5">
+                          <span
+                            className={
+                              'rounded-full px-2 py-0.5 text-xs font-medium ring-1 ' +
+                              (TYPE_PILL[l.loan_type] ?? TYPE_PILL.personal)
+                            }
+                          >
+                            {TYPE_LABEL[l.loan_type] ?? l.loan_type}
+                          </span>
+                          {l.repayment_model === 'emi' && (
+                            <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-xs font-medium text-indigo-700 ring-1 ring-indigo-200">
+                              EMI
+                            </span>
+                          )}
+                        </div>
                       </td>
                       <td className="whitespace-nowrap px-3 py-2.5 text-right tabular-nums text-gray-700">
                         {formatRupees(l.principal_amount)}
                       </td>
                       <td className="whitespace-nowrap px-3 py-2.5 text-gray-600">
                         {formatDate(l.start_date)}
+                        {l.repayment_model === 'emi' && l.next_due_date && (
+                          <span className="mt-0.5 block text-[11px] text-gray-400">
+                            next EMI {formatDate(l.next_due_date)}
+                          </span>
+                        )}
                       </td>
                       {showEndDate && (
                         <td className="whitespace-nowrap px-3 py-2.5 text-gray-600">
@@ -369,7 +416,7 @@ export function LoansListTable({
                           ) : errMsg && !cached ? (
                             <div className="p-6 text-sm text-rose-600">{errMsg}</div>
                           ) : cached ? (
-                            <LoanDetailPanel data={cached} />
+                            <LoanDetailPanel data={cached} todayIso={todayIso} />
                           ) : null}
                         </td>
                       </tr>
@@ -399,5 +446,23 @@ export function LoansListTable({
         </div>
       )}
     </div>
+  )
+}
+
+function AlertIcon() {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      className="h-3 w-3"
+      aria-hidden="true"
+    >
+      <path
+        fillRule="evenodd"
+        d="M9.401 3.003c1.155-2 4.043-2 5.197 0l7.355 12.748c1.154 2-.29 4.5-2.599 4.5H4.645c-2.309 0-3.752-2.5-2.598-4.5L9.4 3.003zM12 8.25a.75.75 0 0 1 .75.75v3.75a.75.75 0 0 1-1.5 0V9a.75.75 0 0 1 .75-.75zm0 8.25a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5z"
+        clipRule="evenodd"
+      />
+    </svg>
   )
 }

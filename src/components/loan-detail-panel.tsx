@@ -2,6 +2,7 @@ import { formatRupees } from '@/lib/format'
 import type { LoanDetailData } from '@/lib/actions/loans'
 import { LoanTimelineSection } from '@/components/loan-timeline-section'
 import { PollModal } from '@/components/poll-modal'
+import { EmiSchedulePanel } from '@/app/(app)/admin/loans/[loan_number]/emi-schedule-panel'
 
 const STATUS_PILL: Record<string, string> = {
   active:    'bg-blue-50 text-blue-700 ring-blue-200',
@@ -116,8 +117,9 @@ function LedgerCard({ title, rows }: { title: string; rows: LedgerRow[] }) {
   )
 }
 
-export function LoanDetailPanel({ data }: { data: LoanDetailData }) {
+export function LoanDetailPanel({ data, todayIso }: { data: LoanDetailData; todayIso?: string }) {
   const { loan, interestPerLakh, financials } = data
+  const isEmi = loan.repayment_model === 'emi'
   const {
     principal,
     paidPrincipal,
@@ -198,7 +200,9 @@ export function LoanDetailPanel({ data }: { data: LoanDetailData }) {
 
         <TermLabel>Interest rate</TermLabel>
         <TermValue>
-          ₹{interestPerLakh.toLocaleString('en-IN')} per ₹1L · per month
+          {isEmi
+            ? `${Number(loan.interest_rate_pct ?? 0).toLocaleString('en-IN')}% per annum · EMI`
+            : `₹${interestPerLakh.toLocaleString('en-IN')} per ₹1L · per month`}
         </TermValue>
 
         <TermLabel>Period</TermLabel>
@@ -252,13 +256,33 @@ export function LoanDetailPanel({ data }: { data: LoanDetailData }) {
         </div>
       )}
 
-      {/* Two-ledger view */}
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <LedgerCard title="Principal" rows={principalRows} />
-        <LedgerCard title="Interest" rows={interestRows} />
-      </div>
+      {isEmi ? (
+        /* EMI loans: show the installment schedule (read-only) instead of the
+           accrual-based ledgers, which don't apply to the EMI model. */
+        <EmiSchedulePanel
+          readOnly
+          loan={{
+            id: loan.id,
+            member_id: loan.member_id,
+            loan_number: loan.loan_number,
+            emi_amount: loan.emi_amount,
+            term_months: loan.term_months,
+            interest_rate_pct: loan.interest_rate_pct,
+          }}
+          schedule={data.emiSchedule}
+          todayIso={todayIso}
+        />
+      ) : (
+        <>
+          {/* Two-ledger view */}
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <LedgerCard title="Principal" rows={principalRows} />
+            <LedgerCard title="Interest" rows={interestRows} />
+          </div>
 
-      <LoanTimelineSection timeline={data.timeline} size="sm" />
+          <LoanTimelineSection timeline={data.timeline} size="sm" />
+        </>
+      )}
     </div>
   )
 }

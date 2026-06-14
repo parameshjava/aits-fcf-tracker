@@ -3,6 +3,7 @@
 import { revalidatePath, updateTag } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { getCurrentUser } from './auth'
+import { asReferenceDatatype, type ReferenceDatatype } from '@/lib/reference-format'
 import {
   actionError,
   actionOk,
@@ -15,6 +16,7 @@ export type ReferenceRow = {
   name: string
   description: string | null
   value: number
+  datatype: ReferenceDatatype
   updated_at: string
   updated_by: string | null
   updated_by_name: string | null
@@ -50,7 +52,12 @@ export async function getReferenceRow(key: string): Promise<ReferenceRow | null>
     .maybeSingle()
   if (error) throw new Error(error.message)
   if (!data) return null
-  return { ...data, value: toNumber(data.value), updated_by_name: null } as ReferenceRow
+  return {
+    ...data,
+    value: toNumber(data.value),
+    datatype: asReferenceDatatype(data.datatype),
+    updated_by_name: null,
+  } as ReferenceRow
 }
 
 export async function listReferences(): Promise<ReferenceRow[]> {
@@ -70,6 +77,7 @@ export async function listReferences(): Promise<ReferenceRow[]> {
     name: string
     description: string | null
     value: number | string
+    datatype: string | null
     updated_at: string
     updated_by: string | null
   }>
@@ -91,6 +99,7 @@ export async function listReferences(): Promise<ReferenceRow[]> {
   return rows.map((r) => ({
     ...r,
     value: toNumber(r.value),
+    datatype: asReferenceDatatype(r.datatype),
     updated_by_name: r.updated_by ? nameById.get(r.updated_by) ?? null : null,
   }))
 }
@@ -106,6 +115,7 @@ export async function upsertReference(formData: FormData): Promise<ActionResult>
     const name = ((formData.get('name') as string) || '').trim()
     const description = ((formData.get('description') as string) || '').trim() || null
     const valueRaw = (formData.get('value') as string) || ''
+    const datatype = asReferenceDatatype(formData.get('datatype'))
     const isNew = formData.get('mode') === 'create'
 
     if (!key) return actionError('Key is required', 'key')
@@ -124,7 +134,7 @@ export async function upsertReference(formData: FormData): Promise<ActionResult>
     if (isNew) {
       const { error } = await supabase
         .from('reference')
-        .insert({ key, name, description, value, updated_by: user.id })
+        .insert({ key, name, description, value, datatype, updated_by: user.id })
       if (error) {
         if (error.code === '23505') return actionError('Key already exists', 'key')
         return actionError(error.message)
@@ -132,7 +142,7 @@ export async function upsertReference(formData: FormData): Promise<ActionResult>
     } else {
       const { error } = await supabase
         .from('reference')
-        .update({ name, description, value, updated_by: user.id, updated_at: new Date().toISOString() })
+        .update({ name, description, value, datatype, updated_by: user.id, updated_at: new Date().toISOString() })
         .eq('key', key)
       if (error) return actionError(error.message)
     }

@@ -1,14 +1,18 @@
 'use client'
 
-import { useActionState, useTransition } from 'react'
+import { useActionState, useState, useTransition } from 'react'
 import {
   addReferenceHistory,
   deleteReferenceHistory,
   type ReferenceHistoryRow,
 } from '@/lib/actions/reference'
-import { formatRupees } from '@/lib/format'
 import { DeleteIconButton } from '@/components/ui/delete-icon-button'
 import { AmountInput } from '@/components/amount-input'
+import {
+  formatReferenceValue,
+  inputDateToYmdInt,
+  type ReferenceDatatype,
+} from '@/lib/reference-format'
 
 function fmtDate(iso: string | null): string {
   if (!iso) return '—'
@@ -16,16 +20,20 @@ function fmtDate(iso: string | null): string {
   return `${String(d.getUTCDate()).padStart(2, '0')}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${d.getUTCFullYear()}`
 }
 
-const MONEY_KEYS = new Set(['corpus_threshold', 'bank_balance', 'interest_per_lakh'])
-
 export function ReferenceHistoryEditor({
   referenceKey,
+  datatype,
   rows,
 }: {
   referenceKey: string
+  datatype: ReferenceDatatype
   rows: ReferenceHistoryRow[]
 }) {
-  const isMoney = MONEY_KEYS.has(referenceKey)
+  const isMoney = datatype === 'inr'
+  const isDate = datatype === 'date'
+  // For date-typed keys the visible control is a date picker; a hidden `value`
+  // field carries the YYYYMMDD integer the server action stores.
+  const [dateValue, setDateValue] = useState('')
 
   const [state, action, pending] = useActionState(
     async (_prev: unknown, formData: FormData) => addReferenceHistory(formData),
@@ -82,7 +90,7 @@ export function ReferenceHistoryEditor({
                         )}
                       </td>
                       <td className="whitespace-nowrap px-3 py-2 text-right font-semibold tabular-nums text-gray-900">
-                        {isMoney ? formatRupees(r.value) : r.value.toLocaleString('en-IN')}
+                        {formatReferenceValue(r.value, datatype)}
                       </td>
                       <td className="px-3 py-2 text-gray-500">{r.notes ?? '—'}</td>
                       <td className="whitespace-nowrap px-3 py-2 text-right">
@@ -120,17 +128,39 @@ export function ReferenceHistoryEditor({
             <label htmlFor="value" className="block text-xs font-medium text-gray-700">
               Value
             </label>
-            <AmountInput
-              id="value"
-              name="value"
-              step="0.01"
-              required
-              showWords={isMoney}
-              showPrefix={isMoney}
-              placeholder={isMoney ? '500000' : '25'}
-              className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-              wordsClassName="mt-1 min-h-[1.1rem] text-[11px] italic text-gray-500"
-            />
+            {isDate ? (
+              <>
+                <input
+                  id="value"
+                  type="date"
+                  required
+                  value={dateValue}
+                  onChange={(e) => setDateValue(e.target.value)}
+                  className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                />
+                {/* Submitted as a YYYYMMDD integer to match numeric storage. */}
+                <input
+                  type="hidden"
+                  name="value"
+                  value={(() => {
+                    const ymd = inputDateToYmdInt(dateValue)
+                    return Number.isNaN(ymd) ? '' : String(ymd)
+                  })()}
+                />
+              </>
+            ) : (
+              <AmountInput
+                id="value"
+                name="value"
+                step="0.01"
+                required
+                showWords={isMoney}
+                showPrefix={isMoney}
+                placeholder={isMoney ? '500000' : '25'}
+                className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                wordsClassName="mt-1 min-h-[1.1rem] text-[11px] italic text-gray-500"
+              />
+            )}
           </div>
 
           <div>
