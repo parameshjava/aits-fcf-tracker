@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react'
 import { buildSchedule, computeEmiAmount } from '@/lib/emi-math'
 import { formatRupees, todayISO } from '@/lib/format'
+import { InfoTooltip } from '@/components/ui/info-tooltip'
 
 const FIELD =
   'mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500'
@@ -194,13 +195,7 @@ export function LoanCalculator({
                     <td className="whitespace-nowrap py-2 pr-6 text-gray-700">
                       {formatDate(r.dueDate)}
                       {r.isStub && (
-                        <span
-                          title="Pro-rated for the first month"
-                          aria-label="Pro-rated for the first month"
-                          className="ml-1.5 inline-flex h-4 w-4 cursor-help items-center justify-center rounded-full bg-amber-100 text-[10px] font-semibold text-amber-700"
-                        >
-                          i
-                        </span>
+                        <InfoTooltip label="Pro-rated for the first month" size="sm" className="ml-1.5" />
                       )}
                     </td>
                     <td className="whitespace-nowrap py-2 pr-4 text-right text-gray-900">{formatRupees(r.emiAmount)}</td>
