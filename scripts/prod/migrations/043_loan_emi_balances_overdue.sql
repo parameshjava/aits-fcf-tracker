@@ -37,6 +37,16 @@ select
   )::numeric                        as total_late_fees,
   count(*) filter (where s.status = 'overdue')
                                     as overdue_count,
+  min(s.due_date)
+    filter (where s.status in ('scheduled', 'partially_paid', 'overdue'))
+                                    as next_due_date,
+  (array_agg(s.emi_amount order by s.due_date)
+    filter (where s.status in ('scheduled', 'partially_paid', 'overdue')))[1]
+                                    as next_emi_amount,
+  -- New columns are APPENDED at the end (after next_emi_amount) so that
+  -- `create or replace view` succeeds on databases that already have the 040
+  -- view: Postgres only allows appending columns, never reordering/renaming
+  -- existing ones (else 42P16). Order is irrelevant to callers (select by name).
   count(*) filter (
     where s.status in ('scheduled', 'partially_paid', 'overdue')
       and s.due_date < (now() at time zone 'Asia/Kolkata')::date
@@ -44,13 +54,7 @@ select
   min(s.due_date) filter (
     where s.status in ('scheduled', 'partially_paid', 'overdue')
       and s.due_date < (now() at time zone 'Asia/Kolkata')::date
-  )                                 as oldest_past_due_date,
-  min(s.due_date)
-    filter (where s.status in ('scheduled', 'partially_paid', 'overdue'))
-                                    as next_due_date,
-  (array_agg(s.emi_amount order by s.due_date)
-    filter (where s.status in ('scheduled', 'partially_paid', 'overdue')))[1]
-                                    as next_emi_amount
+  )                                 as oldest_past_due_date
 from public.loans l
 left join public.loan_emi_schedule s on s.loan_id = l.id
 where l.repayment_model = 'emi'
