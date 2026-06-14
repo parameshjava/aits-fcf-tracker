@@ -23,6 +23,18 @@ export async function getCurrentMember() {
   return data ?? null
 }
 
+/**
+ * PostgREST returns PGRST205 ("Could not find the table … in the schema cache")
+ * when the exit objects aren't provisioned yet — e.g. migration 048 hasn't been
+ * applied to this environment. The exit feature is an optional addition to the
+ * dashboard, so a missing relation should degrade gracefully (no card / no tile)
+ * rather than 500 the whole page. Genuine errors still throw.
+ */
+function isMissingRelation(error: { code?: string; message?: string } | null): boolean {
+  if (!error) return false
+  return error.code === 'PGRST205' || /Could not find the table/i.test(error.message ?? '')
+}
+
 async function readBasis(memberId: string): Promise<Basis | null> {
   const supabase = await createClient()
   const { data, error } = await supabase
@@ -30,7 +42,10 @@ async function readBasis(memberId: string): Promise<Basis | null> {
     .select('*')
     .eq('member_id', memberId)
     .maybeSingle()
-  if (error) throw new Error(error.message)
+  if (error) {
+    if (isMissingRelation(error)) return null
+    throw new Error(error.message)
+  }
   if (!data) return null
   return {
     member_id: data.member_id,
@@ -132,7 +147,10 @@ export async function getExitProposals(): Promise<ExitProposal[]> {
     .from('member_exits')
     .select('*')
     .order('proposed_at', { ascending: false })
-  if (error) throw new Error(error.message)
+  if (error) {
+    if (isMissingRelation(error)) return []
+    throw new Error(error.message)
+  }
 
   const proposals: ExitProposal[] = []
   for (const r of rows ?? []) {
@@ -255,6 +273,9 @@ export async function getSocialContributionReserve(): Promise<number> {
     .from('social_contribution_reserve')
     .select('reserve_amount')
     .maybeSingle()
-  if (error) throw new Error(error.message)
+  if (error) {
+    if (isMissingRelation(error)) return 0
+    throw new Error(error.message)
+  }
   return Number(data?.reserve_amount ?? 0)
 }
