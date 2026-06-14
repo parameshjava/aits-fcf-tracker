@@ -105,10 +105,15 @@ select
   coalesce((select sum(t.amount) from public.transactions t
             where t.member_id = m.id and t.transaction_type = 'contribution'), 0)::numeric
                                                                              as total_contributions,
-  coalesce((select sum(lb.pending_principal) from public.loans_balances lb
-            join public.loans l on l.id = lb.loan_id
-            where lb.member_id = m.id and l.status = 'active'), 0)::numeric
-                                                                             as loan_balance
+  (
+    coalesce((select sum(lb.pending_principal) from public.loans_balances lb
+              join public.loans l on l.id = lb.loan_id
+              where lb.member_id = m.id and l.status = 'active'
+                and l.repayment_model = 'accrual'), 0)
+    + coalesce((select sum(eb.pending_principal) from public.loan_emi_balances eb
+                join public.loans l on l.id = eb.loan_id
+                where eb.member_id = m.id and l.status = 'active'), 0)
+  )::numeric                                                                 as loan_balance
 from public.members m
 cross join pool p
 where m.status = 'active';
@@ -186,10 +191,15 @@ begin
     select coalesce(sum(t.amount), 0) into v_c
       from public.transactions t
       where t.member_id = v_exit.member_id and t.transaction_type = 'contribution';
-    select coalesce(sum(lb.pending_principal), 0) into v_l
-      from public.loans_balances lb
-      join public.loans l on l.id = lb.loan_id
-      where lb.member_id = v_exit.member_id and l.status = 'active';
+    select
+      coalesce((select sum(lb.pending_principal) from public.loans_balances lb
+                join public.loans l on l.id = lb.loan_id
+                where lb.member_id = v_exit.member_id and l.status = 'active'
+                  and l.repayment_model = 'accrual'), 0)
+      + coalesce((select sum(eb.pending_principal) from public.loan_emi_balances eb
+                  join public.loans l on l.id = eb.loan_id
+                  where eb.member_id = v_exit.member_id and l.status = 'active'), 0)
+      into v_l;
 
     if v_exit.total_donations     <> v_total_donations
     or v_exit.total_bad_debt      <> v_total_bad_debt
@@ -208,11 +218,17 @@ begin
 
     if v_exit.loan_balance > 0 then
       for v_loan in
-        select lb.loan_id, lb.pending_principal
+        select lb.loan_id as loan_id, lb.pending_principal as pending_principal, 'accrual'::text as model
         from public.loans_balances lb
         join public.loans l on l.id = lb.loan_id
         where lb.member_id = v_exit.member_id and l.status = 'active'
-          and lb.pending_principal > 0
+          and l.repayment_model = 'accrual' and lb.pending_principal > 0
+        union all
+        select eb.loan_id as loan_id, eb.pending_principal as pending_principal, 'emi'::text as model
+        from public.loan_emi_balances eb
+        join public.loans l on l.id = eb.loan_id
+        where eb.member_id = v_exit.member_id and l.status = 'active'
+          and eb.pending_principal > 0
       loop
         insert into public.transactions
           (amount, transaction_type, member_id, loan_id, transaction_date, description, created_by)
@@ -223,6 +239,14 @@ begin
 
         update public.loans set status = 'paid', end_date = current_date
         where id = v_loan.loan_id;
+
+        -- EMI loans: settle remaining installment rows so the loan stops showing
+        -- a phantom balance in loan_emi_balances (which has no status filter).
+        if v_loan.model = 'emi' then
+          update public.loan_emi_schedule
+          set status = 'waived'
+          where loan_id = v_loan.loan_id and status not in ('paid', 'waived');
+        end if;
       end loop;
     end if;
 
