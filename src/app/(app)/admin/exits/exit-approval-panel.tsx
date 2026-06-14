@@ -14,6 +14,8 @@ export function ExitApprovalPanel({ proposals }: { proposals: ExitProposal[] }) 
   const router = useRouter()
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [confirmOpen, setConfirmOpen] = useState(false)
+  const [rejectTarget, setRejectTarget] = useState<ExitProposal | null>(null)
+  const [rejectNotes, setRejectNotes] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [pending, startTransition] = useTransition()
 
@@ -44,11 +46,19 @@ export function ExitApprovalPanel({ proposals }: { proposals: ExitProposal[] }) 
     })
   }
 
-  function runReject(id: string) {
+  function runReject() {
+    if (!rejectTarget) return
+    setError(null)
     startTransition(async () => {
-      const res = await rejectExit(id, '')
-      if (res.ok) { toast.success(res.message ?? 'Rejected'); router.refresh() }
-      else toast.error(res.error)
+      const res = await rejectExit(rejectTarget.id, rejectNotes.trim())
+      if (res.ok) {
+        toast.success(res.message ?? 'Rejected')
+        setRejectTarget(null)
+        setRejectNotes('')
+        router.refresh()
+      } else {
+        setError(res.error)
+      }
     })
   }
 
@@ -84,7 +94,7 @@ export function ExitApprovalPanel({ proposals }: { proposals: ExitProposal[] }) 
                   <button type="button" onClick={() => runRelock(p.id)} disabled={pending}
                     className="text-sm text-amber-700 underline">Re-lock</button>
                 )}
-                <button type="button" onClick={() => runReject(p.id)} disabled={pending}
+                <button type="button" onClick={() => { setRejectTarget(p); setRejectNotes('') }} disabled={pending}
                   className="text-sm text-red-600 underline">Reject</button>
               </span>
             </div>
@@ -139,6 +149,33 @@ export function ExitApprovalPanel({ proposals }: { proposals: ExitProposal[] }) 
             <button type="button" onClick={runApprove} disabled={pending}
               className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50">
               {pending ? 'Approving…' : 'Yes, approve'}
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={rejectTarget !== null} onOpenChange={(next) => { if (!pending && !next) { setRejectTarget(null); setError(null) } }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Reject {rejectTarget?.member_name}&apos;s exit request?</DialogTitle>
+            <DialogDescription>
+              Record the outcome of your discussion with the member. These notes are saved with the request.
+            </DialogDescription>
+          </DialogHeader>
+          <textarea
+            value={rejectNotes}
+            onChange={(e) => setRejectNotes(e.target.value)}
+            rows={4}
+            placeholder="Discussion notes (what was agreed, why the exit is being rejected)…"
+            className="w-full rounded-md border border-gray-200 p-2 text-sm"
+          />
+          {error && <p className="text-sm text-red-600">{error}</p>}
+          <DialogFooter className="sm:justify-end">
+            <button type="button" onClick={() => { setRejectTarget(null); setError(null) }} disabled={pending}
+              className="rounded-md border px-4 py-2 text-sm">Cancel</button>
+            <button type="button" onClick={runReject} disabled={pending}
+              className="rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50">
+              {pending ? 'Rejecting…' : 'Reject request'}
             </button>
           </DialogFooter>
         </DialogContent>
