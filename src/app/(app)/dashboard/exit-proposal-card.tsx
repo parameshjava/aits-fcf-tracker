@@ -12,22 +12,26 @@ type Props = {
 }
 
 export function ExitProposalCard({ estimate }: Props) {
-  const [state, action, pending] = useActionState(
-    async (_prev: unknown, formData: FormData) => proposeExit(formData),
-    null,
-  )
-  const [disposition, setDisposition] = useState<'refund' | 'donate'>('refund')
   const [reasons, setReasons] = useState('')
   const [retention, setRetention] = useState('')
+  const [disposition, setDisposition] = useState<'refund' | 'donate'>('refund')
   const [reasonsMode, setReasonsMode] = useState<MarkdownEditorMode>('write')
   const [retentionMode, setRetentionMode] = useState<MarkdownEditorMode>('write')
 
+  const [state, action, pending] = useActionState(
+    async (_prev: unknown, formData: FormData) => {
+      const res = await proposeExit(formData)
+      if (res.ok) {
+        setReasons('')
+        setRetention('')
+      }
+      return res
+    },
+    null,
+  )
+
   useEffect(() => {
-    if (state?.ok) {
-      toast.success(state.message ?? 'Exit request submitted')
-      setReasons('')
-      setRetention('')
-    }
+    if (state?.ok) toast.success(state.message ?? 'Exit request submitted')
   }, [state])
 
   if (!estimate) return null
