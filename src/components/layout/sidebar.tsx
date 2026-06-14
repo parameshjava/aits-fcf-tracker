@@ -75,6 +75,7 @@ const mainGroup: NavGroup = {
     { label: 'Members',   href: '/dashboard/members', icon: <Emoji char="👥" label="Members" /> },
     { label: 'Polls',     href: '/polls',             icon: <Emoji char="🗳️" label="Polls" /> },
     { label: 'Meetings',  href: '/meetings',           icon: <Emoji char="📅" label="Meetings" /> },
+    { label: 'Exit the Fund', href: '/exit', icon: <Emoji char="🚪" label="Exit the Fund" /> },
   ],
 }
 
