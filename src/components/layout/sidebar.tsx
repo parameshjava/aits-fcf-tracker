@@ -314,7 +314,7 @@ function SidebarBody({
   return (
     <aside
       className={
-        'flex h-full flex-col bg-gradient-to-b from-blue-600 to-indigo-700 text-white transition-[width] duration-200 ease-out ' +
+        'flex h-full flex-col bg-gradient-to-b from-[#0B1B3F] to-[#14274F] text-white transition-[width] duration-200 ease-out ' +
         (collapsed ? 'w-16' : 'w-64') +
         (isMobile ? ' rounded-2xl shadow-xl ring-1 ring-black/10' : '')
       }
