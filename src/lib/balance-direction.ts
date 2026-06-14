@@ -7,7 +7,7 @@ export type BalanceDirection = 'add' | 'subtract'
  * override on the form via the radio — this is just the pre-selection.
  *
  * Cash IN  → add (contribution, interest received, loan repayment, penalty)
- * Cash OUT → subtract (donation for medical aid)
+ * Cash OUT → subtract (donation for medical aid, member exit settlement)
  * Ambiguous → subtract (other; admin should review)
  */
 export function defaultDirectionForContribution(type: TransactionType): BalanceDirection {
@@ -20,6 +20,9 @@ export function defaultDirectionForContribution(type: TransactionType): BalanceD
     case 'donation':
       return 'subtract'
     case 'other':
+      return 'subtract'
+    case 'exit_settlement':
+      // A member exit settlement is a payout from the fund (cash OUT).
       return 'subtract'
   }
 }
