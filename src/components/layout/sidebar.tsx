@@ -11,6 +11,7 @@ import {
   SheetTitle,
   SheetDescription,
 } from '@/components/ui/sheet'
+import { EmiCalculatorIcon } from '@/components/icons/emi-calculator-icon'
 
 type NavItem = {
   label: string
@@ -82,7 +83,7 @@ const transactionsGroup: NavGroup = {
   items: [
     { label: 'Contributions', href: '/dashboard/contributions', icon: <Emoji char="💰" label="Contributions" /> },
     { label: 'Loans',         href: '/dashboard/loans',         icon: <Emoji char="🤝" label="Loans" /> },
-    { label: 'Loan Calculator', href: '/dashboard/loan-calculator', icon: <Emoji char="🧮" label="Loan Calculator" /> },
+    { label: 'Loan Calculator', href: '/dashboard/loan-calculator', icon: <EmiCalculatorIcon className="h-5 w-5" /> },
     { label: 'Donations',     href: '/dashboard/donations',     icon: <Emoji char="❤️" label="Donations" /> },
   ],
 }
