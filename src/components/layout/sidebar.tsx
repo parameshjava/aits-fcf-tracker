@@ -11,6 +11,7 @@ import {
   SheetTitle,
   SheetDescription,
 } from '@/components/ui/sheet'
+import { EmiCalculatorIcon } from '@/components/icons/emi-calculator-icon'
 
 type NavItem = {
   label: string
@@ -83,6 +84,13 @@ const transactionsGroup: NavGroup = {
     { label: 'Contributions', href: '/dashboard/contributions', icon: <Emoji char="💰" label="Contributions" /> },
     { label: 'Loans',         href: '/dashboard/loans',         icon: <Emoji char="🤝" label="Loans" /> },
     { label: 'Donations',     href: '/dashboard/donations',     icon: <Emoji char="❤️" label="Donations" /> },
+  ],
+}
+
+const informationGroup: NavGroup = {
+  label: 'Information',
+  items: [
+    { label: 'Loan Calculator', href: '/dashboard/loan-calculator', icon: <EmiCalculatorIcon className="h-5 w-5" /> },
   ],
 }
 
@@ -312,7 +320,7 @@ function SidebarBody({
   return (
     <aside
       className={
-        'flex h-full flex-col bg-gradient-to-b from-blue-600 to-indigo-700 text-white transition-[width] duration-200 ease-out ' +
+        'flex h-full flex-col bg-gradient-to-b from-[#0B1B3F] to-[#14274F] text-white transition-[width] duration-200 ease-out ' +
         (collapsed ? 'w-16' : 'w-64') +
         (isMobile ? ' rounded-2xl shadow-xl ring-1 ring-black/10' : '')
       }
@@ -436,6 +444,7 @@ export function Sidebar({ user }: { user: SidebarUser }) {
       }),
     },
     transactionsGroup,
+    informationGroup,
     rulesGroup,
     ...(user.isAdmin ? [adminGroup] : []),
   ]

@@ -8,6 +8,10 @@ import { LoanTimelineSection } from '@/components/loan-timeline-section'
 import { CloseLoanForm } from './close-loan-form'
 import { PendingInterestPanel } from './pending-interest-panel'
 import { RecomputeAccrualsButton } from './recompute-accruals-button'
+import { EmiSchedulePanel } from './emi-schedule-panel'
+import { ConvertToEmiForm } from './convert-to-emi-form'
+import { getEmiSchedule } from '@/lib/actions/emi'
+import { getReference } from '@/lib/actions/reference'
 
 const STATUS_PILL: Record<string, string> = {
   active:    'bg-blue-50 text-blue-700 ring-blue-200',
@@ -53,12 +57,43 @@ export default async function AdminLoanManagePage({
   const { loan_number } = await params
   const loan = await getLoanByNumber(decodeURIComponent(loan_number))
   if (!loan) notFound()
-  const [detail, polls] = await Promise.all([
+  const [detail, polls, schedule, cutoverYmd, maxTerm] = await Promise.all([
     getLoanDetail(loan.id),
     getPollsForLoanPicker({ excludeLoanId: loan.id }),
+    getEmiSchedule(loan.id),
+    getReference('emi_cutover_date').catch(() => 0),
+    getReference('loan_max_term_months').then(Number).catch(() => 30),
   ])
   const pendingPrincipal = detail?.financials.balance ?? 0
   const pendingInterest = detail?.financials.interestDue ?? 0
+
+  // emi_cutover_date is a YYYYMMDD integer; compare against today as an integer.
+  const now = new Date()
+  const todayYmd =
+    now.getUTCFullYear() * 10000 + (now.getUTCMonth() + 1) * 100 + now.getUTCDate()
+  const isEmi = loan.repayment_model === 'emi'
+  const hasLegacyBacklog = (detail?.accruals ?? []).some(
+    (a) => a.status === 'pending' || a.status === 'partially_paid',
+  )
+  const atOrAfterCutover = Number(cutoverYmd) > 0 && todayYmd >= Number(cutoverYmd)
+
+  // Pay EMI is offered on every unpaid installment whose due cycle has started —
+  // i.e. today (IST) is on/after the 1st of its accrual month (the month before
+  // its 10th-of-following-month due date). Resolved server-side.
+  const todayIst = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(now) // YYYY-MM-DD
+  const payableFromIso = (dueIso: string) => {
+    const [y, m] = dueIso.split('-').map(Number)
+    const d = new Date(Date.UTC(y, m - 1, 1))
+    d.setUTCMonth(d.getUTCMonth() - 1)
+    return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-01`
+  }
+  const payableInstallmentIds = schedule
+    .filter(
+      (r) =>
+        (r.status === 'scheduled' || r.status === 'partially_paid' || r.status === 'overdue') &&
+        todayIst >= payableFromIso(r.due_date),
+    )
+    .map((r) => r.id)
 
   return (
     <div className="space-y-6">
@@ -151,7 +186,32 @@ export default async function AdminLoanManagePage({
         </div>
       </div>
 
-      <PendingInterestPanel loanId={loan.id} accruals={detail?.accruals ?? []} />
+      {isEmi ? (
+        <>
+          <EmiSchedulePanel
+            loan={{
+              id: loan.id,
+              member_id: loan.member_id,
+              loan_number: loan.loan_number,
+              emi_amount: loan.emi_amount,
+              term_months: loan.term_months,
+              interest_rate_pct: loan.interest_rate_pct,
+            }}
+            schedule={schedule}
+            payableInstallmentIds={payableInstallmentIds}
+            todayIso={todayIst}
+          />
+          {/* Converted loans may still carry a pre-cutoff accrual backlog — keep it visible. */}
+          {hasLegacyBacklog && (
+            <PendingInterestPanel loanId={loan.id} accruals={detail?.accruals ?? []} />
+          )}
+        </>
+      ) : (
+        <>
+          {atOrAfterCutover && <ConvertToEmiForm loanId={loan.id} maxTerm={maxTerm} />}
+          <PendingInterestPanel loanId={loan.id} accruals={detail?.accruals ?? []} />
+        </>
+      )}
 
       <section className="rounded-2xl border border-gray-200/80 bg-white p-5">
         <h3 className="text-sm font-semibold text-gray-900">Timeline</h3>

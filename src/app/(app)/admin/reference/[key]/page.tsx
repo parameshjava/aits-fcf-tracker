@@ -41,7 +41,11 @@ export default async function ReferenceHistoryPage({
         </p>
       </header>
 
-      <ReferenceHistoryEditor referenceKey={key} rows={history} />
+      <ReferenceHistoryEditor
+        referenceKey={key}
+        datatype={current.datatype}
+        rows={history}
+      />
     </div>
   )
 }

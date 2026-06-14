@@ -3,7 +3,9 @@ import { notFound } from 'next/navigation'
 import { formatRupees } from '@/lib/format'
 import { KpiTile } from '@/components/kpi-tile'
 import { getLoanByNumber, getLoanDetail } from '@/lib/actions/loans'
+import { getEmiSchedule } from '@/lib/actions/emi'
 import { LoanTimelineSection } from '@/components/loan-timeline-section'
+import { EmiSchedulePanel } from '@/app/(app)/admin/loans/[loan_number]/emi-schedule-panel'
 
 const STATUS_PILL: Record<string, string> = {
   active:    'bg-blue-50 text-blue-700 ring-blue-200',
@@ -43,6 +45,10 @@ export default async function LoanDetailPage({
   // fields, close, reopen) via /admin/loans/[loan_number].
   const detail = await getLoanDetail(loan.id)
   if (!detail) notFound()
+
+  const isEmi = loan.repayment_model === 'emi'
+  const emiSchedule = isEmi ? await getEmiSchedule(loan.id) : []
+  const todayIso = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date())
   const { financials: f, interestPerLakh, timeline } = detail
   const {
     principal,
@@ -164,6 +170,22 @@ export default async function LoanDetailPage({
           accent="emerald"
         />
       </section>
+
+      {isEmi && (
+        <EmiSchedulePanel
+          readOnly
+          loan={{
+            id: loan.id,
+            member_id: loan.member_id,
+            loan_number: loan.loan_number,
+            emi_amount: loan.emi_amount,
+            term_months: loan.term_months,
+            interest_rate_pct: loan.interest_rate_pct,
+          }}
+          schedule={emiSchedule}
+          todayIso={todayIso}
+        />
+      )}
 
       <section>
         <LoanTimelineSection timeline={timeline} size="md" />

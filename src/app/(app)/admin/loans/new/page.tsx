@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
-import { getInterestPerLakh, getPollsForLoanPicker } from '@/lib/actions/loans'
+import { getPollsForLoanPicker } from '@/lib/actions/loans'
+import { getReference } from '@/lib/actions/reference'
 import { NewLoanForm } from './new-loan-form'
 
 export default async function NewLoanPage() {
@@ -15,7 +16,13 @@ export default async function NewLoanPage() {
     .single()
   if (profile?.role !== 'admin') redirect('/dashboard')
 
-  const [{ data: members }, interestPerLakh, polls] = await Promise.all([
+  const [
+    { data: members },
+    polls,
+    maxTermMonths,
+    interestRatePct,
+    medicalWaiverDefault,
+  ] = await Promise.all([
     // Only active members can take a new loan — inactive/archived members are
     // kept out of the borrower picker (mirrors the Add transaction form).
     supabase
@@ -23,8 +30,12 @@ export default async function NewLoanPage() {
       .select('id, name')
       .eq('status', 'active')
       .order('name', { ascending: true }),
-    getInterestPerLakh(),
     getPollsForLoanPicker(),
+    // Reference-driven limits/rate for the live EMI preview. Defaults mirror
+    // the createLoan server action so the client preview matches the server.
+    getReference('loan_max_term_months').catch(() => 30),
+    getReference('loan_interest_rate_pct').catch(() => 8),
+    getReference('loan_default_waiver_medical').catch(() => 6),
   ])
 
   return (
@@ -36,7 +47,9 @@ export default async function NewLoanPage() {
       <NewLoanForm
         members={members ?? []}
         polls={polls}
-        interestPerLakh={interestPerLakh}
+        maxTermMonths={maxTermMonths}
+        interestRatePct={interestRatePct}
+        medicalWaiverDefault={medicalWaiverDefault}
       />
     </div>
   )

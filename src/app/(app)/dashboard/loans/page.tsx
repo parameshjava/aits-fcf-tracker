@@ -11,6 +11,13 @@ import { computeLoanFinancials, type LoanTxnInput } from '@/lib/loan-math'
 import { RefreshButton } from '@/components/ui/refresh-button'
 import { LoansFilters } from './loans-filters'
 
+type EmiBalRow = {
+  loan_id: string
+  next_due_date: string | null
+  past_due_count: number | null
+  oldest_past_due_date: string | null
+}
+
 export default async function LoansListPage({
   searchParams,
 }: {
@@ -41,7 +48,8 @@ export default async function LoansListPage({
   const members = membersData ?? []
 
   const loanIds = loans.map((l) => l.id)
-  const [{ data: txnsRaw }, pendingInterestByLoan] = await Promise.all([
+  const emiLoanIds = loans.filter((l) => l.repayment_model === 'emi').map((l) => l.id)
+  const [{ data: txnsRaw }, pendingInterestByLoan, { data: emiBalRaw }] = await Promise.all([
     loanIds.length
       ? supabase
           .from('transactions')
@@ -49,7 +57,23 @@ export default async function LoansListPage({
           .in('loan_id', loanIds)
       : Promise.resolve({ data: [] as unknown[] }),
     getPendingInterestByLoan(loanIds),
+    emiLoanIds.length
+      ? supabase
+          .from('loan_emi_balances')
+          .select('loan_id, next_due_date, past_due_count, oldest_past_due_date')
+          .in('loan_id', emiLoanIds)
+      : Promise.resolve({ data: [] as EmiBalRow[] }),
   ])
+
+  const nextDueByLoan = new Map<string, string | null>()
+  const overdueByLoan = new Map<string, { count: number; oldest: string | null }>()
+  for (const b of (emiBalRaw ?? []) as EmiBalRow[]) {
+    nextDueByLoan.set(b.loan_id, b.next_due_date)
+    overdueByLoan.set(b.loan_id, {
+      count: Number(b.past_due_count ?? 0),
+      oldest: b.oldest_past_due_date,
+    })
+  }
 
   type TxnAgg = LoanTxnInput & { loan_id: string }
   const txns = (txnsRaw ?? []) as TxnAgg[]
@@ -74,6 +98,11 @@ export default async function LoansListPage({
       end_date: l.end_date,
       status: l.status,
       loan_type: l.loan_type,
+      repayment_model: l.repayment_model,
+      next_due_date: l.repayment_model === 'emi' ? nextDueByLoan.get(l.id) ?? null : null,
+      overdue_count: l.repayment_model === 'emi' ? overdueByLoan.get(l.id)?.count ?? 0 : 0,
+      oldest_overdue_date:
+        l.repayment_model === 'emi' ? overdueByLoan.get(l.id)?.oldest ?? null : null,
       paid_interest: f.paidInterestTotal,
       // Interest due reflects the accrual ledger (loan_interest_accruals),
       // not legacy on-the-fly math — keeps the list in lockstep with the
@@ -86,6 +115,7 @@ export default async function LoansListPage({
 
   const activeRows = tableRows.filter((r) => r.status === 'active')
   const pastRows = tableRows.filter((r) => r.status !== 'active')
+  const todayIso = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date())
 
   return (
     <div className="space-y-6">
@@ -112,9 +142,9 @@ export default async function LoansListPage({
         activeCount={activeRows.length}
         pastCount={pastRows.length}
         activeTable={
-          <LoansListTable loans={activeRows} expandable mode="active" />
+          <LoansListTable loans={activeRows} expandable mode="active" todayIso={todayIso} />
         }
-        pastTable={<LoansListTable loans={pastRows} expandable mode="past" />}
+        pastTable={<LoansListTable loans={pastRows} expandable mode="past" todayIso={todayIso} />}
       />
     </div>
   )

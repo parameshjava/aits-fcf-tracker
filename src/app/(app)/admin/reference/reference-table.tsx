@@ -8,10 +8,16 @@ import {
   deleteReference,
   type ReferenceRow,
 } from '@/lib/actions/reference'
-import { formatRupees } from '@/lib/format'
+import {
+  formatReferenceValue,
+  ymdIntToInputDate,
+  inputDateToYmdInt,
+  REFERENCE_DATATYPES,
+  REFERENCE_DATATYPE_LABELS,
+  type ReferenceDatatype,
+} from '@/lib/reference-format'
 
 const SEEDED_KEYS = new Set(['bank_balance', 'interest_per_lakh'])
-const MONEY_KEY = /(_balance|_amount)$|^interest_per_lakh$/
 const NEW_KEY = '__new__'
 
 // Pinned locale → server and client render the same string (no hydration drift).
@@ -22,10 +28,6 @@ const dateTimeFormatter = new Intl.DateTimeFormat('en-IN', {
   hour: '2-digit',
   minute: '2-digit',
 })
-
-function renderValue(key: string, value: number) {
-  return MONEY_KEY.test(key) ? formatRupees(value) : value.toLocaleString('en-IN')
-}
 
 function renderDate(iso: string | null) {
   if (!iso) return '—'
@@ -156,7 +158,7 @@ function DisplayRow({
         <td className="px-3 py-2 text-gray-900">{row.name}</td>
         <td className="px-3 py-2 text-gray-600">{row.description ?? '—'}</td>
         <td className="px-3 py-2 text-right tabular-nums text-gray-900">
-          {renderValue(row.key, row.value)}
+          {formatReferenceValue(row.value, row.datatype)}
         </td>
         <td className="px-3 py-2 whitespace-nowrap text-gray-500">
           {renderDate(row.updated_at)}
@@ -244,6 +246,7 @@ function EditableRow({
   const [name, setName] = useState(initial?.name ?? '')
   const [description, setDescription] = useState(initial?.description ?? '')
   const [value, setValue] = useState(initial ? String(initial.value) : '')
+  const [datatype, setDatatype] = useState<ReferenceDatatype>(initial?.datatype ?? 'number')
   const [pending, startTransition] = useTransition()
   const [error, setError] = useState<string | null>(null)
 
@@ -254,6 +257,7 @@ function EditableRow({
     fd.set('name', name.trim())
     fd.set('description', description.trim())
     fd.set('value', value)
+    fd.set('datatype', datatype)
     setError(null)
     startTransition(async () => {
       const result = await upsertReference(fd)
@@ -316,15 +320,57 @@ function EditableRow({
           />
         </td>
         <td className="px-3 py-2 align-middle">
-          <input
-            type="number"
-            step="0.01"
-            value={value}
-            onChange={(e) => setValue(e.target.value)}
-            onKeyDown={onKeyDown}
-            placeholder="0"
-            className={`${inputCls} text-right tabular-nums`}
-          />
+          <div className="space-y-1.5">
+            {/* Datatype drives how the value is rendered in the read-only view;
+                it only appears here in edit mode. */}
+            <select
+              value={datatype}
+              onChange={(e) => setDatatype(e.target.value as ReferenceDatatype)}
+              aria-label="Value datatype"
+              className={`${inputCls} cursor-pointer`}
+            >
+              {REFERENCE_DATATYPES.map((dt) => (
+                <option key={dt} value={dt}>
+                  {REFERENCE_DATATYPE_LABELS[dt]}
+                </option>
+              ))}
+            </select>
+            {datatype === 'date' ? (
+              // Stored as a YYYYMMDD integer; edit as a real date and convert back.
+              <input
+                type="date"
+                value={ymdIntToInputDate(Number(value))}
+                onChange={(e) => {
+                  const ymd = inputDateToYmdInt(e.target.value)
+                  setValue(Number.isNaN(ymd) ? '' : String(ymd))
+                }}
+                onKeyDown={onKeyDown}
+                className={inputCls}
+              />
+            ) : (
+              <div className="relative">
+                {datatype === 'inr' && (
+                  <span className="pointer-events-none absolute inset-y-0 left-2 flex items-center text-sm text-gray-400">
+                    ₹
+                  </span>
+                )}
+                <input
+                  type="number"
+                  step="0.01"
+                  value={value}
+                  onChange={(e) => setValue(e.target.value)}
+                  onKeyDown={onKeyDown}
+                  placeholder="0"
+                  className={`${inputCls} text-right tabular-nums ${datatype === 'inr' ? 'pl-6' : ''} ${datatype === 'percentage' ? 'pr-6' : ''}`}
+                />
+                {datatype === 'percentage' && (
+                  <span className="pointer-events-none absolute inset-y-0 right-2 flex items-center text-sm text-gray-400">
+                    %
+                  </span>
+                )}
+              </div>
+            )}
+          </div>
         </td>
         <td className="px-3 py-2 whitespace-nowrap align-middle text-xs text-gray-400">
           {mode === 'edit' ? renderDate(initial?.updated_at ?? null) : '—'}

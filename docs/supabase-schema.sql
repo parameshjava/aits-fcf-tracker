@@ -397,6 +397,8 @@ create table public.reference (
   name        text not null,
   description text,
   value       numeric not null,
+  datatype    text not null default 'number'
+                check (datatype in ('inr', 'percentage', 'date', 'number')),
   updated_at  timestamptz not null default now(),
   updated_by  uuid references auth.users(id)
 );
