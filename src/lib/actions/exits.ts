@@ -279,3 +279,78 @@ export async function getSocialContributionReserve(): Promise<number> {
   }
   return Number(data?.reserve_amount ?? 0)
 }
+
+/** Active members eligible to be picked for an admin-initiated exit:
+ * status='active' and no existing pending exit. */
+export async function getActiveMembersForExit(): Promise<{ id: string; name: string }[]> {
+  const supabase = await createClient()
+  const { data: members, error } = await supabase
+    .from('members')
+    .select('id, name')
+    .eq('status', 'active')
+    .order('name')
+  if (error) {
+    if (isMissingRelation(error)) return []
+    throw new Error(error.message)
+  }
+  const { data: pendingRows, error: pErr } = await supabase
+    .from('member_exits')
+    .select('member_id')
+    .eq('status', 'pending')
+  if (pErr && !isMissingRelation(pErr)) throw new Error(pErr.message)
+  const pendingIds = new Set((pendingRows ?? []).map((p) => p.member_id))
+  return (members ?? []).filter((m) => !pendingIds.has(m.id))
+}
+
+/** Admin-initiated exit: create a pending exit request on a member's behalf.
+ * Requires a reason. The request then flows through the normal approve. */
+export async function proposeExitForMember(formData: FormData): Promise<ActionResult> {
+  return runAction('proposeExitForMember', async () => {
+    const user = await getCurrentUser()
+    if (!user || user.profile?.role !== 'admin') return actionError('Not authorized')
+
+    const memberId = String(formData.get('member_id') ?? '')
+    const disposition = String(formData.get('disposition') ?? '')
+    const reason = String(formData.get('reason') ?? '').trim()
+    if (!memberId) return actionError('Select a member', 'member_id')
+    if (disposition !== 'refund' && disposition !== 'donate') {
+      return actionError('Choose refund or donate', 'disposition')
+    }
+    if (reason.length === 0) return actionError('A reason is required', 'reason')
+
+    const basis = await readBasis(memberId)
+    if (!basis) return actionError('That member is not active', 'member_id')
+    const calc = computeExit(basis)
+    if (!calc.eligible) {
+      return actionError(
+        `Member must repay their loan first — short by ₹${calc.shortfall}`,
+        'member_id',
+      )
+    }
+
+    const supabase = await createClient()
+    const { error } = await supabase.from('member_exits').insert({
+      member_id: memberId,
+      disposition,
+      proposed_by: user.id,
+      reasons_for_leaving: reason,
+      total_donations: basis.totalDonations,
+      total_bad_debt: basis.totalBadDebt,
+      settled_before: basis.settled,
+      active_count: basis.activeCount,
+      total_contributions: basis.contributions,
+      loan_balance: basis.loanBalance,
+      exit_share: calc.exitShare,
+      settled_amount: calc.settledAmount,
+      refund_amount: calc.refund,
+    })
+    if (error) {
+      if (error.code === '23505') return actionError('That member already has a pending exit request')
+      return actionError(error.message)
+    }
+
+    revalidatePath('/admin/exits')
+    revalidatePath('/dashboard')
+    return actionOk(undefined, 'Exit request created for member')
+  })
+}
