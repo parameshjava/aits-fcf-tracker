@@ -1273,3 +1273,14 @@ Threaded through:
 - **Task 4** (`proposeExit`): read `reasons_for_leaving` (required, non-empty) + `retention_suggestions` (optional) from `FormData` and insert. `ExitProposal` type + `getExitProposals` expose both.
 - **Task 5** (member card): two `MarkdownEditor` instances; because the form submits via a server action, each editor mirrors its `value` state into a hidden `<input name=...>` so it lands in `FormData`.
 - **Task 6** (admin page): render both via `MarkdownView` so the admin reads them before deciding.
+
+---
+
+## Addendum 2 (2026-06-14): admin-initiated exits
+
+The user added the ability for an admin to exit a member directly (e.g. an inactive/unresponsive member who won't self-propose). Decisions: **two-step** (admin creates a pending request that flows through the existing cohort approval — uniform review path) and a **required reason**. No schema change (reuses `member_exits.proposed_by` = admin uid and `reasons_for_leaving` = the admin's reason). Reuses the same `computeExit` + eligibility gate + atomic `fn_approve_member_exits`.
+
+- **Server (`exits.ts`):** `getActiveMembersForExit()` (active members with no pending exit) + `proposeExitForMember(formData)` (admin-gated, required reason, eligibility gate, inserts a pending row). Both resilient to a missing relation.
+- **UI (`/admin/exits`):** `admin-exit-member-form.tsx` — member select → live `getExitEstimate` preview + eligibility banner → disposition → required-reason `MarkdownEditor`; on submit the request appears in the pending list for cohort approval.
+
+Also (post-migration runtime hardening): the three dashboard/admin reads (`getExitEstimate`/`readBasis`, `getSocialContributionReserve`, `getExitProposals`) treat PostgREST PGRST205 ("table not in schema cache") as "feature not provisioned" → null/0/[], so the dashboard never 500s if migration 048 hasn't been applied.
