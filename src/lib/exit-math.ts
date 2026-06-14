@@ -36,6 +36,7 @@ export function computeExit(input: ExitMathInput): ExitMathResult {
   const { totalDonations, totalBadDebt, settled, activeCount, contributions, loanBalance } = input
 
   const lossPool = round2(totalDonations + totalBadDebt)
+  // `settled` is assumed to be a sum of round2'd settled_amount values, so the subtraction stays exact.
   const unsettled = lossPool - settled
   const exitShare = activeCount > 0 ? Math.max(0, round2(unsettled / activeCount)) : 0
 
@@ -44,7 +45,9 @@ export function computeExit(input: ExitMathInput): ExitMathResult {
 
   const coverable = contributions - loanBalance
   const settledAmount = Math.max(0, round2(Math.min(exitShare, coverable)))
-  const refund = Math.max(0, round2(contributions - exitShare - loanBalance))
+  // Derive refund from the already-rounded settledAmount so the conservation
+  // identity (refund + settledAmount + loanBalance == contributions) is exact.
+  const refund = Math.max(0, round2(coverable - settledAmount))
 
   return { lossPool, exitShare, settledAmount, refund, eligible, shortfall }
 }

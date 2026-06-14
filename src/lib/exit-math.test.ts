@@ -69,4 +69,17 @@ describe('computeExit', () => {
     const r = computeExit({ ...base, activeCount: 0 })
     expect(r.exitShare).toBe(0)
   })
+
+  it('zeroes both settled and refund when the member is ineligible', () => {
+    const r = computeExit({ ...base, contributions: 50000, loanBalance: 60000 })
+    expect(r.eligible).toBe(false)
+    expect(r.settledAmount).toBe(0)
+    expect(r.refund).toBe(0)
+  })
+
+  it('sums donations and bad debt into the loss pool', () => {
+    const r = computeExit({ ...base, totalDonations: 80000, totalBadDebt: 20000 })
+    expect(r.lossPool).toBe(100000)
+    expect(r.exitShare).toBe(10000)
+  })
 })
