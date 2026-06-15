@@ -152,11 +152,11 @@ function MemberSection({
           <table className="sticky-thead min-w-full text-sm">
             <thead>
               <tr className="border-b border-gray-200 bg-gray-50/60">
-                <th scope="col" className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-500">Name</th>
-                <th scope="col" className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-500">Status</th>
-                <th scope="col" className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-500">Primary phone</th>
-                <th scope="col" className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-500">Primary email</th>
-                <th scope="col" className="px-4 py-3" />
+                <th scope="col" className="px-4 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-500">Name</th>
+                <th scope="col" className="px-4 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-500">Status</th>
+                <th scope="col" className="px-4 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-500">Primary phone</th>
+                <th scope="col" className="px-4 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-500">Primary email</th>
+                <th scope="col" className="px-4 py-2" />
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
@@ -191,10 +191,10 @@ function MemberSection({
                             : 'hover:bg-gray-50')
                         }
                       >
-                        <td className="whitespace-nowrap px-4 py-3 font-medium text-gray-900">
+                        <td className="whitespace-nowrap px-4 py-2 font-medium text-gray-900">
                           {m.name}
                         </td>
-                        <td className="px-4 py-3">
+                        <td className="px-4 py-2">
                           <span
                             className={
                               'rounded-full px-2 py-0.5 text-xs font-medium ring-1 ' +
@@ -204,7 +204,7 @@ function MemberSection({
                             {STATUS_LABEL[m.status] ?? m.status}
                           </span>
                         </td>
-                        <td className="px-4 py-3">
+                        <td className="px-4 py-2">
                           {primaryPhone ? (
                             <span className="inline-flex items-center gap-1">
                               <ContactChip contact={primaryPhone} size="sm" hidePrimaryBadge />
@@ -214,7 +214,7 @@ function MemberSection({
                             <span className="text-gray-400">—</span>
                           )}
                         </td>
-                        <td className="px-4 py-3">
+                        <td className="px-4 py-2">
                           {primaryEmail ? (
                             <span className="inline-flex items-center gap-1">
                               <ContactChip contact={primaryEmail} size="sm" hidePrimaryBadge />
@@ -224,7 +224,7 @@ function MemberSection({
                             <span className="text-gray-400">—</span>
                           )}
                         </td>
-                        <td className="whitespace-nowrap px-4 py-3 text-right">
+                        <td className="whitespace-nowrap px-4 py-2 text-right">
                           <ExpandToggle
                             isOpen={isOpen}
                             onClick={() => toggle(m.id)}
