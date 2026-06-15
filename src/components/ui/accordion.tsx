@@ -25,7 +25,7 @@ export function Accordion({
   const toggle = () => setOpen((o) => !o)
 
   return (
-    <div className="overflow-hidden rounded-2xl border border-gray-200/80 bg-white">
+    <div className="overflow-clip rounded-2xl border border-gray-200/80 bg-white">
       <div className="flex items-center justify-between gap-3 px-5 py-3.5">
         <button
           type="button"
