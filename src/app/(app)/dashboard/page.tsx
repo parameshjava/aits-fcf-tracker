@@ -31,6 +31,7 @@ import { Admonition } from '@/components/ui/admonition'
 import { SubmitPaymentForm } from './submit-payment-form'
 import { DashboardTabs } from './dashboard-tabs'
 import { EligibilityMonthlyChart } from './eligibility-monthly-chart'
+import { getSocialContributionReserve } from '@/lib/actions/exits'
 
 type SeriesKey = 'contributions' | 'loanInterest' | 'bankInterest'
 
@@ -80,12 +81,13 @@ export default async function DashboardPage({
   const { data: { user } } = await supabase.auth.getUser()
 
   // All aggregates come from views — see scripts/create-dashboard-views.sql.
-  const [overall, yearly, memberTotals, bankBalanceRow, pendingPrincipal] = await Promise.all([
+  const [overall, yearly, memberTotals, bankBalanceRow, pendingPrincipal, socialReserve] = await Promise.all([
     getDashboardOverall(),
     getDashboardYearly(),
     getDashboardMemberTotals(),
     getReferenceRow('bank_balance'),
     getTotalPendingPrincipal(),
+    getSocialContributionReserve(),
   ])
   const bankBalance = Number(bankBalanceRow?.value ?? 0)
   const availableBalance = bankBalance + pendingPrincipal
@@ -238,6 +240,14 @@ export default async function DashboardPage({
           hint="Donations paid out + bad debts written off"
           accent="rose"
         />
+        {socialReserve > 0 && (
+          <KpiTile
+            label="Reserved for future social contributions"
+            value={formatRupees(socialReserve)}
+            hint="Donated by exiting members"
+            accent="rose"
+          />
+        )}
       </section>
 
       <DashboardTabs

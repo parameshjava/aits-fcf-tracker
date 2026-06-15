@@ -18,11 +18,11 @@ export default function RulesOverviewPage() {
         <h2 className="text-lg font-semibold text-gray-900">Key principles</h2>
         <ul className="list-disc space-y-1 pl-5">
           <li>Monthly contributions from all members build the corpus</li>
+          <li>Loans are available to members at 8% per annum (EMI-based)</li>
           <li>
-            Loans are available to members at nominal interest (6%–8% per
-            annum)
+            Social help is provided from a monthly budget (20% of monthly
+            contributions, carried forward)
           </li>
-          <li>Social help is provided from a quarterly budget</li>
           <li>
             All resolutions are documented and versioned for transparency
           </li>
@@ -40,6 +40,11 @@ export default function RulesOverviewPage() {
           <li>
             <strong>v2</strong> — Revised in 2023 with updated contribution
             amounts, loan interest rates, and corpus fund targets
+          </li>
+          <li>
+            <strong>v3</strong> — Current rules: ₹750 contributions, fixed 8%
+            EMI-based loans, monthly social help budget, and the member exit
+            settlement policy
           </li>
         </ul>
       </div>

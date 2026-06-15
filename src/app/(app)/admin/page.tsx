@@ -136,6 +136,19 @@ export default async function AdminPage() {
           </div>
           <span className="text-2xl text-rose-600">❤️</span>
         </Link>
+
+        <Link
+          href="/admin/exits"
+          className="flex items-center justify-between rounded-lg border bg-white p-5 transition hover:border-teal-300"
+        >
+          <div>
+            <h3 className="font-semibold text-gray-900">Member Exits</h3>
+            <p className="text-sm text-gray-500">
+              Review and approve member exit requests
+            </p>
+          </div>
+          <span className="text-2xl text-teal-600">👋</span>
+        </Link>
       </div>
 
       <div className="rounded-lg border bg-white p-5">

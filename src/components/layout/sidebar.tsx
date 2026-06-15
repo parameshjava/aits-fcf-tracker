@@ -75,6 +75,7 @@ const mainGroup: NavGroup = {
     { label: 'Members',   href: '/dashboard/members', icon: <Emoji char="👥" label="Members" /> },
     { label: 'Polls',     href: '/polls',             icon: <Emoji char="🗳️" label="Polls" /> },
     { label: 'Meetings',  href: '/meetings',           icon: <Emoji char="📅" label="Meetings" /> },
+    { label: 'Exit the Fund', href: '/exit', icon: <Emoji char="👋" label="Exit the Fund" /> },
   ],
 }
 
@@ -100,6 +101,7 @@ const rulesGroup: NavGroup = {
     { label: 'Overview',      href: '/rules',    icon: <Emoji char="📖" label="Overview" />, exact: true },
     { label: 'v1 — Original', href: '/rules/v1', icon: <Emoji char="📜" label="v1 Original" /> },
     { label: 'v2 — Revised',  href: '/rules/v2', icon: <Emoji char="📝" label="v2 Revised" /> },
+    { label: 'v3 — Current',  href: '/rules/v3', icon: <Emoji char="✅" label="v3 Current" /> },
   ],
 }
 
@@ -111,6 +113,7 @@ const adminGroup: NavGroup = {
     { label: 'Add Transaction',     href: '/admin/transactions/new', icon: <Emoji char="➕" label="Add Transaction" /> },
     { label: 'Manage Transactions', href: '/admin/transactions',     icon: <Emoji char="💸" label="Manage Transactions" />, exact: true },
     { label: 'Pending Payments',    href: '/admin/pending',          icon: <Emoji char="📥" label="Pending Payments" /> },
+    { label: 'Member Exits',        href: '/admin/exits',            icon: <Emoji char="👋" label="Member Exits" /> },
     { label: 'Bank Accounts',       href: '/admin/bank-accounts',    icon: <Emoji char="💳" label="Bank Accounts" /> },
     { label: 'Reference Values',    href: '/admin/reference',        icon: <Emoji char="⚙️" label="Reference Values" /> },
     { label: 'New Poll',            href: '/admin/polls/new',        icon: <Emoji char="🗳️" label="New Poll" /> },

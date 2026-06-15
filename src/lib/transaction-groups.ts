@@ -1,24 +1,27 @@
 import type { TransactionType } from './constants'
 
-export const SECTION_KEYS = ['contributions', 'loans', 'donations'] as const
+export const SECTION_KEYS = ['contributions', 'loans', 'donations', 'exits'] as const
 export type SectionKey = (typeof SECTION_KEYS)[number]
 
 export const SECTION_LABELS: Record<SectionKey, string> = {
   contributions: 'Contributions',
   loans:         'Loans',
   donations:     'Donations',
+  exits:         'Exits',
 }
 
 export const SECTION_DESCRIPTIONS: Record<SectionKey, string> = {
   contributions: 'Member contributions and interest earned.',
   loans:         'Loan repayments and late-payment penalties.',
   donations:     'Charitable disbursements from the fund.',
+  exits:         'Member exit settlements.',
 }
 
 export const SECTION_TYPES: Record<SectionKey, TransactionType[]> = {
   contributions: ['contribution', 'interest'],
   loans:         ['loan_repayment', 'penalty'],
   donations:     ['donation'],
+  exits:         ['exit_settlement'],
 }
 
 // Okabe-Ito-based palette for color-blind safety, with Contributions in a
@@ -36,6 +39,7 @@ export const SECTION_BAR_COLOR: Record<SectionKey, string> = {
   contributions: '#2563eb',
   loans:         '#E69F00',
   donations:     '#009E73',
+  exits:         '#56B4E9', // Okabe-Ito sky-blue
 }
 
 // Generate `count` visually distinct donut-slice colors for a poll. Hues are
