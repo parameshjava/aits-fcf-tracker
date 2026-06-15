@@ -75,7 +75,7 @@ const mainGroup: NavGroup = {
     { label: 'Members',   href: '/dashboard/members', icon: <Emoji char="👥" label="Members" /> },
     { label: 'Polls',     href: '/polls',             icon: <Emoji char="🗳️" label="Polls" /> },
     { label: 'Meetings',  href: '/meetings',           icon: <Emoji char="📅" label="Meetings" /> },
-    { label: 'Exit the Fund', href: '/exit', icon: <Emoji char="🚪" label="Exit the Fund" /> },
+    { label: 'Exit the Fund', href: '/exit', icon: <Emoji char="👋" label="Exit the Fund" /> },
   ],
 }
 
@@ -101,6 +101,7 @@ const rulesGroup: NavGroup = {
     { label: 'Overview',      href: '/rules',    icon: <Emoji char="📖" label="Overview" />, exact: true },
     { label: 'v1 — Original', href: '/rules/v1', icon: <Emoji char="📜" label="v1 Original" /> },
     { label: 'v2 — Revised',  href: '/rules/v2', icon: <Emoji char="📝" label="v2 Revised" /> },
+    { label: 'v3 — Current',  href: '/rules/v3', icon: <Emoji char="✅" label="v3 Current" /> },
   ],
 }
 

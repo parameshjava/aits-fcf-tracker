@@ -40,6 +40,10 @@ const ROUTES: Record<string, RouteMeta> = {
     title: 'Revised resolutions',
     crumbs: [{ label: 'Rules', href: '/rules' }, { label: 'v2 — Revised' }],
   },
+  '/rules/v3': {
+    title: 'Revised rules',
+    crumbs: [{ label: 'Rules', href: '/rules' }, { label: 'v3 — Current' }],
+  },
   '/admin': {
     title: 'Admin panel',
     crumbs: [{ label: 'Admin' }],
