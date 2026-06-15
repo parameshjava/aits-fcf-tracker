@@ -3,6 +3,7 @@
 import { Fragment, useState } from 'react'
 import { ContactChip, MemberContactsList } from '@/components/member-contacts'
 import { CopyButton } from '@/components/copy-button'
+import { Accordion } from '@/components/ui/accordion'
 import { ExpandToggle } from '@/components/ui/expand-toggle'
 import { TableExportMenu } from '@/components/table-export'
 import type { Cell } from '@/lib/table-export'
@@ -102,6 +103,7 @@ export function MembersDirectoryTable({
         title="Active members"
         emptyLabel="No active members."
         members={activeMembers}
+        defaultOpen
         expanded={expanded}
         toggle={toggle}
         normalizedUserEmail={normalizedUserEmail}
@@ -111,6 +113,7 @@ export function MembersDirectoryTable({
         title="Inactive members"
         emptyLabel="No inactive members."
         members={inactiveMembers}
+        defaultOpen={false}
         expanded={expanded}
         toggle={toggle}
         normalizedUserEmail={normalizedUserEmail}
@@ -124,6 +127,7 @@ function MemberSection({
   title,
   emptyLabel,
   members,
+  defaultOpen = false,
   expanded,
   toggle,
   normalizedUserEmail,
@@ -132,21 +136,19 @@ function MemberSection({
   title: string
   emptyLabel: string
   members: MemberDirectoryRow[]
+  defaultOpen?: boolean
   expanded: Set<string>
   toggle: (id: string) => void
   normalizedUserEmail: string
   isAdmin: boolean
 }) {
   return (
-    <section>
-      <div className="mb-2 flex items-center gap-2">
-        <h2 className="text-sm font-semibold text-gray-900">{title}</h2>
-        <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600">
-          {members.length}
-        </span>
-      </div>
-      <div className="overflow-clip rounded-2xl border border-gray-200 bg-white">
-        <div className="overflow-x-auto lg:overflow-x-visible">
+    <Accordion
+      title={title}
+      subtitle={`${members.length} ${members.length === 1 ? 'member' : 'members'}`}
+      defaultOpen={defaultOpen}
+    >
+      <div className="-mx-5 -my-4 overflow-x-auto lg:overflow-x-visible">
           <table className="sticky-thead min-w-full text-sm">
             <thead>
               <tr className="border-b border-gray-200 bg-gray-50/60">
@@ -260,9 +262,8 @@ function MemberSection({
               )}
             </tbody>
           </table>
-        </div>
       </div>
-    </section>
+    </Accordion>
   )
 }
 
