@@ -196,16 +196,12 @@ export default async function DashboardPage({
   return (
     <div className="space-y-8">
       <h1 className="text-lg font-semibold text-gray-900">Dashboard</h1>
-      <section className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+      <section className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         <SummaryCard
-          title="Contributions"
+          title="Contributions & Income"
           accent="blue"
           value={formatRupees(overall.contributions)}
           hint="All-time member contributions"
-        />
-        <SummaryCard
-          title="Income"
-          accent="indigo"
           lines={[
             { label: 'Loan interest', value: formatRupees(overall.loan_interest) },
             { label: 'Bank interest', value: formatRupees(overall.bank_interest) },
