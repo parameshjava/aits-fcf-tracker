@@ -148,7 +148,7 @@ function MemberSection({
       subtitle={`${members.length} ${members.length === 1 ? 'member' : 'members'}`}
       defaultOpen={defaultOpen}
     >
-      <div className="-mx-5 -my-4 overflow-x-auto lg:overflow-x-visible">
+      <div className="-mx-5 -mb-4 overflow-x-auto lg:overflow-x-visible">
           <table className="sticky-thead min-w-full text-sm">
             <thead>
               <tr className="border-b border-gray-200 bg-gray-50/60">
