@@ -2,6 +2,7 @@
 
 import { Fragment, useState } from 'react'
 import { ContactChip, MemberContactsList } from '@/components/member-contacts'
+import { CopyButton } from '@/components/copy-button'
 import { ExpandToggle } from '@/components/ui/expand-toggle'
 import { TableExportMenu } from '@/components/table-export'
 import type { Cell } from '@/lib/table-export'
@@ -81,10 +82,14 @@ export function MembersDirectoryTable({
     ]
   })
 
+  // Active in one section; everything else (inactive + archived) in the other.
+  const activeMembers = members.filter((m) => m.status === 'active')
+  const inactiveMembers = members.filter((m) => m.status !== 'active')
+
   return (
-    <div className="overflow-clip rounded-2xl border border-gray-200 bg-white">
+    <div className="space-y-6">
       {members.length > 0 && (
-        <div className="flex items-center justify-end border-b border-gray-200 bg-gray-50/30 px-3 py-2">
+        <div className="flex items-center justify-end">
           <TableExportMenu
             filename="members"
             title="Members directory"
@@ -93,116 +98,171 @@ export function MembersDirectoryTable({
           />
         </div>
       )}
-      <div className="overflow-x-auto lg:overflow-x-visible">
-        <table className="sticky-thead min-w-full text-sm">
-          <thead>
-            <tr className="border-b border-gray-200 bg-gray-50/60">
-              <th scope="col" className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-500">Name</th>
-              <th scope="col" className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-500">Status</th>
-              <th scope="col" className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-500">Primary phone</th>
-              <th scope="col" className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-500">Primary email</th>
-              <th scope="col" className="px-4 py-3" />
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-100">
-            {members.length === 0 ? (
-              <tr>
-                <td colSpan={COLSPAN} className="px-4 py-12 text-center text-sm text-gray-400">
-                  No members on file yet.
-                </td>
+      <MemberSection
+        title="Active members"
+        emptyLabel="No active members."
+        members={activeMembers}
+        expanded={expanded}
+        toggle={toggle}
+        normalizedUserEmail={normalizedUserEmail}
+        isAdmin={isAdmin}
+      />
+      <MemberSection
+        title="Inactive members"
+        emptyLabel="No inactive members."
+        members={inactiveMembers}
+        expanded={expanded}
+        toggle={toggle}
+        normalizedUserEmail={normalizedUserEmail}
+        isAdmin={isAdmin}
+      />
+    </div>
+  )
+}
+
+function MemberSection({
+  title,
+  emptyLabel,
+  members,
+  expanded,
+  toggle,
+  normalizedUserEmail,
+  isAdmin,
+}: {
+  title: string
+  emptyLabel: string
+  members: MemberDirectoryRow[]
+  expanded: Set<string>
+  toggle: (id: string) => void
+  normalizedUserEmail: string
+  isAdmin: boolean
+}) {
+  return (
+    <section>
+      <div className="mb-2 flex items-center gap-2">
+        <h2 className="text-sm font-semibold text-gray-900">{title}</h2>
+        <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600">
+          {members.length}
+        </span>
+      </div>
+      <div className="overflow-clip rounded-2xl border border-gray-200 bg-white">
+        <div className="overflow-x-auto lg:overflow-x-visible">
+          <table className="sticky-thead min-w-full text-sm">
+            <thead>
+              <tr className="border-b border-gray-200 bg-gray-50/60">
+                <th scope="col" className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-500">Name</th>
+                <th scope="col" className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-500">Status</th>
+                <th scope="col" className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-500">Primary phone</th>
+                <th scope="col" className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-500">Primary email</th>
+                <th scope="col" className="px-4 py-3" />
               </tr>
-            ) : (
-              members.map((m) => {
-                const isOpen = expanded.has(m.id)
-                const phones = m.contacts.filter((c) => c.kind === 'phone')
-                const emails = m.contacts.filter((c) => c.kind === 'email')
-                const primaryPhone = phones.find((c) => c.is_primary) ?? phones[0]
-                const primaryEmail = emails.find((c) => c.is_primary) ?? emails[0]
-                const altPhones = phones.filter((c) => c.id !== primaryPhone?.id)
-                const altEmails = emails.filter((c) => c.id !== primaryEmail?.id)
-                const memberEmailLower = (m.email ?? '').trim().toLowerCase()
-                const isSelf =
-                  !!normalizedUserEmail &&
-                  !!memberEmailLower &&
-                  normalizedUserEmail === memberEmailLower
-                const canEdit = isAdmin || isSelf
-                return (
-                  <Fragment key={m.id}>
-                    <tr
-                      className={
-                        'transition-colors ' +
-                        (isOpen
-                          ? 'bg-blue-50/40 ring-1 ring-inset ring-blue-100'
-                          : 'hover:bg-gray-50')
-                      }
-                    >
-                      <td className="whitespace-nowrap px-4 py-3 font-medium text-gray-900">
-                        {m.name}
-                      </td>
-                      <td className="px-4 py-3">
-                        <span
-                          className={
-                            'rounded-full px-2 py-0.5 text-xs font-medium ring-1 ' +
-                            (STATUS_PILL[m.status] ?? STATUS_PILL.active)
-                          }
-                        >
-                          {STATUS_LABEL[m.status] ?? m.status}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3">
-                        {primaryPhone ? (
-                          <ContactChip contact={primaryPhone} size="sm" hidePrimaryBadge />
-                        ) : (
-                          <span className="text-gray-400">—</span>
-                        )}
-                      </td>
-                      <td className="px-4 py-3">
-                        {primaryEmail ? (
-                          <ContactChip contact={primaryEmail} size="sm" hidePrimaryBadge />
-                        ) : (
-                          <span className="text-gray-400">—</span>
-                        )}
-                      </td>
-                      <td className="whitespace-nowrap px-4 py-3 text-right">
-                        <ExpandToggle
-                          isOpen={isOpen}
-                          onClick={() => toggle(m.id)}
-                          controlsId={`member-detail-${m.id}`}
-                          labelOpen={`Hide details for ${m.name}`}
-                          labelClosed={`Show details for ${m.name}`}
-                        />
-                      </td>
-                    </tr>
-                    {isOpen && (
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {members.length === 0 ? (
+                <tr>
+                  <td colSpan={COLSPAN} className="px-4 py-10 text-center text-sm text-gray-400">
+                    {emptyLabel}
+                  </td>
+                </tr>
+              ) : (
+                members.map((m) => {
+                  const isOpen = expanded.has(m.id)
+                  const phones = m.contacts.filter((c) => c.kind === 'phone')
+                  const emails = m.contacts.filter((c) => c.kind === 'email')
+                  const primaryPhone = phones.find((c) => c.is_primary) ?? phones[0]
+                  const primaryEmail = emails.find((c) => c.is_primary) ?? emails[0]
+                  const altPhones = phones.filter((c) => c.id !== primaryPhone?.id)
+                  const altEmails = emails.filter((c) => c.id !== primaryEmail?.id)
+                  const memberEmailLower = (m.email ?? '').trim().toLowerCase()
+                  const isSelf =
+                    !!normalizedUserEmail &&
+                    !!memberEmailLower &&
+                    normalizedUserEmail === memberEmailLower
+                  const canEdit = isAdmin || isSelf
+                  return (
+                    <Fragment key={m.id}>
                       <tr
-                        id={`member-detail-${m.id}`}
-                        className="border-l-2 border-l-blue-500 bg-gradient-to-b from-blue-50/50 to-white"
+                        className={
+                          'transition-colors ' +
+                          (isOpen
+                            ? 'bg-blue-50/40 ring-1 ring-inset ring-blue-100'
+                            : 'hover:bg-gray-50')
+                        }
                       >
-                        <td colSpan={COLSPAN} className="p-0">
-                          <MemberDetailPanel
-                            memberId={m.id}
-                            memberName={m.name}
-                            createdAt={m.created_at}
-                            loginEmail={m.email}
-                            notes={m.notes}
-                            canEdit={canEdit}
-                            phones={phones}
-                            emails={emails}
-                            altPhones={altPhones}
-                            altEmails={altEmails}
-                            bankAccounts={m.bank_accounts}
+                        <td className="whitespace-nowrap px-4 py-3 font-medium text-gray-900">
+                          {m.name}
+                        </td>
+                        <td className="px-4 py-3">
+                          <span
+                            className={
+                              'rounded-full px-2 py-0.5 text-xs font-medium ring-1 ' +
+                              (STATUS_PILL[m.status] ?? STATUS_PILL.active)
+                            }
+                          >
+                            {STATUS_LABEL[m.status] ?? m.status}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3">
+                          {primaryPhone ? (
+                            <span className="inline-flex items-center gap-1">
+                              <ContactChip contact={primaryPhone} size="sm" hidePrimaryBadge />
+                              <CopyButton value={primaryPhone.value} label="Phone" />
+                            </span>
+                          ) : (
+                            <span className="text-gray-400">—</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3">
+                          {primaryEmail ? (
+                            <span className="inline-flex items-center gap-1">
+                              <ContactChip contact={primaryEmail} size="sm" hidePrimaryBadge />
+                              <CopyButton value={primaryEmail.value} label="Email" />
+                            </span>
+                          ) : (
+                            <span className="text-gray-400">—</span>
+                          )}
+                        </td>
+                        <td className="whitespace-nowrap px-4 py-3 text-right">
+                          <ExpandToggle
+                            isOpen={isOpen}
+                            onClick={() => toggle(m.id)}
+                            controlsId={`member-detail-${m.id}`}
+                            labelOpen={`Hide details for ${m.name}`}
+                            labelClosed={`Show details for ${m.name}`}
                           />
                         </td>
                       </tr>
-                    )}
-                  </Fragment>
-                )
-              })
-            )}
-          </tbody>
-        </table>
+                      {isOpen && (
+                        <tr
+                          id={`member-detail-${m.id}`}
+                          className="border-l-2 border-l-blue-500 bg-gradient-to-b from-blue-50/50 to-white"
+                        >
+                          <td colSpan={COLSPAN} className="p-0">
+                            <MemberDetailPanel
+                              memberId={m.id}
+                              memberName={m.name}
+                              createdAt={m.created_at}
+                              loginEmail={m.email}
+                              notes={m.notes}
+                              canEdit={canEdit}
+                              phones={phones}
+                              emails={emails}
+                              altPhones={altPhones}
+                              altEmails={altEmails}
+                              bankAccounts={m.bank_accounts}
+                            />
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
+                  )
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
-    </div>
+    </section>
   )
 }
 
