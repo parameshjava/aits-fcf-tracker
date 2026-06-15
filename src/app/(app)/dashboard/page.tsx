@@ -2,7 +2,7 @@ import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { getReferenceRow } from '@/lib/actions/reference'
 import { formatRupees } from '@/lib/format'
-import { KpiTile } from '@/components/kpi-tile'
+import { SummaryCard } from '@/components/summary-card'
 import {
   DashboardBars,
   MemberContributionBars,
@@ -199,55 +199,50 @@ export default async function DashboardPage({
   return (
     <div className="space-y-8">
       <h1 className="text-lg font-semibold text-gray-900">Dashboard</h1>
-      <section className="grid grid-cols-2 gap-4 lg:grid-cols-3 xl:grid-cols-6">
-        <KpiTile
-          label="Total contributions"
+      <section className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <SummaryCard
+          title="Contributions"
+          accent="blue"
           value={formatRupees(overall.contributions)}
           hint="All-time member contributions"
-          accent="blue"
         />
-        <KpiTile
-          label="Loan interest"
-          value={formatRupees(overall.loan_interest)}
-          hint="Interest earned on loans"
+        <SummaryCard
+          title="Income"
           accent="indigo"
+          lines={[
+            { label: 'Loan interest', value: formatRupees(overall.loan_interest) },
+            { label: 'Bank interest', value: formatRupees(overall.bank_interest) },
+            {
+              label: 'Total income',
+              value: formatRupees(overall.loan_interest + overall.bank_interest),
+              emphasize: true,
+            },
+          ]}
         />
-        <KpiTile
-          label="Bank interest"
-          value={formatRupees(overall.bank_interest)}
-          hint="Interest earned on bank deposits"
-          accent="emerald"
-        />
-        <KpiTile
-          label="FCF Bank Balance"
-          value={formatRupees(bankBalance)}
-          hint={
-            bankBalanceRow?.updated_at
-              ? `Updated ${new Date(bankBalanceRow.updated_at).toLocaleDateString('en-IN')}`
-              : 'Not set'
-          }
-          accent="blue"
-        />
-        <KpiTile
-          label="Available balance"
-          value={formatRupees(availableBalance)}
-          hint="Bank balance + outstanding loan principal"
+        <SummaryCard
+          title="Position"
           accent="amber"
+          lines={[
+            { label: 'FCF bank balance', value: formatRupees(bankBalance) },
+            { label: 'Available balance', value: formatRupees(availableBalance) },
+            { label: 'Reserved (social)', value: formatRupees(socialReserve) },
+          ]}
+          footnote={
+            bankBalanceRow?.updated_at
+              ? `Bank balance updated ${new Date(bankBalanceRow.updated_at).toLocaleDateString('en-IN')}`
+              : undefined
+          }
         />
-        <KpiTile
-          label="Total donations"
-          value={formatRupees(totalDonations)}
-          hint="Donations paid out + bad debts written off"
+        <SummaryCard
+          title="Social / Donations"
           accent="rose"
+          lines={[
+            { label: 'Eligible so far', value: formatRupees(eligibilitySummary.totalEarned) },
+            { label: 'Paid out + bad debt', value: formatRupees(totalDonations) },
+            { label: 'Reserved for future', value: formatRupees(socialReserve) },
+          ]}
+          footnote="Eligible = lifetime earned eligibility · paid = donations + bad debts · reserve donated by exiting members"
         />
-        {socialReserve > 0 && (
-          <KpiTile
-            label="Reserved for future social contributions"
-            value={formatRupees(socialReserve)}
-            hint="Donated by exiting members"
-            accent="rose"
-          />
-        )}
       </section>
 
       <DashboardTabs
