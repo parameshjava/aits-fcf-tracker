@@ -198,18 +198,16 @@ export default async function DashboardPage({
       <h1 className="text-lg font-semibold text-gray-900">Dashboard</h1>
       <section className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         <SummaryCard
-          title="Contributions & Income"
+          title="Total fund"
           accent="blue"
-          value={formatRupees(overall.contributions)}
-          hint="All-time member contributions"
+          value={formatRupees(
+            overall.contributions + overall.loan_interest + overall.bank_interest,
+          )}
+          hint="Contributions + interest earned (all inflows)"
           lines={[
+            { label: 'Contributions', value: formatRupees(overall.contributions) },
             { label: 'Loan interest', value: formatRupees(overall.loan_interest) },
             { label: 'Bank interest', value: formatRupees(overall.bank_interest) },
-            {
-              label: 'Total income',
-              value: formatRupees(overall.loan_interest + overall.bank_interest),
-              emphasize: true,
-            },
           ]}
         />
         <SummaryCard
