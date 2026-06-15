@@ -132,9 +132,6 @@ export default async function DashboardPage({
     getDashboardEligibilityLedger(),
   ])
   const eligibilityYears = aggregateEligibilityByYear(eligibilityLedger, thisYear)
-  // Total Donations tile = lifetime donations paid out + lifetime bad debts
-  // written off (both consume donation eligibility).
-  const totalDonations = eligibilitySummary.totalDonated + eligibilitySummary.totalBadDebt
 
   // Monthly stacked bar dataset for the selected year:
   //   • carryIn = lifetime cumulative EARNED eligibility BEFORE this month
@@ -238,10 +235,11 @@ export default async function DashboardPage({
           accent="rose"
           lines={[
             { label: 'Eligible so far', value: formatRupees(eligibilitySummary.totalEarned) },
-            { label: 'Paid out + bad debt', value: formatRupees(totalDonations) },
+            { label: 'Donations paid', value: formatRupees(eligibilitySummary.totalDonated) },
+            { label: 'Bad debts written off', value: formatRupees(eligibilitySummary.totalBadDebt) },
             { label: 'Reserved for future', value: formatRupees(socialReserve) },
           ]}
-          footnote="Eligible = lifetime earned eligibility · paid = donations + bad debts · reserve donated by exiting members"
+          footnote="Eligible = lifetime earned eligibility · reserve donated by exiting members"
         />
       </section>
 
