@@ -6,6 +6,7 @@ import { toast } from 'sonner'
 import { proposeExitForMember, getExitEstimate } from '@/lib/actions/exits'
 import { formatRupees } from '@/lib/format'
 import { MarkdownEditor, type MarkdownEditorMode } from '@/components/markdown-editor'
+import { SearchableSelect } from '@/components/searchable-select'
 import type { ExitMathResult } from '@/lib/exit-math'
 
 type Member = { id: string; name: string }
@@ -63,19 +64,14 @@ export function AdminExitMemberForm({ members }: { members: Member[] }) {
       ) : (
         <form action={action} className="mt-4 space-y-4">
           <div className="space-y-1.5">
-            <label htmlFor="member_id" className="text-xs font-medium text-gray-600">Member</label>
-            <select
-              id="member_id"
+            <span className="text-xs font-medium text-gray-600">Member</span>
+            <SearchableSelect
               name="member_id"
+              options={members}
               value={memberId}
-              onChange={(e) => onSelectMember(e.target.value)}
-              className="w-full rounded-md border border-gray-200 p-2 text-sm"
-            >
-              <option value="">Select a member…</option>
-              {members.map((m) => (
-                <option key={m.id} value={m.id}>{m.name}</option>
-              ))}
-            </select>
+              onChange={onSelectMember}
+              placeholder="Select a member…"
+            />
             {state && !state.ok && state.field === 'member_id' && (
               <p className="text-sm text-red-600">{state.error}</p>
             )}
