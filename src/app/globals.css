@@ -26,6 +26,29 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* Compact density for the shared PrDataTable (which renders with size="small"
+   → `.p-datatable-sm`). Lara's default padding/header are large; these tighten
+   rows and shrink headers into the small uppercase style the app used before
+   the migration. In the `components` layer so they beat the Lara theme
+   (`primereact` layer) but still lose to Tailwind utilities. */
+@layer components {
+  .p-datatable-sm .p-datatable-thead > tr > th {
+    padding: 0.5rem 0.75rem;
+    font-size: 0.6875rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  .p-datatable-sm .p-datatable-tbody > tr > td {
+    padding: 0.45rem 0.75rem;
+    font-size: 0.8125rem;
+  }
+  .p-datatable-sm .p-datatable-tbody > tr > td .p-row-toggler {
+    width: 1.75rem;
+    height: 1.75rem;
+  }
+}
+
 /* @uiw/react-md-editor's split/read preview pane has its own renderer and
    doesn't pick up the .prose styles from MarkdownView. Tailwind v4's
    preflight resets list bullets globally, leaving the preview's <ul>/<ol>

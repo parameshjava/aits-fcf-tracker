@@ -214,6 +214,10 @@ export function PrDataTable<T extends Record<string, unknown>>({
       footerColumnGroup={footerColumnGroup as never}
       scrollable={scrollable}
       scrollHeight={scrollHeight}
+      // Compact density — Lara's default cell/header padding is large; `small`
+      // plus the `.p-datatable-sm` overrides in globals.css restore the prior
+      // tight, scannable rows + small uppercase headers this app used.
+      size="small"
       tableStyle={{ minWidth: '100%' }}
     >
       {columns.map((c) => (
