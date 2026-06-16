@@ -10,11 +10,14 @@ import {
   type LoanType,
 } from '@/lib/loan-type'
 import { formatRupees, todayISO } from '@/lib/format'
+import { numberToIndianWords } from '@/lib/number-to-words'
 import { buildSchedule, computeEmiAmount } from '@/lib/emi-math'
 import { BankBalanceUpdater } from '@/components/bank-balance-updater'
-import { AmountInput } from '@/components/amount-input'
 import { LOAN_DISBURSEMENT_DEFAULT } from '@/lib/balance-direction'
-import { SearchableSelect } from '@/components/searchable-select'
+import { PrDropdown, type SelectOption } from '@/components/ui/pr/dropdown'
+import { PrAmountInput } from '@/components/ui/pr/amount-input'
+import { Field } from '@/components/ui/pr/field'
+import { Button } from '@/components/ui/pr/button'
 import { buildPollPickerOptions } from '@/lib/loan-poll-picker'
 
 type Member = { id: string; name: string }
@@ -33,28 +36,37 @@ export function NewLoanForm({
   medicalWaiverDefault: number
 }) {
   const router = useRouter()
-  const [memberId, setMemberId] = useState('')
-  const [pollId, setPollId] = useState('')
+  const [memberId, setMemberId] = useState<string>('')
+  const [pollId, setPollId] = useState<string>('')
   const [loanType, setLoanType] = useState<LoanType>('personal')
   // Medical loans default to a configurable interest waiver; personal loans
   // default to none. The admin can still override either way.
   const [waiverMonths, setWaiverMonths] = useState<number>(0)
   const [termMonths, setTermMonths] = useState<number>(12)
-  const [principal, setPrincipal] = useState<number>(0)
+  const [principal, setPrincipal] = useState<number | null>(null)
   const [startDate, setStartDate] = useState<string>('')
-  const pollOptions = buildPollPickerOptions(polls)
+
+  const memberOptions: SelectOption[] = members.map((m) => ({
+    value: m.id,
+    label: m.name,
+  }))
+  const pollOptions: SelectOption[] = buildPollPickerOptions(polls).map((p) => ({
+    value: p.id,
+    label: p.name,
+  }))
 
   // Live EMI preview — recomputed only when an input that affects the
   // schedule changes. Uses the SAME emi-math module + interest rate the
   // server uses in createLoan, so the admin sees the real schedule.
   const preview = useMemo(() => {
+    const principalValue = principal ?? 0
     const validTerm =
       Number.isInteger(termMonths) && termMonths >= 1 && termMonths <= maxTermMonths
-    if (!(principal > 0) || !validTerm || !startDate) return null
+    if (!(principalValue > 0) || !validTerm || !startDate) return null
     try {
-      const emi = computeEmiAmount(principal, interestRatePct, termMonths)
+      const emi = computeEmiAmount(principalValue, interestRatePct, termMonths)
       const rows = buildSchedule({
-        principal,
+        principal: principalValue,
         annualRatePct: interestRatePct,
         termMonths,
         startDate,
@@ -64,7 +76,7 @@ export function NewLoanForm({
       return {
         emi,
         totalInterest,
-        totalPayable: principal + totalInterest,
+        totalPayable: principalValue + totalInterest,
         firstDueDate: rows[0]?.dueDate ?? null,
         rows,
       }
@@ -95,52 +107,52 @@ export function NewLoanForm({
     }
   }, [state, router])
 
+  const principalWords = numberToIndianWords(principal)
+
   return (
     <form action={action} className="space-y-4 rounded-lg border bg-white p-6">
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <div>
-          <label htmlFor="member_id" className="block text-sm font-medium text-gray-700">
-            Member
-          </label>
-          <div className="mt-1">
-            <SearchableSelect
-              name="member_id"
-              options={members}
-              value={memberId}
-              onChange={setMemberId}
-              placeholder="Select member"
-              emptyOption="Select member"
-              required
-            />
-          </div>
-        </div>
+        <Field label="Member" htmlFor="member_id" required hint="type to search">
+          <PrDropdown
+            id="member_id"
+            name="member_id"
+            options={memberOptions}
+            value={memberId || null}
+            onChange={(v) => setMemberId(v ?? '')}
+            required
+            placeholder="Select member"
+          />
+        </Field>
 
-        <div>
-          <label htmlFor="principal_amount" className="block text-sm font-medium text-gray-700">
-            Principal
-          </label>
-          <AmountInput
+        <Field
+          label="Principal"
+          htmlFor="principal_amount"
+          required
+          error={
+            state && !state.ok && state.field === 'principal_amount'
+              ? state.error
+              : undefined
+          }
+          hint={principalWords || undefined}
+        >
+          <PrAmountInput
             id="principal_amount"
             name="principal_amount"
-            step="0.01"
-            min="0"
             required
+            value={principal}
+            onChange={setPrincipal}
             placeholder="e.g. 100000"
-            onChange={(raw) => {
-              const n = Number(raw)
-              setPrincipal(Number.isFinite(n) ? n : 0)
-            }}
-            className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
           />
-          {state && !state.ok && state.field === 'principal_amount' && (
-            <p className="mt-1 text-sm text-red-600">{state.error}</p>
-          )}
-        </div>
+        </Field>
 
-        <div>
-          <label htmlFor="start_date" className="block text-sm font-medium text-gray-700">
-            Start date
-          </label>
+        <Field
+          label="Start date"
+          htmlFor="start_date"
+          required
+          error={
+            state && !state.ok && state.field === 'start_date' ? state.error : undefined
+          }
+        >
           <input
             id="start_date"
             name="start_date"
@@ -151,16 +163,13 @@ export function NewLoanForm({
             onChange={(e) => setStartDate(e.target.value)}
             className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
           />
-          {state && !state.ok && state.field === 'start_date' && (
-            <p className="mt-1 text-sm text-red-600">{state.error}</p>
-          )}
-        </div>
+        </Field>
 
-        <div>
-          <label htmlFor="interest_rate_display" className="block text-sm font-medium text-gray-700">
-            Interest rate
-            <span className="ml-1 text-xs font-normal text-gray-400">(% per annum — reducing-balance EMI)</span>
-          </label>
+        <Field
+          label="Interest rate"
+          htmlFor="interest_rate_display"
+          hint="% per annum — reducing-balance EMI"
+        >
           <input
             id="interest_rate_display"
             type="text"
@@ -168,7 +177,7 @@ export function NewLoanForm({
             value={`${interestRatePct.toLocaleString('en-IN')}% per annum`}
             className="mt-1 block w-full cursor-not-allowed rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700 shadow-sm"
           />
-        </div>
+        </Field>
 
         <fieldset className="sm:col-span-2">
           <legend className="text-sm font-medium text-gray-700">Loan type</legend>
@@ -212,13 +221,16 @@ export function NewLoanForm({
           </div>
         </fieldset>
 
-        <div className="sm:col-span-2">
-          <label htmlFor="term_months" className="block text-sm font-medium text-gray-700">
-            Term (months)
-            <span className="ml-1 text-xs font-normal text-gray-400">
-              (repayment tenure — 1 to {maxTermMonths})
-            </span>
-          </label>
+        <Field
+          label="Term (months)"
+          htmlFor="term_months"
+          required
+          error={
+            state && !state.ok && state.field === 'term_months' ? state.error : undefined
+          }
+          hint={`repayment tenure — 1 to ${maxTermMonths}`}
+          className="sm:col-span-2"
+        >
           <input
             id="term_months"
             name="term_months"
@@ -234,18 +246,19 @@ export function NewLoanForm({
             }}
             className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
           />
-          {state && !state.ok && state.field === 'term_months' && (
-            <p className="mt-1 text-sm text-red-600">{state.error}</p>
-          )}
-        </div>
+        </Field>
 
-        <div className="sm:col-span-2">
-          <label htmlFor="interest_waiver_months" className="block text-sm font-medium text-gray-700">
-            Interest waiver
-            <span className="ml-1 text-xs font-normal text-gray-400">
-              (months from start with no interest — 0 to {MAX_INTEREST_WAIVER_MONTHS}; 0 = no waiver)
-            </span>
-          </label>
+        <Field
+          label="Interest waiver"
+          htmlFor="interest_waiver_months"
+          error={
+            state && !state.ok && state.field === 'interest_waiver_months'
+              ? state.error
+              : undefined
+          }
+          hint={`months from start with no interest — 0 to ${MAX_INTEREST_WAIVER_MONTHS}; 0 = no waiver`}
+          className="sm:col-span-2"
+        >
           <input
             id="interest_waiver_months"
             name="interest_waiver_months"
@@ -260,41 +273,33 @@ export function NewLoanForm({
             }}
             className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
           />
-          {state && !state.ok && state.field === 'interest_waiver_months' && (
-            <p className="mt-1 text-sm text-red-600">{state.error}</p>
-          )}
-        </div>
+        </Field>
 
-        <div className="sm:col-span-2">
-          <label className="block text-sm font-medium text-gray-700">
-            Approval poll
-            <span className="ml-1 text-xs font-normal text-gray-400">
-              (optional — the poll that authorised this loan)
-            </span>
-          </label>
-          <div className="mt-1">
-            <SearchableSelect
-              name="poll_id"
-              options={pollOptions}
-              value={pollId}
-              onChange={setPollId}
-              placeholder="No poll attached"
-              emptyOption="No poll attached"
-            />
-          </div>
-        </div>
+        <Field
+          label="Approval poll"
+          htmlFor="poll_id"
+          hint="optional — the poll that authorised this loan"
+          className="sm:col-span-2"
+        >
+          <PrDropdown
+            id="poll_id"
+            name="poll_id"
+            options={pollOptions}
+            value={pollId || null}
+            onChange={(v) => setPollId(v ?? '')}
+            showClear
+            placeholder="No poll attached"
+          />
+        </Field>
 
-        <div className="sm:col-span-2">
-          <label htmlFor="notes" className="block text-sm font-medium text-gray-700">
-            Notes (optional)
-          </label>
+        <Field label="Notes (optional)" htmlFor="notes" className="sm:col-span-2">
           <textarea
             id="notes"
             name="notes"
             rows={2}
             className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
           />
-        </div>
+        </Field>
       </div>
 
       {/* Live EMI preview — purely client-side, mirrors the server schedule
@@ -392,13 +397,9 @@ export function NewLoanForm({
         >
           Cancel
         </Link>
-        <button
-          type="submit"
-          disabled={pending}
-          className="rounded-md bg-blue-600 px-6 py-2 text-sm font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50"
-        >
+        <Button type="submit" disabled={pending}>
           {pending ? 'Saving...' : 'Create loan'}
-        </button>
+        </Button>
       </div>
     </form>
   )
