@@ -14,7 +14,7 @@ import type {
 } from 'chart.js'
 import type { Context as DataLabelsContext } from 'chartjs-plugin-datalabels'
 import { useRouter, useSearchParams, usePathname } from 'next/navigation'
-import { fullRupee, compactRupee } from '@/lib/chartjs-setup'
+import { fullRupee, compactRupee, BAR_SIZING } from '@/lib/chartjs-setup'
 import { DASHBOARD_BAR_COLORS, type SectionKey } from '@/lib/transaction-groups'
 import type { DashboardMonth, MemberTotal } from '@/lib/aggregate'
 
@@ -77,6 +77,7 @@ export function DashboardBars({
       backgroundColor: s.color,
       stack: 'inflow',
       borderRadius: s.key === 'bankInterest' ? 4 : 0,
+      ...BAR_SIZING,
     })),
   }
 
@@ -195,6 +196,7 @@ export function MemberContributionBars({ data }: { data: MemberTotal[] }) {
         data: data.map((d) => d.total ?? 0),
         backgroundColor: DASHBOARD_BAR_COLORS.contributions,
         borderRadius: 4,
+        ...BAR_SIZING,
       },
     ],
   }
@@ -369,6 +371,7 @@ export function SectionBars({
     stack: hasWriteOff ? 'outflow' : undefined,
     borderRadius: hasWriteOff ? 0 : 4,
     order: 1,
+    ...BAR_SIZING,
     // Label on the value bar only when there is no writeOff bar above it.
     datalabels: hasWriteOff ? { display: false } : totalLabel,
   })
@@ -382,6 +385,7 @@ export function SectionBars({
       stack: 'outflow',
       borderRadius: 4,
       order: 1,
+      ...BAR_SIZING,
       // The writeOff bar is the top of the stack → carries the total label.
       datalabels: totalLabel,
     })
