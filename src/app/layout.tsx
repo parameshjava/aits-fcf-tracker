@@ -1,9 +1,7 @@
 import type { Metadata } from 'next'
 import { Suspense } from 'react'
-// PrimeReact theme/component/icon CSS is imported in globals.css via relative
-// paths into node_modules so the theme lands in the `primereact` cascade layer.
-// Lara theme (Aura is preset-only in primereact@10.9.7; Lara chosen per design
-// decision). See globals.css for the layer ordering guarantee.
+// PrimeReact theme/component/icon CSS is imported in globals.css — see there
+// for the cascade-layer ordering that lets Tailwind utilities win.
 import './globals.css'
 import { Geist } from "next/font/google";
 import { cn } from "@/lib/utils";

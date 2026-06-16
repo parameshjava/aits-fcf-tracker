@@ -1,24 +1,14 @@
-/* PrimeReact theme sits in a layer declared BEFORE Tailwind's layers so
-   Tailwind utilities (spacing, layout, sm:/md:/lg:) override PrimeReact
-   component chrome. Layered styles always lose to later-declared layers
-   regardless of selector specificity, so the theme MUST be layered — and it
-   now is, via the relative-path CSS @imports below. This is a STRONG
-   guarantee: any Tailwind utility (theme/base/components/utilities layers)
-   beats an equal-or-lower-specificity PrimeReact rule because `primereact` is
-   declared first in the @layer order.
+/* The PrimeReact theme is loaded into the `primereact` cascade layer, declared
+   first below so Tailwind utilities (later layers) win equal-or-lower-specificity
+   conflicts regardless of selector specificity.
 
-   NOTES:
-   1. THEME: primereact@10.9.7 ships NO `aura-*` precompiled theme (Aura is the
-      preset-only styled-mode system in this version, not a CSS file). Lara
-      theme (Aura is preset-only in primereact@10.9.7; Lara chosen per design
-      decision) — `lara-light-blue` is the approved blue light theme.
-   2. LOAD PATH: the theme/component CSS is imported here via relative paths
-      into the repo-root node_modules (globals.css lives at src/app/, so
-      `../../node_modules` resolves correctly). Bare `primereact/resources/...`
-      specifiers did NOT resolve through Turbopack's CSS @import, but relative
-      paths do — which lets the theme land in the `primereact` cascade layer.
-      primeicons is imported UNLAYERED on purpose: it's an icon font (no chrome
-      that competes with Tailwind utilities), so layering is unnecessary. */
+   - THEME: primereact@10.9.7 ships no `aura-*` CSS theme (Aura is preset-only in
+     this version), so `lara-light-blue` is used — chosen per the design decision.
+   - LOAD PATH: relative paths into the repo-root node_modules (globals.css lives
+     at src/app/). Bare `primereact/resources/...` specifiers do NOT resolve via
+     Turbopack's CSS @import, but relative paths do — required for layering.
+   - primeicons is intentionally unlayered: an icon font with no chrome that
+     competes with Tailwind utilities. */
 @layer primereact, theme, base, components, utilities;
 @import "../../node_modules/primereact/resources/themes/lara-light-blue/theme.css" layer(primereact);
 @import "../../node_modules/primereact/resources/primereact.min.css" layer(primereact);
