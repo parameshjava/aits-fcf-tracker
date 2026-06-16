@@ -10,6 +10,7 @@ import 'primeicons/primeicons.css'
 import './globals.css'
 import { Geist } from "next/font/google";
 import { cn } from "@/lib/utils";
+import { PrimeProvider } from '@/components/providers/prime-provider'
 
 const geist = Geist({subsets:['latin'],variable:'--font-sans'});
 
@@ -38,7 +39,9 @@ export default function RootLayout({
   return (
     <html lang="en" className={cn("h-full antialiased", "font-sans", geist.variable)}>
       <body className="min-h-full bg-gray-50 text-gray-900 tabular-nums">
-        <Suspense fallback={null}>{children}</Suspense>
+        <Suspense fallback={null}>
+          <PrimeProvider>{children}</PrimeProvider>
+        </Suspense>
       </body>
     </html>
   )
