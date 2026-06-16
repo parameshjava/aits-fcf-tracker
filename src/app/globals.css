@@ -1,3 +1,18 @@
+/* The PrimeReact theme is loaded into the `primereact` cascade layer, declared
+   first below so Tailwind utilities (later layers) win equal-or-lower-specificity
+   conflicts regardless of selector specificity.
+
+   - THEME: primereact@10.9.7 ships no `aura-*` CSS theme (Aura is preset-only in
+     this version), so `lara-light-blue` is used — chosen per the design decision.
+   - LOAD PATH: relative paths into the repo-root node_modules (globals.css lives
+     at src/app/). Bare `primereact/resources/...` specifiers do NOT resolve via
+     Turbopack's CSS @import, but relative paths do — required for layering.
+   - primeicons is intentionally unlayered: an icon font with no chrome that
+     competes with Tailwind utilities. */
+@layer primereact, theme, base, components, utilities;
+@import "../../node_modules/primereact/resources/themes/lara-light-blue/theme.css" layer(primereact);
+@import "../../node_modules/primereact/resources/primereact.min.css" layer(primereact);
+@import "../../node_modules/primeicons/primeicons.css";
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
