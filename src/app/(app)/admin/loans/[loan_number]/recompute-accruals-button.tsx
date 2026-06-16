@@ -4,14 +4,7 @@ import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { recomputeLoanAccruals } from '@/lib/actions/loan-interest'
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
+import { PrDialog } from '@/components/ui/pr/dialog'
 
 /**
  * Admin-only "Recompute accruals" button. Calls the per-loan recompute RPC,
@@ -44,54 +37,56 @@ export function RecomputeAccrualsButton({ loanId }: { loanId: string }) {
   }
 
   return (
-    <Dialog
-      open={open}
-      onOpenChange={(next) => {
-        if (!pending) {
-          setOpen(next)
-          if (!next) setError(null)
-        }
-      }}
-    >
+    <>
       <button
         type="button"
-        onClick={() => setOpen(true)}
+        onClick={() => {
+          setError(null)
+          setOpen(true)
+        }}
         className="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
       >
         Recompute accruals
       </button>
 
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Recompute accruals for this loan?</DialogTitle>
-          <DialogDescription>
-            Rebuilds every EOM accrual from <span className="font-mono">start_date</span>{' '}
-            through today. Existing payments are preserved — <span className="font-mono">amount_due</span>{' '}
-            and status are recomputed from <span className="font-mono">paid_amount</span>.
-          </DialogDescription>
-        </DialogHeader>
+      <PrDialog
+        visible={open}
+        onHide={() => {
+          if (!pending) {
+            setOpen(false)
+            setError(null)
+          }
+        }}
+        header="Recompute accruals for this loan?"
+        footer={
+          <>
+            <button
+              type="button"
+              onClick={() => setOpen(false)}
+              disabled={pending}
+              className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={confirm}
+              disabled={pending}
+              className="rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+            >
+              {pending ? 'Recomputing…' : 'Yes, recompute'}
+            </button>
+          </>
+        }
+      >
+        <p className="text-sm text-gray-600">
+          Rebuilds every EOM accrual from <span className="font-mono">start_date</span>{' '}
+          through today. Existing payments are preserved — <span className="font-mono">amount_due</span>{' '}
+          and status are recomputed from <span className="font-mono">paid_amount</span>.
+        </p>
 
-        {error && <p className="text-sm text-red-600">{error}</p>}
-
-        <DialogFooter className="sm:justify-end">
-          <button
-            type="button"
-            onClick={() => setOpen(false)}
-            disabled={pending}
-            className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            onClick={confirm}
-            disabled={pending}
-            className="rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700 disabled:opacity-50"
-          >
-            {pending ? 'Recomputing…' : 'Yes, recompute'}
-          </button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
+      </PrDialog>
+    </>
   )
 }

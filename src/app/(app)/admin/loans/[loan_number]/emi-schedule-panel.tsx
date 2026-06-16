@@ -14,21 +14,14 @@ import { formatRupees, todayISO } from '@/lib/format'
 import { overdueParts, formatDueLabel } from '@/lib/due'
 import { recomputeAfterPrepayment } from '@/lib/emi-math'
 import { Accordion } from '@/components/ui/accordion'
-import {
-  Dialog,
-  DialogClose,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from '@/components/ui/dialog'
+import { PrDialog } from '@/components/ui/pr/dialog'
 
 const TRIGGER_BTN =
   'rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50'
 const CANCEL_BTN =
   'rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50'
+const FOOTER_ROW =
+  'flex flex-col-reverse gap-2 border-t border-gray-100 pt-4 sm:flex-row sm:justify-end'
 
 type LoanProps = {
   id: string
@@ -156,14 +149,10 @@ function PayEmiForm({
 
       {state && !state.ok && <p className="text-sm text-red-600">{state.error}</p>}
 
-      <DialogFooter>
-        <DialogClose
-          render={
-            <button type="button" className={CANCEL_BTN}>
-              Cancel
-            </button>
-          }
-        />
+      <div className={FOOTER_ROW}>
+        <button type="button" className={CANCEL_BTN} onClick={onSuccess}>
+          Cancel
+        </button>
         <button
           type="submit"
           disabled={isPending}
@@ -171,7 +160,7 @@ function PayEmiForm({
         >
           {isPending ? 'Paying…' : 'Pay EMI'}
         </button>
-      </DialogFooter>
+      </div>
     </form>
   )
 }
@@ -187,27 +176,26 @@ function PayEmiDialog({ row, loan }: { row: EmiScheduleRow; loan: LoanProps }) {
   }
 
   return (
-    <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogTrigger
-        render={
-          <button
-            type="button"
-            className="rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700"
-          >
-            Pay EMI
-          </button>
-        }
-      />
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Pay EMI</DialogTitle>
-          <DialogDescription>
-            Record this installment as paid (principal + interest) and optionally update the bank balance.
-          </DialogDescription>
-        </DialogHeader>
+    <>
+      <button
+        type="button"
+        onClick={() => handleOpenChange(true)}
+        className="rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700"
+      >
+        Pay EMI
+      </button>
+      <PrDialog
+        visible={open}
+        onHide={() => handleOpenChange(false)}
+        header="Pay EMI"
+        widthClass="sm:!w-[30rem]"
+      >
+        <p className="mb-4 text-sm text-gray-600">
+          Record this installment as paid (principal + interest) and optionally update the bank balance.
+        </p>
         <PayEmiForm key={openKey} row={row} loan={loan} onSuccess={() => setOpen(false)} />
-      </DialogContent>
-    </Dialog>
+      </PrDialog>
+    </>
   )
 }
 
@@ -295,14 +283,10 @@ function PrepayForm({
       {state && !state.ok && (
         <p className="text-sm text-red-600">{state.error}</p>
       )}
-      <DialogFooter>
-        <DialogClose
-          render={
-            <button type="button" className={CANCEL_BTN}>
-              Cancel
-            </button>
-          }
-        />
+      <div className={FOOTER_ROW}>
+        <button type="button" className={CANCEL_BTN} onClick={onSuccess}>
+          Cancel
+        </button>
         <button
           type="submit"
           disabled={isPending}
@@ -310,7 +294,7 @@ function PrepayForm({
         >
           {isPending ? 'Applying…' : 'Apply prepayment'}
         </button>
-      </DialogFooter>
+      </div>
     </form>
   )
 }
@@ -327,24 +311,22 @@ function PrepayDialog({ loan }: { loan: LoanProps }) {
   }
 
   return (
-    <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogTrigger
-        render={
-          <button type="button" className={TRIGGER_BTN}>
-            Prepay
-          </button>
-        }
-      />
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Prepay principal</DialogTitle>
-          <DialogDescription>
-            Record an advance principal payment and rebuild the remaining schedule.
-          </DialogDescription>
-        </DialogHeader>
+    <>
+      <button type="button" className={TRIGGER_BTN} onClick={() => handleOpenChange(true)}>
+        Prepay
+      </button>
+      <PrDialog
+        visible={open}
+        onHide={() => handleOpenChange(false)}
+        header="Prepay principal"
+        widthClass="sm:!w-[30rem]"
+      >
+        <p className="mb-4 text-sm text-gray-600">
+          Record an advance principal payment and rebuild the remaining schedule.
+        </p>
         <PrepayForm key={openKey} loan={loan} onSuccess={() => setOpen(false)} />
-      </DialogContent>
-    </Dialog>
+      </PrDialog>
+    </>
   )
 }
 
@@ -374,14 +356,10 @@ function RecalculateForm({
       {state && !state.ok && (
         <p className="text-sm text-red-600">{state.error}</p>
       )}
-      <DialogFooter>
-        <DialogClose
-          render={
-            <button type="button" className={CANCEL_BTN}>
-              Cancel
-            </button>
-          }
-        />
+      <div className={FOOTER_ROW}>
+        <button type="button" className={CANCEL_BTN} onClick={onSuccess}>
+          Cancel
+        </button>
         <button
           type="submit"
           disabled={isPending}
@@ -389,7 +367,7 @@ function RecalculateForm({
         >
           {isPending ? 'Recalculating…' : 'Recalculate'}
         </button>
-      </DialogFooter>
+      </div>
     </form>
   )
 }
@@ -406,26 +384,24 @@ function RecalculateDialog({ loan }: { loan: LoanProps }) {
   }
 
   return (
-    <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogTrigger
-        render={
-          <button type="button" className={TRIGGER_BTN}>
-            Recalculate
-          </button>
-        }
-      />
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Recalculate schedule</DialogTitle>
-          <DialogDescription>
-            Rebuilds the schedule from the original principal at the current interest
-            rate. This is blocked once any EMI has been paid — use prepayment to
-            re-shape a partially-paid schedule.
-          </DialogDescription>
-        </DialogHeader>
+    <>
+      <button type="button" className={TRIGGER_BTN} onClick={() => handleOpenChange(true)}>
+        Recalculate
+      </button>
+      <PrDialog
+        visible={open}
+        onHide={() => handleOpenChange(false)}
+        header="Recalculate schedule"
+        widthClass="sm:!w-[30rem]"
+      >
+        <p className="mb-4 text-sm text-gray-600">
+          Rebuilds the schedule from the original principal at the current interest
+          rate. This is blocked once any EMI has been paid — use prepayment to
+          re-shape a partially-paid schedule.
+        </p>
         <RecalculateForm key={openKey} loan={loan} onSuccess={() => setOpen(false)} />
-      </DialogContent>
-    </Dialog>
+      </PrDialog>
+    </>
   )
 }
 
