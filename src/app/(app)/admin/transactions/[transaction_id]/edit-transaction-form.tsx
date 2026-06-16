@@ -12,6 +12,7 @@ import { todayISO } from '@/lib/format'
 import { numberToIndianWords } from '@/lib/number-to-words'
 import { PrDropdown, type SelectOption } from '@/components/ui/pr/dropdown'
 import { PrAmountInput } from '@/components/ui/pr/amount-input'
+import { PrDatePicker } from '@/components/ui/pr/date-picker'
 import { Field } from '@/components/ui/pr/field'
 import { Button } from '@/components/ui/pr/button'
 import { buildPollPickerOptions } from '@/lib/loan-poll-picker'
@@ -72,6 +73,9 @@ export function EditTransactionForm({
   const [loanId, setLoanId] = useState<string>(txn.loan_id ?? '')
   const [pollId, setPollId] = useState<string>(txn.poll_id ?? '')
   const [amount, setAmount] = useState<number | null>(txn.amount)
+  const [transactionDate, setTransactionDate] = useState<string>(
+    txn.transaction_date.slice(0, 10),
+  )
   const pollOptions: SelectOption[] = buildPollPickerOptions(polls).map((p) => ({
     value: p.id,
     label: p.name,
@@ -105,7 +109,6 @@ export function EditTransactionForm({
       (l.status !== 'active' ? ` · ${l.status}` : ''),
   }))
 
-  const dateOnly = txn.transaction_date.slice(0, 10)
   const amountWords = numberToIndianWords(amount)
 
   return (
@@ -119,14 +122,14 @@ export function EditTransactionForm({
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <Field label="Date" htmlFor="transaction_date" required>
-          <input
+          <PrDatePicker
             id="transaction_date"
             name="transaction_date"
-            type="date"
             required
-            defaultValue={dateOnly}
+            value={transactionDate}
             max={todayISO()}
-            className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            onChange={setTransactionDate}
+            placeholder="dd/mm/yyyy"
           />
         </Field>
 

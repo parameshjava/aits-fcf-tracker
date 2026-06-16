@@ -5,6 +5,7 @@ import { approvePayment, rejectPayment } from '@/lib/actions/payments'
 import { formatRupees, todayISO } from '@/lib/format'
 import { BankBalanceUpdater } from '@/components/bank-balance-updater'
 import { PrAmountInput } from '@/components/ui/pr/amount-input'
+import { PrDatePicker } from '@/components/ui/pr/date-picker'
 import { Field } from '@/components/ui/pr/field'
 import { Button } from '@/components/ui/pr/button'
 import { defaultDirectionForContribution } from '@/lib/balance-direction'
@@ -35,6 +36,9 @@ export function PendingPaymentRow({
   // Controlled amount for the editable approval form, seeded from the
   // submitted value (PrAmountInput is controlled, unlike the old AmountInput).
   const [amount, setAmount] = useState<number | null>(payment.amount)
+  const [transactionDate, setTransactionDate] = useState<string>(
+    payment.transaction_date.slice(0, 10),
+  )
 
   const [approveState, approveAction, approvePending] = useActionState(
     async (_prev: unknown, formData: FormData) => approvePayment(formData),
@@ -134,12 +138,13 @@ export function PendingPaymentRow({
                 <label className="block text-xs font-medium text-gray-700">
                   Transaction date
                 </label>
-                <input
+                <PrDatePicker
                   name="transaction_date"
-                  type="date"
-                  defaultValue={payment.transaction_date.slice(0, 10)}
+                  value={transactionDate}
                   max={todayISO()}
-                  className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-2 py-1 text-xs focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  onChange={setTransactionDate}
+                  className="mt-1"
+                  placeholder="dd/mm/yyyy"
                 />
               </div>
               <Field label="Amount" htmlFor="amount">

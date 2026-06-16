@@ -16,6 +16,7 @@ import { BankBalanceUpdater } from '@/components/bank-balance-updater'
 import { LOAN_DISBURSEMENT_DEFAULT } from '@/lib/balance-direction'
 import { PrDropdown, type SelectOption } from '@/components/ui/pr/dropdown'
 import { PrAmountInput } from '@/components/ui/pr/amount-input'
+import { PrDatePicker } from '@/components/ui/pr/date-picker'
 import { Field } from '@/components/ui/pr/field'
 import { Button } from '@/components/ui/pr/button'
 import { buildPollPickerOptions } from '@/lib/loan-poll-picker'
@@ -153,15 +154,14 @@ export function NewLoanForm({
             state && !state.ok && state.field === 'start_date' ? state.error : undefined
           }
         >
-          <input
+          <PrDatePicker
             id="start_date"
             name="start_date"
-            type="date"
             required
             max={todayISO()}
             value={startDate}
-            onChange={(e) => setStartDate(e.target.value)}
-            className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            onChange={setStartDate}
+            placeholder="dd/mm/yyyy"
           />
         </Field>
 

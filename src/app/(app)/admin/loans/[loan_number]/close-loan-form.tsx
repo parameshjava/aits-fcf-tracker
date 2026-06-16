@@ -6,6 +6,7 @@ import { formatRupees, todayISO } from '@/lib/format'
 import { numberToIndianWords } from '@/lib/number-to-words'
 import { PrDropdown, type SelectOption } from '@/components/ui/pr/dropdown'
 import { PrAmountInput } from '@/components/ui/pr/amount-input'
+import { PrDatePicker } from '@/components/ui/pr/date-picker'
 import { Field } from '@/components/ui/pr/field'
 import { Button } from '@/components/ui/pr/button'
 
@@ -38,6 +39,7 @@ export function CloseLoanForm({
   )
   const [badDebt, setBadDebt] = useState<number | null>(pendingPrincipal)
   const [interestWaived, setInterestWaived] = useState<number | null>(pendingInterest)
+  const [endDate, setEndDate] = useState<string>(todayISO())
 
   const [state, action, pending] = useActionState(
     async (_prev: unknown, formData: FormData) => closeLoan(formData),
@@ -144,14 +146,14 @@ export function CloseLoanForm({
         </Field>
 
         <Field label="End date" htmlFor="end_date" required>
-          <input
+          <PrDatePicker
             id="end_date"
             name="end_date"
-            type="date"
             required
-            defaultValue={today}
+            value={endDate}
             max={today}
-            className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            onChange={setEndDate}
+            placeholder="dd/mm/yyyy"
           />
         </Field>
 

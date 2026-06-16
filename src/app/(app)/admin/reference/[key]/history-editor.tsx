@@ -8,6 +8,7 @@ import {
 } from '@/lib/actions/reference'
 import { DeleteIconButton } from '@/components/ui/delete-icon-button'
 import { PrAmountInput } from '@/components/ui/pr/amount-input'
+import { PrDatePicker } from '@/components/ui/pr/date-picker'
 import { Field } from '@/components/ui/pr/field'
 import { Button } from '@/components/ui/pr/button'
 import { numberToIndianWords } from '@/lib/number-to-words'
@@ -39,6 +40,10 @@ export function ReferenceHistoryEditor({
   const [dateValue, setDateValue] = useState('')
   // Money-typed value: controlled so PrAmountInput shows ₹ grouping + words.
   const [moneyValue, setMoneyValue] = useState<number | null>(null)
+  // Effective window: controlled so the PrDatePicker hidden inputs post the
+  // raw yyyy-mm-dd to the server (which parses both with new Date(...)).
+  const [effectiveFrom, setEffectiveFrom] = useState('')
+  const [effectiveTo, setEffectiveTo] = useState('')
 
   const [state, action, pending] = useActionState(
     async (_prev: unknown, formData: FormData) => addReferenceHistory(formData),
@@ -136,13 +141,12 @@ export function ReferenceHistoryEditor({
           >
             {isDate ? (
               <>
-                <input
+                <PrDatePicker
                   id="value"
-                  type="date"
                   required
                   value={dateValue}
-                  onChange={(e) => setDateValue(e.target.value)}
-                  className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  onChange={setDateValue}
+                  placeholder="dd/mm/yyyy"
                 />
                 {/* Submitted as a YYYYMMDD integer to match numeric storage. */}
                 <input
@@ -181,12 +185,14 @@ export function ReferenceHistoryEditor({
             <label htmlFor="effective_from" className="block text-xs font-medium text-gray-700">
               Effective from
             </label>
-            <input
+            <PrDatePicker
               id="effective_from"
               name="effective_from"
-              type="date"
               required
-              className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              value={effectiveFrom}
+              onChange={setEffectiveFrom}
+              className="mt-1"
+              placeholder="dd/mm/yyyy"
             />
           </div>
 
@@ -194,11 +200,13 @@ export function ReferenceHistoryEditor({
             <label htmlFor="effective_to" className="block text-xs font-medium text-gray-700">
               Effective to (optional)
             </label>
-            <input
+            <PrDatePicker
               id="effective_to"
               name="effective_to"
-              type="date"
-              className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              value={effectiveTo}
+              onChange={setEffectiveTo}
+              className="mt-1"
+              placeholder="dd/mm/yyyy"
             />
             <p className="mt-1 text-[11px] text-gray-400">Blank = open-ended (currently active).</p>
           </div>

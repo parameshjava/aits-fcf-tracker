@@ -9,6 +9,7 @@ import { formatRupees, todayISO } from '@/lib/format'
 import { numberToIndianWords } from '@/lib/number-to-words'
 import { PrDropdown, type SelectOption } from '@/components/ui/pr/dropdown'
 import { PrAmountInput } from '@/components/ui/pr/amount-input'
+import { PrDatePicker } from '@/components/ui/pr/date-picker'
 import { Field } from '@/components/ui/pr/field'
 import { Button } from '@/components/ui/pr/button'
 
@@ -28,6 +29,7 @@ export function SubmitPaymentForm() {
   }, [state])
 
   const [transactionType, setTransactionType] = useState<string>('')
+  const [transactionDate, setTransactionDate] = useState<string>('')
   const [loanId, setLoanId] = useState<string>('')
   // Controlled amount (PrAmountInput is controlled). Picking a loan prefills
   // the full pending principal; the member can lower it for a partial payment.
@@ -90,13 +92,14 @@ export function SubmitPaymentForm() {
       <form action={action} className="space-y-4">
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Field label="Transaction date" htmlFor="transaction_date" required>
-            <input
+            <PrDatePicker
               id="transaction_date"
               name="transaction_date"
-              type="date"
               required
               max={todayISO()}
-              className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              value={transactionDate}
+              onChange={setTransactionDate}
+              placeholder="dd/mm/yyyy"
             />
           </Field>
 

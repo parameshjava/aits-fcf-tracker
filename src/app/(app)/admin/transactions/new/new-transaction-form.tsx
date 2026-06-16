@@ -12,6 +12,7 @@ import { todayISO } from '@/lib/format'
 import { numberToIndianWords } from '@/lib/number-to-words'
 import { PrDropdown, type SelectOption } from '@/components/ui/pr/dropdown'
 import { PrAmountInput } from '@/components/ui/pr/amount-input'
+import { PrDatePicker } from '@/components/ui/pr/date-picker'
 import { Field } from '@/components/ui/pr/field'
 import { Button } from '@/components/ui/pr/button'
 import { BankBalanceUpdater } from '@/components/bank-balance-updater'
@@ -63,6 +64,7 @@ export function NewTransactionForm({
   const [loanId, setLoanId] = useState<string>('')
   const [pollId, setPollId] = useState<string>('')
   const [amount, setAmount] = useState<number | null>(null)
+  const [transactionDate, setTransactionDate] = useState<string>('')
   const [formKey, setFormKey] = useState(0)
   const pollOptions: SelectOption[] = buildPollPickerOptions(polls).map((p) => ({
     value: p.id,
@@ -96,6 +98,7 @@ export function NewTransactionForm({
       setLoanId('')
       setPollId('')
       setAmount(null)
+      setTransactionDate('')
       setFormKey((k) => k + 1)
     }
   }, [state])
@@ -168,13 +171,14 @@ export function NewTransactionForm({
         </Field>
 
         <Field label="Transaction date" htmlFor="transaction_date" required>
-          <input
+          <PrDatePicker
             id="transaction_date"
             name="transaction_date"
-            type="date"
             required
             max={todayISO()}
-            className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            value={transactionDate}
+            onChange={setTransactionDate}
+            placeholder="dd/mm/yyyy"
           />
         </Field>
 

@@ -10,6 +10,7 @@ import {
 } from '@/lib/actions/loan-interest'
 import type { ActionResult } from '@/lib/actions/action-result'
 import { formatRupees, todayISO } from '@/lib/format'
+import { PrDatePicker } from '@/components/ui/pr/date-picker'
 import type { BalanceDirection } from '@/lib/balance-direction'
 
 type Props = {
@@ -217,13 +218,13 @@ export function PendingInterestPanel({ loanId, accruals }: Props) {
         <div className="flex flex-wrap items-end gap-3 pt-2">
           <label className="flex flex-col text-xs">
             <span className="text-gray-500">Transaction date</span>
-            <input
-              type="date"
+            <PrDatePicker
               value={txnDate}
-              onChange={(e) => setTxnDate(e.target.value)}
+              onChange={setTxnDate}
               required
               max={todayISO()}
-              className="mt-1 rounded-md border border-gray-300 px-2 py-1 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              className="mt-1"
+              placeholder="dd/mm/yyyy"
             />
           </label>
           <label className="flex min-w-[200px] flex-1 flex-col text-xs">
