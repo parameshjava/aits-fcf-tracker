@@ -126,7 +126,7 @@ export function DashboardBars({
 
   return (
     <div className="h-80 w-full">
-      <Chart type="bar" data={chartData} options={options} />
+      <Chart type="bar" data={chartData} options={options} className="h-full w-full" />
     </div>
   )
 }
@@ -244,7 +244,7 @@ export function MemberContributionBars({ data }: { data: MemberTotal[] }) {
 
   return (
     <div className="h-80 w-full">
-      <Chart type="bar" data={chartData} options={options} />
+      <Chart type="bar" data={chartData} options={options} className="h-full w-full" />
     </div>
   )
 }
@@ -299,7 +299,7 @@ export function DashboardPie({ data }: { data: DashboardPieSlice[] }) {
 
   return (
     <div className="h-80 w-full">
-      <Chart type="doughnut" data={chartData} options={options} />
+      <Chart type="doughnut" data={chartData} options={options} className="h-full w-full" />
     </div>
   )
 }
