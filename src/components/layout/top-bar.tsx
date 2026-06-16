@@ -29,17 +29,17 @@ export function TopBar({ fullName, email, avatarUrl }: Props) {
   }, [menuOpen])
 
   return (
-    <div className="sticky top-0 z-20 border-b border-gray-200/80 bg-white/90 backdrop-blur">
+    <div className="sticky top-0 z-20 w-full overflow-hidden border-b border-gray-200/80 bg-white/90 backdrop-blur">
       {/* Row 1 — banner row: edge-to-edge logo + nav controls.
           Title + breadcrumb now live in Row 2 below, so the logo can
           occupy the full middle slot without anything competing for
           horizontal space. */}
-      <div className="mx-auto flex h-24 items-center gap-4 px-4 lg:px-8">
+      <div className="mx-auto flex h-20 items-center gap-3 px-4 sm:h-24 sm:gap-4 lg:px-8">
         <button
           type="button"
           onClick={() => window.dispatchEvent(new CustomEvent('sidebar:open'))}
           aria-label="Open menu"
-          className="-ml-1 shrink-0 rounded-md p-1.5 text-gray-700 hover:bg-gray-100 lg:hidden"
+          className="-ml-1 grid h-10 w-10 shrink-0 place-items-center rounded-md text-gray-700 hover:bg-gray-100 lg:hidden"
         >
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-5 w-5">
             <path d="M4 6h16M4 12h16M4 18h16" strokeLinecap="round" />
