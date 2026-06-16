@@ -17,6 +17,7 @@ import {
   type ReferenceDatatype,
 } from '@/lib/reference-format'
 import { PrDatePicker } from '@/components/ui/pr/date-picker'
+import { PrNumberInput } from '@/components/ui/pr/number-input'
 
 const SEEDED_KEYS = new Set(['bank_balance', 'interest_per_lakh'])
 const NEW_KEY = '__new__'
@@ -347,27 +348,15 @@ function EditableRow({
                 placeholder="dd/mm/yyyy"
               />
             ) : (
-              <div className="relative">
-                {datatype === 'inr' && (
-                  <span className="pointer-events-none absolute inset-y-0 left-2 flex items-center text-sm text-gray-400">
-                    ₹
-                  </span>
-                )}
-                <input
-                  type="number"
-                  step="0.01"
-                  value={value}
-                  onChange={(e) => setValue(e.target.value)}
-                  onKeyDown={onKeyDown}
-                  placeholder="0"
-                  className={`${inputCls} text-right tabular-nums ${datatype === 'inr' ? 'pl-6' : ''} ${datatype === 'percentage' ? 'pr-6' : ''}`}
-                />
-                {datatype === 'percentage' && (
-                  <span className="pointer-events-none absolute inset-y-0 right-2 flex items-center text-sm text-gray-400">
-                    %
-                  </span>
-                )}
-              </div>
+              <PrNumberInput
+                value={value === '' || Number.isNaN(Number(value)) ? null : Number(value)}
+                onChange={(n) => setValue(n === null ? '' : String(n))}
+                step={1}
+                maxFractionDigits={2}
+                placeholder="0"
+                suffix={datatype === 'percentage' ? ' %' : undefined}
+                prefix={datatype === 'inr' ? '₹' : undefined}
+              />
             )}
           </div>
         </td>

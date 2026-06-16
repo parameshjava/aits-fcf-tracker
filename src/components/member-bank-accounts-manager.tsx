@@ -38,8 +38,8 @@ export function MemberBankAccountsManager({
   }
 
   return (
-    <div className="overflow-hidden rounded-md border border-gray-200">
-      <table className="min-w-full text-xs">
+    <div className="overflow-x-auto rounded-md border border-gray-200">
+      <table className="min-w-[34rem] text-xs">
         <thead>
           <tr className="bg-gray-50/60 text-left text-[10px] uppercase tracking-wider text-gray-500">
             <th className="px-3 py-2">Bank</th>

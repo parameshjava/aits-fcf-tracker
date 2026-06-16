@@ -172,6 +172,7 @@ export function CloseLoanForm({
                 name="bad_debt"
                 value={badDebt}
                 onChange={setBadDebt}
+                step={1000}
               />
             </Field>
             <Field
@@ -187,6 +188,7 @@ export function CloseLoanForm({
                 name="interest_waived"
                 value={interestWaived}
                 onChange={setInterestWaived}
+                step={1000}
               />
             </Field>
           </>

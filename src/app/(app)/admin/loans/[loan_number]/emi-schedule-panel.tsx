@@ -16,6 +16,7 @@ import { recomputeAfterPrepayment } from '@/lib/emi-math'
 import { PrAccordion, PrAccordionTab } from '@/components/ui/pr/accordion'
 import { PrDialog } from '@/components/ui/pr/dialog'
 import { PrDatePicker } from '@/components/ui/pr/date-picker'
+import { PrAmountInput } from '@/components/ui/pr/amount-input'
 
 const TRIGGER_BTN =
   'rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50'
@@ -222,6 +223,7 @@ function PrepayForm({
     null,
   )
   const [paidDate, setPaidDate] = useState(todayISO())
+  const [amount, setAmount] = useState<number | null>(null)
   useEffect(() => {
     if (state?.ok) {
       toast.success(state.message ?? 'Prepayment applied')
@@ -236,13 +238,15 @@ function PrepayForm({
       <input type="hidden" name="member_id" value={loan.member_id ?? ''} />
       <label className="flex flex-col text-xs">
         <span className="text-gray-500">Amount</span>
-        <input
-          type="number"
+        <PrAmountInput
           name="amount"
-          step="0.01"
-          min="1"
           required
-          className="mt-1 rounded-md border border-gray-300 px-2 py-1 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+          value={amount}
+          onChange={setAmount}
+          step={1000}
+          min={1}
+          placeholder="e.g. 20000"
+          className="mt-1"
         />
       </label>
       <fieldset className="flex flex-col gap-2 text-xs">
@@ -437,7 +441,7 @@ function PrepaymentWhatIf({
   interestRatePct: number
   emiAmount: number
 }) {
-  const [amount, setAmount] = useState('')
+  const [amount, setAmount] = useState<number | null>(null)
   const [mode, setMode] = useState<'reduce_tenure' | 'reduce_emi'>('reduce_tenure')
 
   const unpaid = schedule.filter((r) => UNPAID.has(r.status))
@@ -451,7 +455,7 @@ function PrepaymentWhatIf({
     0,
   )
 
-  const amt = Number(amount)
+  const amt = amount ?? 0
   const result = useMemo(() => {
     if (!nextDue || !(amt > 0) || !(interestRatePct >= 0)) return null
     const newOutstanding = outstanding - amt
@@ -478,20 +482,19 @@ function PrepaymentWhatIf({
             <span className="font-medium text-gray-700">{formatRupees(outstanding)}</span>.
           </p>
 
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div className="flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-start sm:gap-x-10">
             <label className="block text-xs text-gray-500">
               Advance amount
-              <input
-                type="number"
-                min="1"
-                step="0.01"
+              <PrAmountInput
                 value={amount}
-                onChange={(e) => setAmount(e.target.value)}
+                onChange={setAmount}
+                step={1000}
+                min={1}
                 placeholder="e.g. 20000"
-                className="mt-1 block w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                className="mt-1 w-full sm:w-[18rem]"
               />
             </label>
-            <fieldset className="text-xs text-gray-500">
+            <fieldset className="m-0 min-w-0 border-0 p-0 text-xs text-gray-500">
               Adjust by
               <div className="mt-1 flex flex-col gap-1 text-gray-700">
                 <label className="flex items-center gap-2">
@@ -530,7 +533,7 @@ function PrepaymentWhatIf({
               </div>
 
               <div className="overflow-x-auto">
-                <table className="w-full table-fixed text-sm">
+                <table className="w-full min-w-[40rem] table-fixed text-sm">
                   <colgroup>
                     <col className="w-[8%]" />
                     <col className="w-[28%]" />
@@ -647,10 +650,10 @@ export function EmiSchedulePanel({
         <PrAccordion defaultActiveIndex={[0]}>
           <PrAccordionTab
             header="Repayment schedule"
-            subtitle={`${schedule.length} installment${schedule.length === 1 ? '' : 's'}`}
+            badge={schedule.length}
           >
           <div className="overflow-x-auto">
-            <table className="w-full table-fixed text-sm">
+            <table className="w-full min-w-[48rem] table-fixed text-sm">
           <colgroup>
             <col className="w-[6%]" />
             <col className="w-[15%]" />

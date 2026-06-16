@@ -16,6 +16,7 @@ import { BankBalanceUpdater } from '@/components/bank-balance-updater'
 import { LOAN_DISBURSEMENT_DEFAULT } from '@/lib/balance-direction'
 import { PrDropdown, type SelectOption } from '@/components/ui/pr/dropdown'
 import { PrAmountInput } from '@/components/ui/pr/amount-input'
+import { PrNumberInput } from '@/components/ui/pr/number-input'
 import { PrDatePicker } from '@/components/ui/pr/date-picker'
 import { Field } from '@/components/ui/pr/field'
 import { Button } from '@/components/ui/pr/button'
@@ -143,6 +144,7 @@ export function NewLoanForm({
             value={principal}
             onChange={setPrincipal}
             placeholder="e.g. 100000"
+            step={1000}
           />
         </Field>
 
@@ -231,20 +233,16 @@ export function NewLoanForm({
           hint={`repayment tenure — 1 to ${maxTermMonths}`}
           className="sm:col-span-2"
         >
-          <input
+          <PrNumberInput
             id="term_months"
             name="term_months"
-            type="number"
-            min="1"
+            min={1}
             max={maxTermMonths}
-            step="1"
+            step={1}
+            maxFractionDigits={0}
             required
             value={termMonths}
-            onChange={(e) => {
-              const next = Number(e.target.value)
-              setTermMonths(Number.isFinite(next) ? Math.floor(next) : 0)
-            }}
-            className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            onChange={(v) => setTermMonths(v ?? 0)}
           />
         </Field>
 
@@ -259,19 +257,15 @@ export function NewLoanForm({
           hint={`months from start with no interest — 0 to ${MAX_INTEREST_WAIVER_MONTHS}; 0 = no waiver`}
           className="sm:col-span-2"
         >
-          <input
+          <PrNumberInput
             id="interest_waiver_months"
             name="interest_waiver_months"
-            type="number"
-            min="0"
+            min={0}
             max={MAX_INTEREST_WAIVER_MONTHS}
-            step="1"
+            step={1}
+            maxFractionDigits={0}
             value={waiverMonths}
-            onChange={(e) => {
-              const next = Number(e.target.value)
-              setWaiverMonths(Number.isFinite(next) ? next : 0)
-            }}
-            className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            onChange={(v) => setWaiverMonths(v ?? 0)}
           />
         </Field>
 

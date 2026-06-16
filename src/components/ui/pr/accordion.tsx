@@ -1,6 +1,7 @@
 'use client'
 
 import { Accordion, AccordionTab, type AccordionTabChangeEvent } from 'primereact/accordion'
+import { Badge } from 'primereact/badge'
 import {
   Children,
   isValidElement,
@@ -13,8 +14,9 @@ import { cn } from '@/lib/utils'
 /**
  * {@link PrAccordion} / {@link PrAccordionTab} — a thin wrapper over PrimeReact's
  * Accordion that reproduces the project's titled-card section look (a bordered,
- * rounded white card with a clickable header showing a bold title + a muted
- * count/subtitle, content collapsing below a divider).
+ * rounded card with a clickable, tinted header bar — `bg-gray-50`, deepening to
+ * `bg-gray-100` when open — showing a bold title, a muted count/subtitle, and an
+ * optional right-aligned count `badge`; white content collapses below a divider).
  *
  * IMPORTANT — why PrAccordionTab is a prop-carrier, not a wrapper component:
  * PrimeReact's `<Accordion>` only recognises children whose element type is the
@@ -41,6 +43,9 @@ type PrAccordionTabProps = {
   header: ReactNode
   /** Muted subtitle under the title (e.g. a count). */
   subtitle?: ReactNode
+  /** Optional count/label shown as a gray pill pushed to the right edge of the
+   *  header bar (PrimeReact `<Badge>`). Use for a row count (e.g. installments).*/
+  badge?: ReactNode
   /** Extra classes for the header row. */
   headerClassName?: string
   /** Extra classes for the content body. */
@@ -109,16 +114,27 @@ export function PrAccordion({
       }}
     >
       {tabs.map((tab, i) => {
-        const { header, subtitle, headerClassName, contentClassName, children: content } =
+        const { header, subtitle, badge, headerClassName, contentClassName, children: content } =
           tab.props
+        // Open tabs get a slightly stronger tint so the bar reads as "active".
+        const activeArr = Array.isArray(current) ? current : current == null ? [] : [current]
+        const isOpen = activeArr.includes(i)
         return (
           <AccordionTab
             key={tab.key ?? i}
             header={
-              <span className="flex flex-1 flex-col items-start text-left">
-                <span className="text-sm font-semibold text-gray-900">{header}</span>
-                {subtitle != null && (
-                  <span className="mt-0.5 text-xs font-normal text-gray-500">{subtitle}</span>
+              <span className="flex flex-1 items-center gap-3">
+                <span className="flex flex-col items-start text-left">
+                  <span className="text-sm font-semibold text-gray-900">{header}</span>
+                  {subtitle != null && (
+                    <span className="mt-0.5 text-xs font-normal text-gray-500">{subtitle}</span>
+                  )}
+                </span>
+                {badge != null && (
+                  <Badge
+                    value={badge as string | number}
+                    className="ml-auto !bg-gray-200 !font-semibold !text-gray-700"
+                  />
                 )}
               </span>
             }
@@ -127,8 +143,9 @@ export function PrAccordion({
               headerAction: {
                 className: cn(
                   '!flex !w-full !items-center !justify-between !gap-3 !rounded-none !border-0 ' +
-                    '!bg-white !px-5 !py-3.5 !text-gray-900 !no-underline ' +
-                    'hover:!bg-gray-50/60 focus-visible:!ring-2 focus-visible:!ring-blue-400',
+                    '!px-5 !py-3.5 !text-gray-900 !no-underline ' +
+                    'focus-visible:!ring-2 focus-visible:!ring-blue-400 ' +
+                    (isOpen ? '!bg-gray-100' : '!bg-gray-50 hover:!bg-gray-100'),
                   headerClassName,
                 ),
               },

@@ -129,6 +129,61 @@ export async function getWriteOffLoanCount(): Promise<number> {
   return count ?? 0
 }
 
+/** A loan write-off rendered as a donation-style transaction row, so the
+ *  Donations section table can list bad debts alongside voluntary donations
+ *  (the fund treats a write-off as an effective donation — see SectionView).
+ *  Shaped to be a structural subset of `TxnRow`: `transaction_type` is the
+ *  synthetic `bad_debt` discriminator, `beneficiary_name` is the borrower
+ *  (who permanently received the money), and `member_name` (the donation
+ *  "referred by" column) is left null. */
+export type WriteOffDonationRow = {
+  id: string
+  transaction_id: string
+  amount: number
+  transaction_type: 'bad_debt'
+  transaction_date: string
+  description: string | null
+  member_name: null
+  beneficiary_name: string | null
+  poll: { id: string; question: string } | null
+}
+
+/** Loans written off as bad debt (`bad_debt > 0`, closed), shaped as
+ *  donation-style rows for the Donations section transactions table. Realised
+ *  on the closure date (`end_date`); ordered newest-first to match the table's
+ *  default date sort. */
+export async function getWriteOffDonationRows(): Promise<WriteOffDonationRow[]> {
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .from('loans')
+    .select(
+      'id, loan_number, bad_debt, end_date, member:member_id (name), poll:poll_id (id, question)',
+    )
+    .gt('bad_debt', 0)
+    .not('end_date', 'is', null)
+    .order('end_date', { ascending: false })
+  if (error) throw new Error(error.message)
+  type Row = {
+    id: string
+    loan_number: string
+    bad_debt: number | string | null
+    end_date: string
+    member: { name: string } | null
+    poll: { id: string; question: string } | null
+  }
+  return ((data ?? []) as unknown as Row[]).map((l) => ({
+    id: `writeoff-${l.id}`,
+    transaction_id: l.loan_number,
+    amount: Number(l.bad_debt) || 0,
+    transaction_type: 'bad_debt' as const,
+    transaction_date: l.end_date,
+    description: `Loan ${l.loan_number} written off as bad debt`,
+    member_name: null,
+    beneficiary_name: l.member?.name ?? null,
+    poll: l.poll,
+  }))
+}
+
 /** Map of `pending_interest` from `loans_balances` for the given loan ids.
  *  Sourced from `loan_interest_accruals` (the cron-maintained authoritative
  *  ledger), not from the on-the-fly `interest_per_lakh × months` math in

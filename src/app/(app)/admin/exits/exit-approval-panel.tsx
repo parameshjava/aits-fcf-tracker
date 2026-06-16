@@ -97,6 +97,8 @@ export function ExitApprovalPanel({ proposals }: { proposals: ExitProposal[] }) 
               </span>
             </div>
 
+            <ExitBreakdown p={p} />
+
             {(p.reasons_for_leaving || p.retention_suggestions) && (
               <div className="mt-3 space-y-3 border-t border-gray-100 pt-3">
                 {p.reasons_for_leaving && (
@@ -180,6 +182,98 @@ export function ExitApprovalPanel({ proposals }: { proposals: ExitProposal[] }) 
         />
         {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
       </PrDialog>
+    </div>
+  )
+}
+
+/**
+ * Itemised settlement breakdown shown to the approving admin. Mirrors the exit
+ * formula (see lib/exit-math.ts): a member's total contributions are split into
+ * (1) repaying any outstanding loan, (2) their share of the fund's losses
+ * settled into the loss pool, and (3) whatever is left — refunded to them or
+ * kept aside as a donation. A secondary note shows how the per-member exit
+ * share itself is derived from the loss pool.
+ */
+function ExitBreakdown({ p }: { p: ExitProposal }) {
+  const finalLabel =
+    p.disposition === 'donate' ? 'Donated (kept for the fund)' : 'Refund to member'
+  const lossPool = p.total_donations + p.total_bad_debt
+  // settled_amount can be capped below the raw exit share when the member's
+  // available balance (contributions − loan) can't cover the full share.
+  const capped = p.settled_amount < p.exit_share
+
+  return (
+    <div className="mt-3 rounded-md border border-gray-100 bg-gray-50/60 p-3">
+      <p className="mb-2 text-xs font-medium uppercase tracking-wide text-gray-500">
+        Settlement breakdown
+      </p>
+      <dl className="space-y-1.5 text-sm">
+        <Line label="Total contributions" value={formatRupees(p.total_contributions)} />
+        <Line
+          label="Less: outstanding loan repaid"
+          value={`− ${formatRupees(p.loan_balance)}`}
+          muted
+        />
+        <Line
+          label="Less: share of fund losses settled"
+          value={`− ${formatRupees(p.settled_amount)}`}
+          muted
+        />
+        <div className="flex justify-between border-t border-gray-200 pt-1.5 font-semibold text-gray-900">
+          <dt>{finalLabel}</dt>
+          <dd className="tabular-nums">{formatRupees(p.refund_amount)}</dd>
+        </div>
+      </dl>
+
+      <div className="mt-3 border-t border-gray-200 pt-2">
+        <p className="mb-1.5 text-[11px] font-medium uppercase tracking-wide text-gray-400">
+          How the loss share is derived
+        </p>
+        <dl className="space-y-1 text-xs text-gray-500">
+          <Line label="Donations" value={formatRupees(p.total_donations)} small />
+          <Line label="Bad debts (loan write-offs)" value={formatRupees(p.total_bad_debt)} small />
+          <Line label="Loss pool" value={formatRupees(lossPool)} small />
+          <Line
+            label="Less: already settled by past exits"
+            value={`− ${formatRupees(p.settled_before)}`}
+            small
+          />
+          <Line
+            label={`÷ ${p.active_count} active member${p.active_count === 1 ? '' : 's'}`}
+            value=""
+            small
+          />
+          <div className="flex justify-between pt-0.5 font-medium text-gray-700">
+            <dt>Exit share per member</dt>
+            <dd className="tabular-nums">{formatRupees(p.exit_share)}</dd>
+          </div>
+          {capped && (
+            <p className="pt-1 text-[11px] italic text-amber-700">
+              Capped to {formatRupees(p.settled_amount)} — the member&apos;s balance
+              after loan repayment can&apos;t cover the full share.
+            </p>
+          )}
+        </dl>
+      </div>
+    </div>
+  )
+}
+
+function Line({
+  label,
+  value,
+  muted = false,
+  small = false,
+}: {
+  label: string
+  value: string
+  muted?: boolean
+  small?: boolean
+}) {
+  return (
+    <div className="flex justify-between">
+      <dt className={muted ? 'text-gray-500' : small ? '' : 'text-gray-700'}>{label}</dt>
+      <dd className="tabular-nums">{value}</dd>
     </div>
   )
 }

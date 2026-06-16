@@ -1,5 +1,56 @@
 import type { MemberContact } from '@/lib/actions/members'
 import { getCountryForPhone } from '@/lib/phone-countries'
+import { CopyButton } from '@/components/copy-button'
+
+/**
+ * Quiet, inline contact: a muted icon + the value as a `tel:` / `mailto:`
+ * link (no chip, border, or country flag), with a copy button that fades in on
+ * hover. The copy button stays visible on touch devices (no hover) via the
+ * `@media(hover:hover)` guard. Used in dense contexts like the directory table
+ * where the heavier ContactChip is too much chrome per row.
+ */
+export function ContactInline({ contact }: { contact: MemberContact }) {
+  const isPhone = contact.kind === 'phone'
+  const country = isPhone ? getCountryForPhone(contact.value) : null
+  const href = isPhone
+    ? `tel:${contact.value.replace(/\s+/g, '')}`
+    : `mailto:${contact.value}`
+  return (
+    <span className="group inline-flex items-center gap-1">
+      <a
+        href={href}
+        title={contact.label ? `${contact.label} · ${contact.value}` : contact.value}
+        className="inline-flex items-center gap-1.5 text-sm text-blue-700 hover:text-blue-900 hover:underline"
+      >
+        <span className="text-gray-400" aria-hidden="true">
+          {isPhone ? (
+            // ☎ + U+FE0E forces text (monochrome) presentation so the glyph
+            // inherits the muted gray. The ✉ text glyph renders thin/uneven
+            // across platforms, so email keeps the crisp SVG envelope.
+            <span className="text-[0.95em] leading-none">{'☎︎'}</span>
+          ) : (
+            <ContactIcon kind="email" />
+          )}
+        </span>
+        {country && (
+          <span
+            className="text-sm leading-none"
+            aria-label={country.name}
+            title={country.name}
+          >
+            {country.flag}
+          </span>
+        )}
+        <span className="font-medium tabular-nums">{contact.value}</span>
+      </a>
+      <CopyButton
+        value={contact.value}
+        label={isPhone ? 'Phone' : 'Email'}
+        className="opacity-100 transition-opacity [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 [@media(hover:hover)]:group-focus-within:opacity-100"
+      />
+    </span>
+  )
+}
 
 /**
  * Display-only chips for a member's phones / emails. Each chip is a

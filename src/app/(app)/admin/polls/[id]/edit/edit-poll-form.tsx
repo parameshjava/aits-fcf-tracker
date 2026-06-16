@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { updatePoll } from '@/lib/actions/polls'
 import { MarkdownEditor } from '@/components/markdown-editor'
+import { PrNumberInput } from '@/components/ui/pr/number-input'
 import {
   POLL_DESCRIPTION_MAX,
   POLL_OPTION_MAX,
@@ -37,8 +38,8 @@ export function EditPollForm({
   const [options, setOptions] = useState<string[]>(
     poll.options.length >= 2 ? poll.options.map((o) => o.label) : ['', ''],
   )
-  const [maxSelections, setMaxSelections] = useState<string>(
-    poll.max_selections != null ? String(poll.max_selections) : '',
+  const [maxSelections, setMaxSelections] = useState<number | null>(
+    poll.max_selections != null ? poll.max_selections : null,
   )
   const [closesAt, setClosesAt] = useState<string>(isoToLocalDatetime(poll.closes_at))
   const [description, setDescription] = useState(poll.description ?? '')
@@ -167,16 +168,16 @@ export function EditPollForm({
               (leave blank for no limit)
             </span>
           </label>
-          <input
+          <PrNumberInput
             id="max_selections"
             name="max_selections"
-            type="number"
             min={1}
             step={1}
+            maxFractionDigits={0}
             value={maxSelections}
-            onChange={(e) => setMaxSelections(e.target.value)}
+            onChange={(v) => setMaxSelections(v)}
             placeholder="e.g. 3"
-            className="mt-1 block w-32 rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            className="mt-1 w-32"
           />
         </div>
       ) : null}

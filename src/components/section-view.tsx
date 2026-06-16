@@ -1,5 +1,8 @@
 import { getTransactions } from '@/lib/actions/transactions'
-import { getWriteOffLoanCount } from '@/lib/actions/loans'
+import {
+  getWriteOffLoanCount,
+  getWriteOffDonationRows,
+} from '@/lib/actions/loans'
 import {
   getDashboardEligibilitySummary,
   getDashboardEligibilityLedger,
@@ -81,16 +84,21 @@ export async function SectionView({
   let totalBadDebts = 0
   let thisYearBadDebts = 0
   let writeOffCount = 0
+  // Loan write-offs rendered as donation-style rows, appended to the
+  // Donations transactions table so bad debts list beside voluntary donations.
+  let writeOffRows: TxnRow[] = []
   if (section === 'donations') {
     // Donation eligibility is sourced from migration 010/012's table+views.
     // The ledger is per-EOM; we aggregate by year here to feed both the
     // chart's ceiling line and the donations-section KPIs.
-    const [summary, ledger, writeOffs] = await Promise.all([
+    const [summary, ledger, writeOffs, writeOffTxns] = await Promise.all([
       getDashboardEligibilitySummary(),
       getDashboardEligibilityLedger(),
       getWriteOffLoanCount(),
+      getWriteOffDonationRows(),
     ])
     writeOffCount = writeOffs
+    writeOffRows = writeOffTxns as unknown as TxnRow[]
 
     // Roll the per-EOM ledger up into yearly buckets. `carry_balance` is a
     // running net across all periods — so the latest EOM in each year holds
@@ -186,6 +194,15 @@ export async function SectionView({
     eligibilityEarnedSoFar = summary.totalEarned
   }
 
+  // Rows for the transactions table. Donations fold in loan write-offs as
+  // bad-debt rows; everything is sorted newest-first to match the table's
+  // default date ordering.
+  const tableRows: TxnRow[] = [...matchingRows, ...writeOffRows].sort(
+    (a, b) =>
+      new Date(b.transaction_date).getTime() -
+      new Date(a.transaction_date).getTime(),
+  )
+
   return (
     <div className="space-y-8">
       <p className="text-sm text-gray-500">{SECTION_DESCRIPTIONS[section]}</p>
@@ -263,10 +280,10 @@ export async function SectionView({
       <section className="rounded-2xl border border-gray-200/80 bg-white p-5">
         <div className="mb-4 flex items-center justify-between gap-3">
           <h2 className="text-base font-semibold text-gray-900">Transactions</h2>
-          <p className="text-xs text-gray-500">{matchingRows.length} total</p>
+          <p className="text-xs text-gray-500">{tableRows.length} total</p>
         </div>
         <TransactionsTable
-          rows={matchingRows}
+          rows={tableRows}
           emptyLabel={`No ${SECTION_LABELS[section].toLowerCase()} yet`}
           memberColumnLabel={section === 'donations' ? 'Referred by' : 'Member'}
           showDonationColumns={section === 'donations'}

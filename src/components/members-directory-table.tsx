@@ -1,8 +1,7 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { ContactChip, MemberContactsList } from '@/components/member-contacts'
-import { CopyButton } from '@/components/copy-button'
+import { ContactInline, MemberContactsList } from '@/components/member-contacts'
 import { PrAccordion, PrAccordionTab } from '@/components/ui/pr/accordion'
 import { TableExportMenu } from '@/components/table-export'
 import type { Cell, ExportCriterion } from '@/lib/table-export'
@@ -11,17 +10,16 @@ import { AddContactForm } from '@/components/add-contact-form'
 import { MemberBankAccountsManager } from '@/components/member-bank-accounts-manager'
 import { BankAccountForm } from '@/components/bank-account-form'
 import { PrDataTable, type PrColumn } from '@/components/ui/pr/data-table'
+import { Avatar } from '@/components/ui/avatar'
 import type {
   MemberBankAccount,
   MemberContact,
   MemberDirectoryRow,
 } from '@/lib/actions/members'
 
-const STATUS_PILL: Record<string, string> = {
-  active:   'bg-emerald-50 text-emerald-700 ring-emerald-200',
-  inactive: 'bg-gray-50 text-gray-600 ring-gray-200',
-  archived: 'bg-rose-50 text-rose-700 ring-rose-200',
-}
+// The directory is split into "Active" / "Inactive" accordion sections, so an
+// on-row Status column would just restate the section it's already under — the
+// status is only surfaced in the (flat, combined) CSV export below.
 const STATUS_LABEL: Record<string, string> = {
   active:   'Active',
   inactive: 'Inactive',
@@ -240,33 +238,24 @@ function MemberSection({
       field: 'name',
       header: 'Name',
       sortable: true,
-      bodyClassName: 'whitespace-nowrap font-medium text-gray-900',
-      body: (m) => m.name,
-    },
-    {
-      field: '_status_label',
-      header: 'Status',
-      sortable: true,
+      filter: true,
+      filterPlaceholder: 'Search by name',
+      bodyClassName: 'whitespace-nowrap',
       body: (m) => (
-        <span
-          className={
-            'rounded-full px-2 py-0.5 text-xs font-medium ring-1 ' +
-            (STATUS_PILL[m.status] ?? STATUS_PILL.active)
-          }
-        >
-          {m._status_label}
+        <span className="flex items-center gap-2">
+          <Avatar src={m.avatar_url} name={m.name} size={28} />
+          <span className="font-medium text-gray-900">{m.name}</span>
         </span>
       ),
     },
     {
       field: '_primary_phone_value',
       header: 'Primary phone',
+      filter: true,
+      filterPlaceholder: 'Search by phone',
       body: (m) =>
         m._primaryPhone ? (
-          <span className="inline-flex items-center gap-1">
-            <ContactChip contact={m._primaryPhone} size="sm" hidePrimaryBadge />
-            <CopyButton value={m._primaryPhone.value} label="Phone" />
-          </span>
+          <ContactInline contact={m._primaryPhone} />
         ) : (
           <span className="text-gray-400">—</span>
         ),
@@ -274,12 +263,11 @@ function MemberSection({
     {
       field: '_primary_email_value',
       header: 'Primary email',
+      filter: true,
+      filterPlaceholder: 'Search by email',
       body: (m) =>
         m._primaryEmail ? (
-          <span className="inline-flex items-center gap-1">
-            <ContactChip contact={m._primaryEmail} size="sm" hidePrimaryBadge />
-            <CopyButton value={m._primaryEmail.value} label="Email" />
-          </span>
+          <ContactInline contact={m._primaryEmail} />
         ) : (
           <span className="text-gray-400">—</span>
         ),
@@ -296,7 +284,7 @@ function MemberSection({
     <PrAccordion defaultActiveIndex={defaultOpen ? [0] : []}>
       <PrAccordionTab
         header={title}
-        subtitle={`${members.length} ${members.length === 1 ? 'member' : 'members'}`}
+        badge={members.length}
       >
       <div className="-mx-5 -mb-4">
         <PrDataTable<MemberRowAug>
@@ -304,6 +292,10 @@ function MemberSection({
           columns={columns}
           dataKey="id"
           emptyMessage={emptyLabel}
+          // Menu-mode filters: a funnel icon per filterable column header opens
+          // a small filter popover. The inline per-column search row is dropped
+          // as redundant with the global keyword box above the table.
+          filterDisplay="menu"
           globalFilterFields={members.length > 0 ? ['_search_blob'] : undefined}
           globalSearchPlaceholder="Search by name, phone, email…"
           onValueChange={onValueChange}
@@ -468,8 +460,8 @@ function MemberDetailPanel({
           {canEdit ? (
             <MemberBankAccountsManager accounts={bankAccounts} canEdit />
           ) : (
-          <div className="overflow-hidden rounded-md border border-gray-200">
-            <table className="min-w-full text-xs">
+          <div className="overflow-x-auto rounded-md border border-gray-200">
+            <table className="min-w-[34rem] text-xs">
               <thead>
                 <tr className="bg-gray-50/60 text-left text-[10px] uppercase tracking-wider text-gray-500">
                   <th className="px-3 py-2">Bank</th>

@@ -140,6 +140,7 @@ export function EditTransactionForm({
             required
             value={amount}
             onChange={setAmount}
+            step={500}
           />
         </Field>
 

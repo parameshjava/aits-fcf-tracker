@@ -92,6 +92,16 @@ export function MemberMonthMatrix({
 
   const columns: PrColumn<Row>[] = [
     {
+      // Display-only serial number; follows the current sort/filter order.
+      field: '_key',
+      header: '#',
+      style: { width: '3rem', minWidth: '3rem' },
+      bodyClassName: 'whitespace-nowrap text-right tabular-nums text-gray-400',
+      headerClassName: 'text-right',
+      body: (_r, { rowIndex }) => rowIndex + 1,
+      footer: <span />,
+    },
+    {
       field: 'member_name',
       header: 'Member',
       sortable: true,
@@ -129,8 +139,12 @@ export function MemberMonthMatrix({
       dataType: 'numeric',
       style: { minWidth: '6.5rem' },
       headerClassName: 'text-right',
-      bodyClassName: 'whitespace-nowrap text-right font-semibold tabular-nums text-gray-900',
-      body: (r) => formatRupees(r.total),
+      bodyClassName: 'whitespace-nowrap text-right font-semibold tabular-nums',
+      body: (r) => (
+        <span className={r.total > 0 ? 'text-gray-900' : 'text-gray-300'}>
+          {r.total > 0 ? formatRupees(r.total) : '—'}
+        </span>
+      ),
       footer: (
         <span className="font-semibold tabular-nums text-gray-900">
           {formatRupees(grandTotal)}
@@ -170,6 +184,9 @@ export function MemberMonthMatrix({
         onGlobalFilterChange={setSearchQuery}
         // Wide 12-month grid → horizontal scroll instead of card stacking.
         scrollable
+        // It's a bounded pivot (all members at once, with a footer totals row);
+        // paginating it would hide rows and break the column totals reading.
+        paginated={false}
       />
     </div>
   )

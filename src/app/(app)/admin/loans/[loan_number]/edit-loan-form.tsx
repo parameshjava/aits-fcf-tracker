@@ -10,6 +10,7 @@ import { todayISO } from '@/lib/format'
 import { numberToIndianWords } from '@/lib/number-to-words'
 import { PrDropdown, type SelectOption } from '@/components/ui/pr/dropdown'
 import { PrAmountInput } from '@/components/ui/pr/amount-input'
+import { PrNumberInput } from '@/components/ui/pr/number-input'
 import { PrDatePicker } from '@/components/ui/pr/date-picker'
 import { Field } from '@/components/ui/pr/field'
 import { Button } from '@/components/ui/pr/button'
@@ -140,6 +141,7 @@ export function EditLoanForm({
             name="principal_amount"
             value={principalValue}
             onChange={setPrincipalValue}
+            step={1000}
           />
         </Field>
 
@@ -159,19 +161,15 @@ export function EditLoanForm({
           htmlFor="interest_waiver_months"
           hint={`No interest accrues for this many months from start date (0–${MAX_INTEREST_WAIVER_MONTHS}).`}
         >
-          <input
+          <PrNumberInput
             id="interest_waiver_months"
             name="interest_waiver_months"
-            type="number"
-            min="0"
+            min={0}
             max={MAX_INTEREST_WAIVER_MONTHS}
-            step="1"
+            step={1}
+            maxFractionDigits={0}
             value={waiverMonths}
-            onChange={(e) => {
-              const next = Number(e.target.value)
-              setWaiverMonths(Number.isFinite(next) ? next : 0)
-            }}
-            className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            onChange={(v) => setWaiverMonths(v ?? 0)}
           />
         </Field>
 

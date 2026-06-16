@@ -9,15 +9,20 @@
 
    - THEME: primereact@10.9.7 ships no `aura-*` CSS theme (Aura is preset-only in
      this version), so `lara-light-blue` is used — chosen per the design decision.
-   - LOAD PATH: relative paths into the repo-root node_modules (globals.css lives
-     at src/app/). Bare `primereact/resources/...` specifiers do NOT resolve via
-     Turbopack's CSS @import, but relative paths do — required for layering.
+   - LOAD PATH: bare package specifiers. Tailwind v4 (@tailwindcss/postcss)
+     bundles these @imports via Lightning CSS, which resolves bare specifiers
+     through node module resolution but SILENTLY DROPS relative
+     `../../node_modules/...` paths (the theme then never reaches the output and
+     every PrimeReact component renders unstyled). So the theme is imported by
+     package name, matching the tailwindcss / tw-animate-css imports below. Next
+     16's Turbopack guidance says the same: import node_modules CSS by bare
+     specifier, not relative or `~` paths. primereact's deprecated, now-empty
+     `primereact.min.css` core file is intentionally omitted.
    - primeicons is intentionally unlayered: an icon font with no chrome that
      competes with Tailwind utilities. */
 @layer theme, base, primereact, components, utilities;
-@import "../../node_modules/primereact/resources/themes/lara-light-blue/theme.css" layer(primereact);
-@import "../../node_modules/primereact/resources/primereact.min.css" layer(primereact);
-@import "../../node_modules/primeicons/primeicons.css";
+@import "primereact/resources/themes/lara-light-blue/theme.css" layer(primereact);
+@import "primeicons/primeicons.css";
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
@@ -46,6 +51,36 @@
   .p-datatable-sm .p-datatable-tbody > tr > td .p-row-toggler {
     width: 1.75rem;
     height: 1.75rem;
+  }
+
+  /* Compact paginator — Lara's page-link buttons and rows-per-page dropdown
+     are ~3rem tall, making the footer pager bar very tall. Shrink the bar
+     padding and every control to match the small table density. */
+  .p-datatable-sm .p-paginator {
+    padding: 0.25rem 0.5rem;
+    font-size: 0.8125rem;
+    gap: 0.125rem;
+  }
+  .p-datatable-sm .p-paginator .p-paginator-first,
+  .p-datatable-sm .p-paginator .p-paginator-prev,
+  .p-datatable-sm .p-paginator .p-paginator-next,
+  .p-datatable-sm .p-paginator .p-paginator-last,
+  .p-datatable-sm .p-paginator .p-paginator-pages .p-paginator-page {
+    min-width: 1.85rem;
+    height: 1.85rem;
+  }
+  .p-datatable-sm .p-paginator .p-dropdown {
+    height: 1.85rem;
+  }
+  .p-datatable-sm .p-paginator .p-dropdown .p-dropdown-label {
+    padding-top: 0;
+    padding-bottom: 0;
+    display: flex;
+    align-items: center;
+  }
+  .p-datatable-sm .p-paginator .p-paginator-current {
+    height: 1.85rem;
+    line-height: 1.85rem;
   }
 
   /* Calendar (date picker) header: Lara renders the month + year as adjacent

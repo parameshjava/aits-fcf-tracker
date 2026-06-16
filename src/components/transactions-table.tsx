@@ -50,6 +50,7 @@ const TYPE_META: Record<string, { label: string; bg: string; emoji: string }> = 
   loan_repayment: { label: 'Loan repayment', bg: 'bg-violet-50', emoji: '🤝' },
   penalty:        { label: 'Penalty',        bg: 'bg-amber-50',  emoji: '⚠️' },
   donation:       { label: 'Donation',       bg: 'bg-rose-50',   emoji: '❤️' },
+  bad_debt:       { label: 'Bad debt',       bg: 'bg-red-100',   emoji: '🚫' },
   other:          { label: 'Other',          bg: 'bg-gray-100',  emoji: '📦' },
 }
 

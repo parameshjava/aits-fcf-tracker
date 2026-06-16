@@ -43,8 +43,8 @@ export default async function AdminMeetingsListPage() {
           No meetings yet. <Link href="/admin/meetings/new" className="text-blue-600 underline">Create one</Link>.
         </div>
       ) : (
-        <div className="overflow-hidden rounded-lg border border-gray-200 bg-white">
-          <table className="w-full text-sm">
+        <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
+          <table className="w-full min-w-[36rem] text-sm">
             <thead className="bg-gray-50 text-left text-xs uppercase tracking-wide text-gray-500">
               <tr>
                 <th className="px-4 py-2">Date</th>

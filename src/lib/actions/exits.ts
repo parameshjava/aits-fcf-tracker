@@ -134,6 +134,12 @@ export type ExitProposal = {
   refund_amount: number
   total_contributions: number
   loan_balance: number
+  /** Loss-pool inputs locked at proposal time — drive the settlement
+   *  breakdown shown to the approving admin. */
+  total_donations: number
+  total_bad_debt: number
+  settled_before: number
+  active_count: number
   reasons_for_leaving: string | null
   retention_suggestions: string | null
   proposed_at: string
@@ -184,6 +190,10 @@ export async function getExitProposals(): Promise<ExitProposal[]> {
       refund_amount: Number(r.refund_amount),
       total_contributions: Number(r.total_contributions),
       loan_balance: Number(r.loan_balance),
+      total_donations: Number(r.total_donations),
+      total_bad_debt: Number(r.total_bad_debt),
+      settled_before: Number(r.settled_before),
+      active_count: Number(r.active_count),
       reasons_for_leaving: r.reasons_for_leaving ?? null,
       retention_suggestions: r.retention_suggestions ?? null,
       proposed_at: r.proposed_at,

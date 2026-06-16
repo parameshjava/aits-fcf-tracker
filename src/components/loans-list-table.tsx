@@ -477,6 +477,30 @@ export function LoansListTable({
         header={loans.length > 0 ? exportMenu : undefined}
         onValueChange={setProcessed}
         onGlobalFilterChange={setSearchQuery}
+        // Fold the old footer strip (row count + outstanding total) into the
+        // paginator bar so the table closes with two rows, not three.
+        paginatorLeft={
+          visible.length > 0 ? (
+            <span className="text-xs text-gray-500">
+              Showing{' '}
+              <span className="font-medium text-gray-900">{visible.length}</span>{' '}
+              {visible.length === 1 ? 'loan' : 'loans'}
+              {augmented.length !== visible.length && (
+                <span className="text-gray-400"> · filtered from {augmented.length}</span>
+              )}
+            </span>
+          ) : undefined
+        }
+        paginatorRight={
+          visible.length > 0 ? (
+            <span className="text-xs font-medium text-gray-400">
+              Outstanding{' '}
+              <span className="ml-1 tabular-nums text-gray-900">
+                {formatRupees(totalOutstanding)}
+              </span>
+            </span>
+          ) : undefined
+        }
         expandedRows={expandable ? expandedRows : undefined}
         onRowToggle={expandable ? onRowToggle : undefined}
         rowExpansion={
@@ -504,8 +528,13 @@ export function LoansListTable({
         }
       />
 
-      {visible.length > 0 && (
-        <div className="flex items-center justify-between border-t border-gray-200 bg-gray-50/30 px-5 py-3 text-xs text-gray-500">
+      {/* The row-count + outstanding summary normally rides in the paginator
+          bar (paginatorLeft/Right). When the list fits on one page the pager
+          is hidden, so surface the same summary as a slim footer strip instead
+          — keeps the total visible without ever stacking two footer rows.
+          `10` mirrors PrDataTable's default page size. */}
+      {augmented.length <= 10 && visible.length > 0 && (
+        <div className="flex items-center justify-between border-t border-gray-200 bg-gray-50/30 px-5 py-2 text-xs text-gray-500">
           <span>
             Showing <span className="font-medium text-gray-900">{visible.length}</span>{' '}
             {visible.length === 1 ? 'loan' : 'loans'}
