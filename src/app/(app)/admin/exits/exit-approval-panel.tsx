@@ -3,9 +3,7 @@
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
-import {
-  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
-} from '@/components/ui/dialog'
+import { PrDialog } from '@/components/ui/pr/dialog'
 import { MarkdownView } from '@/components/markdown-view'
 import { approveExitCohort, rejectExit, relockExit, type ExitProposal } from '@/lib/actions/exits'
 import { formatRupees } from '@/lib/format'
@@ -126,60 +124,62 @@ export function ExitApprovalPanel({ proposals }: { proposals: ExitProposal[] }) 
         </button>
       )}
 
-      <Dialog open={confirmOpen} onOpenChange={(next) => { if (!pending) { setConfirmOpen(next); if (!next) setError(null) } }}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Approve {chosen.length} exit(s)?</DialogTitle>
-            <DialogDescription>
-              Each member&apos;s loan (if any) is closed, the settlement is recorded, and they become inactive. This cannot be undone.
-            </DialogDescription>
-          </DialogHeader>
-          <ul className="space-y-1 text-sm">
-            {chosen.map((p) => (
-              <li key={p.id} className="flex justify-between">
-                <span>{p.member_name} ({p.disposition})</span>
-                <span className="font-medium">{formatRupees(p.refund_amount)}</span>
-              </li>
-            ))}
-          </ul>
-          {error && <p className="text-sm text-red-600">{error}</p>}
-          <DialogFooter className="sm:justify-end">
+      <PrDialog
+        visible={confirmOpen}
+        onHide={() => { if (!pending) { setConfirmOpen(false); setError(null) } }}
+        header={`Approve ${chosen.length} exit(s)?`}
+        footer={
+          <>
             <button type="button" onClick={() => setConfirmOpen(false)} disabled={pending}
               className="rounded-md border px-4 py-2 text-sm">Cancel</button>
             <button type="button" onClick={runApprove} disabled={pending}
               className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50">
               {pending ? 'Approving…' : 'Yes, approve'}
             </button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </>
+        }
+      >
+        <p className="text-sm text-gray-600">
+          Each member&apos;s loan (if any) is closed, the settlement is recorded, and they become inactive. This cannot be undone.
+        </p>
+        <ul className="mt-3 space-y-1 text-sm">
+          {chosen.map((p) => (
+            <li key={p.id} className="flex justify-between">
+              <span>{p.member_name} ({p.disposition})</span>
+              <span className="font-medium">{formatRupees(p.refund_amount)}</span>
+            </li>
+          ))}
+        </ul>
+        {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
+      </PrDialog>
 
-      <Dialog open={rejectTarget !== null} onOpenChange={(next) => { if (!pending && !next) { setRejectTarget(null); setError(null) } }}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Reject {rejectTarget?.member_name}&apos;s exit request?</DialogTitle>
-            <DialogDescription>
-              Record the outcome of your discussion with the member. These notes are saved with the request.
-            </DialogDescription>
-          </DialogHeader>
-          <textarea
-            value={rejectNotes}
-            onChange={(e) => setRejectNotes(e.target.value)}
-            rows={4}
-            placeholder="Discussion notes (what was agreed, why the exit is being rejected)…"
-            className="w-full rounded-md border border-gray-200 p-2 text-sm"
-          />
-          {error && <p className="text-sm text-red-600">{error}</p>}
-          <DialogFooter className="sm:justify-end">
+      <PrDialog
+        visible={rejectTarget !== null}
+        onHide={() => { if (!pending) { setRejectTarget(null); setError(null) } }}
+        header={`Reject ${rejectTarget?.member_name ?? ''}'s exit request?`}
+        footer={
+          <>
             <button type="button" onClick={() => { setRejectTarget(null); setError(null) }} disabled={pending}
               className="rounded-md border px-4 py-2 text-sm">Cancel</button>
             <button type="button" onClick={runReject} disabled={pending}
               className="rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50">
               {pending ? 'Rejecting…' : 'Reject request'}
             </button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </>
+        }
+      >
+        <p className="text-sm text-gray-600">
+          Record the outcome of your discussion with the member. These notes are saved with the request.
+        </p>
+        <textarea
+          value={rejectNotes}
+          onChange={(e) => setRejectNotes(e.target.value)}
+          rows={4}
+          placeholder="Discussion notes (what was agreed, why the exit is being rejected)…"
+          className="mt-3 w-full rounded-md border border-gray-200 p-2 text-sm"
+        />
+        {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
+      </PrDialog>
     </div>
   )
 }

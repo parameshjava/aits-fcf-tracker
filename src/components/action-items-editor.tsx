@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
-import { Button } from '@/components/ui/button'
+import { Button } from '@/components/ui/pr/button'
 import { MarkdownEditor, type MarkdownEditorMode } from '@/components/markdown-editor'
 import { updateActionItems } from '@/lib/actions/meetings'
 

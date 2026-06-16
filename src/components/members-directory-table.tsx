@@ -1,16 +1,16 @@
 'use client'
 
-import { Fragment, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { ContactChip, MemberContactsList } from '@/components/member-contacts'
 import { CopyButton } from '@/components/copy-button'
-import { Accordion } from '@/components/ui/accordion'
-import { ExpandToggle } from '@/components/ui/expand-toggle'
+import { PrAccordion, PrAccordionTab } from '@/components/ui/pr/accordion'
 import { TableExportMenu } from '@/components/table-export'
-import type { Cell } from '@/lib/table-export'
+import type { Cell, ExportCriterion } from '@/lib/table-export'
 import { ManageContactsList } from '@/components/manage-contacts-list'
 import { AddContactForm } from '@/components/add-contact-form'
 import { MemberBankAccountsManager } from '@/components/member-bank-accounts-manager'
 import { BankAccountForm } from '@/components/bank-account-form'
+import { PrDataTable, type PrColumn } from '@/components/ui/pr/data-table'
 import type {
   MemberBankAccount,
   MemberContact,
@@ -28,8 +28,6 @@ const STATUS_LABEL: Record<string, string> = {
   archived: 'Archived',
 }
 
-const COLSPAN = 5
-
 function formatMemberSince(iso: string): string {
   return new Date(iso).toLocaleDateString('en-IN', {
     year: 'numeric',
@@ -44,6 +42,67 @@ function maskAccountNumber(num: string): string {
   return `••••${num.slice(-4)}`
 }
 
+/** Per-member primary/alternate contacts pre-computed so the table cells and
+ *  the detail panel share one derivation. */
+type MemberRowAug = MemberDirectoryRow & {
+  _phones: MemberContact[]
+  _emails: MemberContact[]
+  _primaryPhone: MemberContact | undefined
+  _primaryEmail: MemberContact | undefined
+  _altPhones: MemberContact[]
+  _altEmails: MemberContact[]
+  _canEdit: boolean
+  _status_label: string
+  _primary_phone_value: string
+  _primary_email_value: string
+  /** Concatenated, lowercased blob the global search matches against. */
+  _search_blob: string
+}
+
+function augment(
+  members: MemberDirectoryRow[],
+  normalizedUserEmail: string,
+  isAdmin: boolean,
+): MemberRowAug[] {
+  return members.map((m) => {
+    const phones = m.contacts.filter((c) => c.kind === 'phone')
+    const emails = m.contacts.filter((c) => c.kind === 'email')
+    const primaryPhone = phones.find((c) => c.is_primary) ?? phones[0]
+    const primaryEmail = emails.find((c) => c.is_primary) ?? emails[0]
+    const altPhones = phones.filter((c) => c.id !== primaryPhone?.id)
+    const altEmails = emails.filter((c) => c.id !== primaryEmail?.id)
+    const memberEmailLower = (m.email ?? '').trim().toLowerCase()
+    const isSelf =
+      !!normalizedUserEmail && !!memberEmailLower && normalizedUserEmail === memberEmailLower
+    const statusLabel = STATUS_LABEL[m.status] ?? m.status
+    const primaryPhoneValue = primaryPhone?.value ?? ''
+    const primaryEmailValue = primaryEmail?.value ?? ''
+    return {
+      ...m,
+      _phones: phones,
+      _emails: emails,
+      _primaryPhone: primaryPhone,
+      _primaryEmail: primaryEmail,
+      _altPhones: altPhones,
+      _altEmails: altEmails,
+      _canEdit: isAdmin || isSelf,
+      _status_label: statusLabel,
+      _primary_phone_value: primaryPhoneValue,
+      _primary_email_value: primaryEmailValue,
+      _search_blob: [
+        m.name,
+        statusLabel,
+        primaryPhoneValue,
+        primaryEmailValue,
+        m.email ?? '',
+        ...m.contacts.map((c) => c.value),
+      ]
+        .join(' ')
+        .toLowerCase(),
+    }
+  })
+}
+
 export function MembersDirectoryTable({
   members,
   currentUserEmail,
@@ -55,11 +114,27 @@ export function MembersDirectoryTable({
   currentUserEmail: string | null
   isAdmin: boolean
 }) {
-  const [expanded, setExpanded] = useState<Set<string>>(() => new Set())
+  // Shared expansion state across both sections — a member id is either open
+  // or closed regardless of which section it sits in.
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(() => new Set())
   const normalizedUserEmail = (currentUserEmail ?? '').trim().toLowerCase()
 
+  const augmented = useMemo(
+    () => augment(members, normalizedUserEmail, isAdmin),
+    [members, normalizedUserEmail, isAdmin],
+  )
+
+  // Each section's PrDataTable reports its current filtered+sorted rows and
+  // its search query here, so the export reflects what's visible on screen
+  // (consistent with the other migrated tables). `null` until the first
+  // onValueChange fires → fall back to the section's full set.
+  const [processedActive, setProcessedActive] = useState<MemberRowAug[] | null>(null)
+  const [processedInactive, setProcessedInactive] = useState<MemberRowAug[] | null>(null)
+  const [searchActive, setSearchActive] = useState('')
+  const [searchInactive, setSearchInactive] = useState('')
+
   function toggle(id: string) {
-    setExpanded((prev) => {
+    setExpandedIds((prev) => {
       const next = new Set(prev)
       if (next.has(id)) next.delete(id)
       else next.add(id)
@@ -67,25 +142,34 @@ export function MembersDirectoryTable({
     })
   }
 
-  const exportColumns = ['Name', 'Status', 'Primary phone', 'Primary email', 'Login email', 'Member since']
-  const exportRows: Cell[][] = members.map((m) => {
-    const phones = m.contacts.filter((c) => c.kind === 'phone')
-    const emails = m.contacts.filter((c) => c.kind === 'email')
-    const primaryPhone = phones.find((c) => c.is_primary) ?? phones[0]
-    const primaryEmail = emails.find((c) => c.is_primary) ?? emails[0]
-    return [
-      m.name,
-      STATUS_LABEL[m.status] ?? m.status,
-      primaryPhone?.value ?? '',
-      primaryEmail?.value ?? '',
-      m.email ?? '',
-      formatMemberSince(m.created_at),
-    ]
-  })
-
   // Active in one section; everything else (inactive + archived) in the other.
-  const activeMembers = members.filter((m) => m.status === 'active')
-  const inactiveMembers = members.filter((m) => m.status !== 'active')
+  const activeMembers = augmented.filter((m) => m.status === 'active')
+  const inactiveMembers = augmented.filter((m) => m.status !== 'active')
+
+  const exportColumns = ['Name', 'Status', 'Primary phone', 'Primary email', 'Login email', 'Member since']
+  const toExportRow = (m: MemberRowAug): Cell[] => [
+    m.name,
+    m._status_label,
+    m._primary_phone_value,
+    m._primary_email_value,
+    m.email ?? '',
+    formatMemberSince(m.created_at),
+  ]
+  // Export = the combined filtered+sorted rows visible across both sections,
+  // active first then inactive (preserving the on-screen section order).
+  const visibleActive = processedActive ?? activeMembers
+  const visibleInactive = processedInactive ?? inactiveMembers
+  const exportRows: Cell[][] = [...visibleActive, ...visibleInactive].map(toExportRow)
+
+  // Record each section's non-empty search term as an export criterion.
+  const searchCriteria: ExportCriterion[] = [
+    ...(searchActive.trim()
+      ? [{ label: 'Search (active)', value: searchActive.trim() }]
+      : []),
+    ...(searchInactive.trim()
+      ? [{ label: 'Search (inactive)', value: searchInactive.trim() }]
+      : []),
+  ]
 
   return (
     <div className="space-y-6">
@@ -96,6 +180,7 @@ export function MembersDirectoryTable({
             title="Members directory"
             columns={exportColumns}
             rows={exportRows}
+            criteria={searchCriteria}
           />
         </div>
       )}
@@ -104,20 +189,20 @@ export function MembersDirectoryTable({
         emptyLabel="No active members."
         members={activeMembers}
         defaultOpen
-        expanded={expanded}
+        expandedIds={expandedIds}
         toggle={toggle}
-        normalizedUserEmail={normalizedUserEmail}
-        isAdmin={isAdmin}
+        onValueChange={setProcessedActive}
+        onGlobalFilterChange={setSearchActive}
       />
       <MemberSection
         title="Inactive members"
         emptyLabel="No inactive members."
         members={inactiveMembers}
         defaultOpen={false}
-        expanded={expanded}
+        expandedIds={expandedIds}
         toggle={toggle}
-        normalizedUserEmail={normalizedUserEmail}
-        isAdmin={isAdmin}
+        onValueChange={setProcessedInactive}
+        onGlobalFilterChange={setSearchInactive}
       />
     </div>
   )
@@ -128,142 +213,134 @@ function MemberSection({
   emptyLabel,
   members,
   defaultOpen = false,
-  expanded,
+  expandedIds,
   toggle,
-  normalizedUserEmail,
-  isAdmin,
+  onValueChange,
+  onGlobalFilterChange,
 }: {
   title: string
   emptyLabel: string
-  members: MemberDirectoryRow[]
+  members: MemberRowAug[]
   defaultOpen?: boolean
-  expanded: Set<string>
+  expandedIds: Set<string>
   toggle: (id: string) => void
-  normalizedUserEmail: string
-  isAdmin: boolean
+  onValueChange: (rows: MemberRowAug[]) => void
+  onGlobalFilterChange: (query: string) => void
 }) {
+  // Project the shared id Set into PrimeReact's controlled expansion object,
+  // scoped to this section's rows.
+  const expandedRows = useMemo(() => {
+    const obj: Record<string, boolean> = {}
+    for (const m of members) if (expandedIds.has(m.id)) obj[m.id] = true
+    return obj
+  }, [members, expandedIds])
+
+  const columns: PrColumn<MemberRowAug>[] = [
+    {
+      field: 'name',
+      header: 'Name',
+      sortable: true,
+      bodyClassName: 'whitespace-nowrap font-medium text-gray-900',
+      body: (m) => m.name,
+    },
+    {
+      field: '_status_label',
+      header: 'Status',
+      sortable: true,
+      body: (m) => (
+        <span
+          className={
+            'rounded-full px-2 py-0.5 text-xs font-medium ring-1 ' +
+            (STATUS_PILL[m.status] ?? STATUS_PILL.active)
+          }
+        >
+          {m._status_label}
+        </span>
+      ),
+    },
+    {
+      field: '_primary_phone_value',
+      header: 'Primary phone',
+      body: (m) =>
+        m._primaryPhone ? (
+          <span className="inline-flex items-center gap-1">
+            <ContactChip contact={m._primaryPhone} size="sm" hidePrimaryBadge />
+            <CopyButton value={m._primaryPhone.value} label="Phone" />
+          </span>
+        ) : (
+          <span className="text-gray-400">—</span>
+        ),
+    },
+    {
+      field: '_primary_email_value',
+      header: 'Primary email',
+      body: (m) =>
+        m._primaryEmail ? (
+          <span className="inline-flex items-center gap-1">
+            <ContactChip contact={m._primaryEmail} size="sm" hidePrimaryBadge />
+            <CopyButton value={m._primaryEmail.value} label="Email" />
+          </span>
+        ) : (
+          <span className="text-gray-400">—</span>
+        ),
+    },
+    {
+      field: 'id',
+      header: '',
+      expander: true,
+      style: { width: '3.5rem' },
+    },
+  ]
+
   return (
-    <Accordion
-      title={title}
-      subtitle={`${members.length} ${members.length === 1 ? 'member' : 'members'}`}
-      defaultOpen={defaultOpen}
-    >
-      <div className="-mx-5 -mb-4 overflow-x-auto lg:overflow-x-visible">
-          <table className="sticky-thead min-w-full text-sm">
-            <thead>
-              <tr className="border-b border-gray-200 bg-gray-50/60">
-                <th scope="col" className="px-4 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-500">Name</th>
-                <th scope="col" className="px-4 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-500">Status</th>
-                <th scope="col" className="px-4 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-500">Primary phone</th>
-                <th scope="col" className="px-4 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-500">Primary email</th>
-                <th scope="col" className="px-4 py-2" />
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {members.length === 0 ? (
-                <tr>
-                  <td colSpan={COLSPAN} className="px-4 py-10 text-center text-sm text-gray-400">
-                    {emptyLabel}
-                  </td>
-                </tr>
-              ) : (
-                members.map((m) => {
-                  const isOpen = expanded.has(m.id)
-                  const phones = m.contacts.filter((c) => c.kind === 'phone')
-                  const emails = m.contacts.filter((c) => c.kind === 'email')
-                  const primaryPhone = phones.find((c) => c.is_primary) ?? phones[0]
-                  const primaryEmail = emails.find((c) => c.is_primary) ?? emails[0]
-                  const altPhones = phones.filter((c) => c.id !== primaryPhone?.id)
-                  const altEmails = emails.filter((c) => c.id !== primaryEmail?.id)
-                  const memberEmailLower = (m.email ?? '').trim().toLowerCase()
-                  const isSelf =
-                    !!normalizedUserEmail &&
-                    !!memberEmailLower &&
-                    normalizedUserEmail === memberEmailLower
-                  const canEdit = isAdmin || isSelf
-                  return (
-                    <Fragment key={m.id}>
-                      <tr
-                        className={
-                          'transition-colors ' +
-                          (isOpen
-                            ? 'bg-blue-50/40 ring-1 ring-inset ring-blue-100'
-                            : 'hover:bg-gray-50')
-                        }
-                      >
-                        <td className="whitespace-nowrap px-4 py-2 font-medium text-gray-900">
-                          {m.name}
-                        </td>
-                        <td className="px-4 py-2">
-                          <span
-                            className={
-                              'rounded-full px-2 py-0.5 text-xs font-medium ring-1 ' +
-                              (STATUS_PILL[m.status] ?? STATUS_PILL.active)
-                            }
-                          >
-                            {STATUS_LABEL[m.status] ?? m.status}
-                          </span>
-                        </td>
-                        <td className="px-4 py-2">
-                          {primaryPhone ? (
-                            <span className="inline-flex items-center gap-1">
-                              <ContactChip contact={primaryPhone} size="sm" hidePrimaryBadge />
-                              <CopyButton value={primaryPhone.value} label="Phone" />
-                            </span>
-                          ) : (
-                            <span className="text-gray-400">—</span>
-                          )}
-                        </td>
-                        <td className="px-4 py-2">
-                          {primaryEmail ? (
-                            <span className="inline-flex items-center gap-1">
-                              <ContactChip contact={primaryEmail} size="sm" hidePrimaryBadge />
-                              <CopyButton value={primaryEmail.value} label="Email" />
-                            </span>
-                          ) : (
-                            <span className="text-gray-400">—</span>
-                          )}
-                        </td>
-                        <td className="whitespace-nowrap px-4 py-2 text-right">
-                          <ExpandToggle
-                            isOpen={isOpen}
-                            onClick={() => toggle(m.id)}
-                            controlsId={`member-detail-${m.id}`}
-                            labelOpen={`Hide details for ${m.name}`}
-                            labelClosed={`Show details for ${m.name}`}
-                          />
-                        </td>
-                      </tr>
-                      {isOpen && (
-                        <tr
-                          id={`member-detail-${m.id}`}
-                          className="border-l-2 border-l-blue-500 bg-gradient-to-b from-blue-50/50 to-white"
-                        >
-                          <td colSpan={COLSPAN} className="p-0">
-                            <MemberDetailPanel
-                              memberId={m.id}
-                              memberName={m.name}
-                              createdAt={m.created_at}
-                              loginEmail={m.email}
-                              notes={m.notes}
-                              canEdit={canEdit}
-                              phones={phones}
-                              emails={emails}
-                              altPhones={altPhones}
-                              altEmails={altEmails}
-                              bankAccounts={m.bank_accounts}
-                            />
-                          </td>
-                        </tr>
-                      )}
-                    </Fragment>
-                  )
-                })
-              )}
-            </tbody>
-          </table>
+    <PrAccordion defaultActiveIndex={defaultOpen ? [0] : []}>
+      <PrAccordionTab
+        header={title}
+        subtitle={`${members.length} ${members.length === 1 ? 'member' : 'members'}`}
+      >
+      <div className="-mx-5 -mb-4">
+        <PrDataTable<MemberRowAug>
+          value={members}
+          columns={columns}
+          dataKey="id"
+          emptyMessage={emptyLabel}
+          globalFilterFields={members.length > 0 ? ['_search_blob'] : undefined}
+          globalSearchPlaceholder="Search by name, phone, email…"
+          onValueChange={onValueChange}
+          onGlobalFilterChange={onGlobalFilterChange}
+          expandedRows={expandedRows}
+          onRowToggle={(rows) => {
+            // Diff the incoming expansion object against the shared Set so the
+            // single toggled id flips in/out — preserves cross-section state.
+            const nextIds = new Set(
+              Object.keys(rows as Record<string, boolean>),
+            )
+            const sectionIds = new Set(members.map((m) => m.id))
+            for (const id of sectionIds) {
+              const wasOpen = expandedIds.has(id)
+              const nowOpen = nextIds.has(id)
+              if (wasOpen !== nowOpen) toggle(id)
+            }
+          }}
+          rowExpansion={(m) => (
+            <MemberDetailPanel
+              memberId={m.id}
+              memberName={m.name}
+              createdAt={m.created_at}
+              loginEmail={m.email}
+              notes={m.notes}
+              canEdit={m._canEdit}
+              phones={m._phones}
+              emails={m._emails}
+              altPhones={m._altPhones}
+              altEmails={m._altEmails}
+              bankAccounts={m.bank_accounts}
+            />
+          )}
+        />
       </div>
-    </Accordion>
+      </PrAccordionTab>
+    </PrAccordion>
   )
 }
 

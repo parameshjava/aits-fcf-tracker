@@ -13,22 +13,16 @@ import type { ActionResult } from '@/lib/actions/action-result'
 import { formatRupees, todayISO } from '@/lib/format'
 import { overdueParts, formatDueLabel } from '@/lib/due'
 import { recomputeAfterPrepayment } from '@/lib/emi-math'
-import { Accordion } from '@/components/ui/accordion'
-import {
-  Dialog,
-  DialogClose,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from '@/components/ui/dialog'
+import { PrAccordion, PrAccordionTab } from '@/components/ui/pr/accordion'
+import { PrDialog } from '@/components/ui/pr/dialog'
+import { PrDatePicker } from '@/components/ui/pr/date-picker'
 
 const TRIGGER_BTN =
   'rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50'
 const CANCEL_BTN =
   'rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50'
+const FOOTER_ROW =
+  'flex flex-col-reverse gap-2 border-t border-gray-100 pt-4 sm:flex-row sm:justify-end'
 
 type LoanProps = {
   id: string
@@ -101,6 +95,7 @@ function PayEmiForm({
   const lateFee = Number(row.late_fee_charged)
   const hasLateFee = lateFee > 0 && !row.late_fee_waived
   const [waive, setWaive] = useState(false)
+  const [paidDate, setPaidDate] = useState(todayISO())
   const effectiveTotal = amountDue + (hasLateFee && !waive ? lateFee : 0)
 
   return (
@@ -130,7 +125,15 @@ function PayEmiForm({
 
       <label className="block text-xs text-gray-500">
         Paid date
-        <input type="date" name="paid_date" defaultValue={todayISO()} max={todayISO()} required className={FIELD} />
+        <PrDatePicker
+          name="paid_date"
+          value={paidDate}
+          max={todayISO()}
+          required
+          onChange={setPaidDate}
+          className="mt-1"
+          placeholder="dd/mm/yyyy"
+        />
       </label>
       <label className="block text-xs text-gray-500">
         Bank transaction ID
@@ -156,14 +159,10 @@ function PayEmiForm({
 
       {state && !state.ok && <p className="text-sm text-red-600">{state.error}</p>}
 
-      <DialogFooter>
-        <DialogClose
-          render={
-            <button type="button" className={CANCEL_BTN}>
-              Cancel
-            </button>
-          }
-        />
+      <div className={FOOTER_ROW}>
+        <button type="button" className={CANCEL_BTN} onClick={onSuccess}>
+          Cancel
+        </button>
         <button
           type="submit"
           disabled={isPending}
@@ -171,7 +170,7 @@ function PayEmiForm({
         >
           {isPending ? 'Paying…' : 'Pay EMI'}
         </button>
-      </DialogFooter>
+      </div>
     </form>
   )
 }
@@ -187,27 +186,26 @@ function PayEmiDialog({ row, loan }: { row: EmiScheduleRow; loan: LoanProps }) {
   }
 
   return (
-    <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogTrigger
-        render={
-          <button
-            type="button"
-            className="rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700"
-          >
-            Pay EMI
-          </button>
-        }
-      />
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Pay EMI</DialogTitle>
-          <DialogDescription>
-            Record this installment as paid (principal + interest) and optionally update the bank balance.
-          </DialogDescription>
-        </DialogHeader>
+    <>
+      <button
+        type="button"
+        onClick={() => handleOpenChange(true)}
+        className="rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700"
+      >
+        Pay EMI
+      </button>
+      <PrDialog
+        visible={open}
+        onHide={() => handleOpenChange(false)}
+        header="Pay EMI"
+        widthClass="sm:!w-[30rem]"
+      >
+        <p className="mb-4 text-sm text-gray-600">
+          Record this installment as paid (principal + interest) and optionally update the bank balance.
+        </p>
         <PayEmiForm key={openKey} row={row} loan={loan} onSuccess={() => setOpen(false)} />
-      </DialogContent>
-    </Dialog>
+      </PrDialog>
+    </>
   )
 }
 
@@ -223,6 +221,7 @@ function PrepayForm({
     async (_prev, formData) => prepayLoan(formData),
     null,
   )
+  const [paidDate, setPaidDate] = useState(todayISO())
   useEffect(() => {
     if (state?.ok) {
       toast.success(state.message ?? 'Prepayment applied')
@@ -270,13 +269,14 @@ function PrepayForm({
       </fieldset>
       <label className="flex flex-col text-xs">
         <span className="text-gray-500">Paid date</span>
-        <input
-          type="date"
+        <PrDatePicker
           name="paid_date"
-          defaultValue={todayISO()}
+          value={paidDate}
           max={todayISO()}
           required
-          className="mt-1 rounded-md border border-gray-300 px-2 py-1 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+          onChange={setPaidDate}
+          className="mt-1"
+          placeholder="dd/mm/yyyy"
         />
       </label>
       <label className="flex flex-col text-xs">
@@ -295,14 +295,10 @@ function PrepayForm({
       {state && !state.ok && (
         <p className="text-sm text-red-600">{state.error}</p>
       )}
-      <DialogFooter>
-        <DialogClose
-          render={
-            <button type="button" className={CANCEL_BTN}>
-              Cancel
-            </button>
-          }
-        />
+      <div className={FOOTER_ROW}>
+        <button type="button" className={CANCEL_BTN} onClick={onSuccess}>
+          Cancel
+        </button>
         <button
           type="submit"
           disabled={isPending}
@@ -310,7 +306,7 @@ function PrepayForm({
         >
           {isPending ? 'Applying…' : 'Apply prepayment'}
         </button>
-      </DialogFooter>
+      </div>
     </form>
   )
 }
@@ -327,24 +323,22 @@ function PrepayDialog({ loan }: { loan: LoanProps }) {
   }
 
   return (
-    <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogTrigger
-        render={
-          <button type="button" className={TRIGGER_BTN}>
-            Prepay
-          </button>
-        }
-      />
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Prepay principal</DialogTitle>
-          <DialogDescription>
-            Record an advance principal payment and rebuild the remaining schedule.
-          </DialogDescription>
-        </DialogHeader>
+    <>
+      <button type="button" className={TRIGGER_BTN} onClick={() => handleOpenChange(true)}>
+        Prepay
+      </button>
+      <PrDialog
+        visible={open}
+        onHide={() => handleOpenChange(false)}
+        header="Prepay principal"
+        widthClass="sm:!w-[30rem]"
+      >
+        <p className="mb-4 text-sm text-gray-600">
+          Record an advance principal payment and rebuild the remaining schedule.
+        </p>
         <PrepayForm key={openKey} loan={loan} onSuccess={() => setOpen(false)} />
-      </DialogContent>
-    </Dialog>
+      </PrDialog>
+    </>
   )
 }
 
@@ -374,14 +368,10 @@ function RecalculateForm({
       {state && !state.ok && (
         <p className="text-sm text-red-600">{state.error}</p>
       )}
-      <DialogFooter>
-        <DialogClose
-          render={
-            <button type="button" className={CANCEL_BTN}>
-              Cancel
-            </button>
-          }
-        />
+      <div className={FOOTER_ROW}>
+        <button type="button" className={CANCEL_BTN} onClick={onSuccess}>
+          Cancel
+        </button>
         <button
           type="submit"
           disabled={isPending}
@@ -389,7 +379,7 @@ function RecalculateForm({
         >
           {isPending ? 'Recalculating…' : 'Recalculate'}
         </button>
-      </DialogFooter>
+      </div>
     </form>
   )
 }
@@ -406,26 +396,24 @@ function RecalculateDialog({ loan }: { loan: LoanProps }) {
   }
 
   return (
-    <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogTrigger
-        render={
-          <button type="button" className={TRIGGER_BTN}>
-            Recalculate
-          </button>
-        }
-      />
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Recalculate schedule</DialogTitle>
-          <DialogDescription>
-            Rebuilds the schedule from the original principal at the current interest
-            rate. This is blocked once any EMI has been paid — use prepayment to
-            re-shape a partially-paid schedule.
-          </DialogDescription>
-        </DialogHeader>
+    <>
+      <button type="button" className={TRIGGER_BTN} onClick={() => handleOpenChange(true)}>
+        Recalculate
+      </button>
+      <PrDialog
+        visible={open}
+        onHide={() => handleOpenChange(false)}
+        header="Recalculate schedule"
+        widthClass="sm:!w-[30rem]"
+      >
+        <p className="mb-4 text-sm text-gray-600">
+          Rebuilds the schedule from the original principal at the current interest
+          rate. This is blocked once any EMI has been paid — use prepayment to
+          re-shape a partially-paid schedule.
+        </p>
         <RecalculateForm key={openKey} loan={loan} onSuccess={() => setOpen(false)} />
-      </DialogContent>
-    </Dialog>
+      </PrDialog>
+    </>
   )
 }
 
@@ -656,11 +644,11 @@ export function EmiSchedulePanel({
       )}
 
       <div className="mt-4 space-y-3">
-        <Accordion
-          title="Repayment schedule"
-          defaultOpen
-          subtitle={`${schedule.length} installment${schedule.length === 1 ? '' : 's'}`}
-        >
+        <PrAccordion defaultActiveIndex={[0]}>
+          <PrAccordionTab
+            header="Repayment schedule"
+            subtitle={`${schedule.length} installment${schedule.length === 1 ? '' : 's'}`}
+          >
           <div className="overflow-x-auto">
             <table className="w-full table-fixed text-sm">
           <colgroup>
@@ -750,16 +738,22 @@ export function EmiSchedulePanel({
           </tbody>
             </table>
           </div>
-        </Accordion>
+          </PrAccordionTab>
+        </PrAccordion>
 
         {loan.interest_rate_pct != null && schedule.some((r) => UNPAID.has(r.status)) && (
-          <Accordion title="Prepayment estimate" subtitle="Estimate the impact of an advance payment">
-            <PrepaymentWhatIf
-              schedule={schedule}
-              interestRatePct={Number(loan.interest_rate_pct)}
-              emiAmount={Number(loan.emi_amount ?? 0)}
-            />
-          </Accordion>
+          <PrAccordion defaultActiveIndex={[]}>
+            <PrAccordionTab
+              header="Prepayment estimate"
+              subtitle="Estimate the impact of an advance payment"
+            >
+              <PrepaymentWhatIf
+                schedule={schedule}
+                interestRatePct={Number(loan.interest_rate_pct)}
+                emiAmount={Number(loan.emi_amount ?? 0)}
+              />
+            </PrAccordionTab>
+          </PrAccordion>
         )}
       </div>
     </section>

@@ -3,18 +3,20 @@
 import { useMemo, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
-import { Button } from '@/components/ui/button'
+import { Button } from '@/components/ui/pr/button'
 import { MarkdownView } from '@/components/markdown-view'
 import { MarkdownEditor, type MarkdownEditorMode } from '@/components/markdown-editor'
 import { saveAttendeeNotes } from '@/lib/actions/meetings'
 import type { MeetingDetail } from '@/lib/actions/meetings-reads'
 import { ExpandToggle } from '@/components/ui/expand-toggle'
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
+import { PrTabStrip } from '@/components/ui/pr/tabs'
 
 type Props = {
   meeting: MeetingDetail
   viewerMemberId: string | null
 }
+
+type NotesTab = 'member' | 'consolidated'
 
 export function ConsolidatedView({ meeting, viewerMemberId }: Props) {
   const router = useRouter()
@@ -24,6 +26,7 @@ export function ConsolidatedView({ meeting, viewerMemberId }: Props) {
   const [editing, setEditing] = useState<{ memberId: string; value: string } | null>(null)
   const [mode, setMode] = useState<MarkdownEditorMode>('split')
   const [pending, startTransition] = useTransition()
+  const [tab, setTab] = useState<NotesTab>('member')
 
   const canEditOwn = meeting.status === 'open' && viewerMemberId != null
 
@@ -92,13 +95,19 @@ export function ConsolidatedView({ meeting, viewerMemberId }: Props) {
   }
 
   return (
-    <Tabs defaultValue="member" className="space-y-3">
-      <TabsList className="self-start">
-        <TabsTrigger value="member">By member</TabsTrigger>
-        <TabsTrigger value="consolidated">Consolidated</TabsTrigger>
-      </TabsList>
+    <div className="space-y-3">
+      <PrTabStrip
+        className="justify-start"
+        ariaLabel="Meeting notes view"
+        value={tab}
+        onValueChange={(next) => setTab(next as NotesTab)}
+        tabs={[
+          { value: 'member', label: 'By member' },
+          { value: 'consolidated', label: 'Consolidated' },
+        ]}
+      />
 
-      <TabsContent value="member" keepMounted className="space-y-2">
+      <div hidden={tab !== 'member'} className="space-y-2">
         <div className="flex items-center justify-between px-1">
           <p className="text-xs text-gray-500">Click any member to expand · sections appear in the order captured</p>
           <div className="flex gap-2">
@@ -204,9 +213,9 @@ export function ConsolidatedView({ meeting, viewerMemberId }: Props) {
           )
         })}
       </div>
-      </TabsContent>
+      </div>
 
-      <TabsContent value="consolidated" className="space-y-3">
+      <div hidden={tab !== 'consolidated'} className="space-y-3">
         <div className="flex items-center justify-end px-1">
           <Button type="button" variant="outline" size="xs" onClick={copyConsolidated} disabled={withNotes.length === 0}>
             Copy markdown
@@ -221,7 +230,7 @@ export function ConsolidatedView({ meeting, viewerMemberId }: Props) {
             <MarkdownView source={consolidatedMd} mentions={{ slugToName }} />
           </div>
         )}
-      </TabsContent>
-    </Tabs>
+      </div>
+    </div>
   )
 }

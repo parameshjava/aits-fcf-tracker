@@ -1,16 +1,12 @@
 'use client'
 
-import { useCallback } from 'react'
+import { useMemo, useState } from 'react'
+import { Dropdown } from 'primereact/dropdown'
 import { formatRupees } from '@/lib/format'
 import { PollModal } from '@/components/poll-modal'
 import { TableExportMenu } from '@/components/table-export'
+import { PrDataTable, type PrColumn } from '@/components/ui/pr/data-table'
 import type { Cell, ExportCriterion } from '@/lib/table-export'
-import {
-  SortableHeader,
-  TableSearch,
-  useSortable,
-  useTableFilter,
-} from '@/components/table-controls'
 
 export type TxnRow = {
   id: string
@@ -34,7 +30,19 @@ export type TxnRow = {
   manage_href?: string | null
 }
 
-type SortKey = 'date' | 'member' | 'txn_id' | 'description' | 'amount'
+/** Derived fields baked onto each row so DataTable can sort/filter/global-search
+ *  on flat string/number values (it can't reach into `poll.question` etc.). */
+type TxnRowAug = TxnRow & {
+  _date_ts: number
+  _amount: number
+  _type_label: string
+  _member: string
+  _beneficiary: string
+  _poll_question: string
+  _description: string
+  _bank_ref: string
+  _search_blob: string
+}
 
 const TYPE_META: Record<string, { label: string; bg: string; emoji: string }> = {
   contribution:   { label: 'Contribution',   bg: 'bg-blue-50',   emoji: '💰' },
@@ -52,6 +60,12 @@ function typeLabel(t: TxnRow): string {
     return `${base} · ${t.interest_source}`
   }
   return base
+}
+
+function formatTxnDate(iso: string): string {
+  return new Date(iso).toLocaleDateString('en-IN', {
+    day: '2-digit', month: 'short', year: 'numeric',
+  })
 }
 
 export function TransactionsTable({
@@ -87,39 +101,61 @@ export function TransactionsTable({
   showDonationColumns?: boolean
 }) {
   const showActions = rows.some((r) => !!r.manage_href)
-  const stringify = useCallback(
-    (t: TxnRow) =>
-      [
-        t.member_name ?? '',
-        t.beneficiary_name ?? '',
-        t.poll?.question ?? '',
-        t.description ?? '',
-        t.transaction_id,
-        t.bank_transaction_id ?? '',
-        typeLabel(t),
-        new Date(t.transaction_date).toLocaleDateString('en-IN'),
-        String(t.amount),
-      ].join(' '),
-    [],
+
+  // Flatten nested + computed values onto each row so the DataTable can sort,
+  // filter and globally search over them (it operates on top-level fields).
+  const augmented = useMemo<TxnRowAug[]>(
+    () =>
+      rows.map((t) => {
+        const label = typeLabel(t)
+        const member = t.member_name ?? ''
+        const beneficiary = t.beneficiary_name ?? ''
+        const pollQ = t.poll?.question ?? ''
+        const description = t.description ?? ''
+        const bankRef = t.bank_transaction_id ?? ''
+        return {
+          ...t,
+          _date_ts: new Date(t.transaction_date).getTime(),
+          _amount: Number(t.amount) || 0,
+          _type_label: label,
+          _member: member,
+          _beneficiary: beneficiary,
+          _poll_question: pollQ,
+          _description: description,
+          _bank_ref: bankRef,
+          _search_blob: [
+            member,
+            beneficiary,
+            pollQ,
+            description,
+            t.transaction_id,
+            bankRef,
+            label,
+            formatTxnDate(t.transaction_date),
+            String(t.amount),
+          ].join(' '),
+        }
+      }),
+    [rows],
   )
 
-  const { filtered, query, setQuery } = useTableFilter(rows, stringify)
+  // Distinct type labels present in the data → drives the Type dropdown filter.
+  const typeOptions = useMemo(() => {
+    const seen = new Map<string, string>()
+    for (const t of augmented) seen.set(t._type_label, t._type_label)
+    return Array.from(seen.values())
+      .sort((a, b) => a.localeCompare(b))
+      .map((label) => ({ label, value: label }))
+  }, [augmented])
 
-  const accessor = useCallback((t: TxnRow, col: SortKey) => {
-    if (col === 'date') return new Date(t.transaction_date).getTime()
-    if (col === 'member') return t.member_name ?? ''
-    if (col === 'txn_id') return t.transaction_id
-    if (col === 'description') return t.description ?? ''
-    if (col === 'amount') return Number(t.amount) || 0
-    return ''
-  }, [])
+  // The DataTable reports its current filtered+sorted rows here; export +
+  // footer summary are derived from these so they reflect what's on screen.
+  // `null` until the first onValueChange fires → fall back to the full set.
+  const [processed, setProcessed] = useState<TxnRowAug[] | null>(null)
+  const [searchQuery, setSearchQuery] = useState('')
+  const visible = processed ?? augmented
 
-  const { sorted, sort, toggleSort } = useSortable<TxnRow, SortKey>(
-    filtered,
-    accessor,
-  )
-
-  // Export reflects exactly what's on screen (current sort + search filter).
+  // --- Export (reflects the filtered + sorted rows) ------------------------
   const exportColumns = [
     'Date',
     memberColumnLabel,
@@ -130,228 +166,213 @@ export function TransactionsTable({
     'Bank reference',
     'Description',
   ]
-  const exportRows: Cell[][] = sorted.map((t) => [
-    new Date(t.transaction_date).toLocaleDateString('en-IN', {
-      day: '2-digit', month: 'short', year: 'numeric',
-    }),
-    t.member_name ?? '',
-    typeLabel(t),
-    ...(showDonationColumns ? [t.beneficiary_name ?? '', t.poll?.question ?? ''] : []),
-    Number(t.amount) || 0,
+  const exportRows: Cell[][] = visible.map((t) => [
+    formatTxnDate(t.transaction_date),
+    t._member,
+    t._type_label,
+    ...(showDonationColumns ? [t._beneficiary, t._poll_question] : []),
+    t._amount,
     t.transaction_id,
-    t.bank_transaction_id ?? '',
-    t.description ?? '',
+    t._bank_ref,
+    t._description,
   ])
   const amountIdx = exportColumns.indexOf('Amount (₹)')
+  const total = visible.reduce((s, r) => s + r._amount, 0)
   const exportFooter: Cell[] = exportColumns.map((_, i) =>
-    i === 0 ? 'Total' : i === amountIdx ? sorted.reduce((s, r) => s + (Number(r.amount) || 0), 0) : '',
+    i === 0 ? 'Total' : i === amountIdx ? total : '',
   )
   const allCriteria: ExportCriterion[] = [
     ...exportCriteria,
-    ...(query.trim() ? [{ label: 'Search', value: query.trim() }] : []),
+    ...(searchQuery.trim() ? [{ label: 'Search', value: searchQuery.trim() }] : []),
   ]
+
+  // --- Columns -------------------------------------------------------------
+  const columns: PrColumn<TxnRowAug>[] = [
+    {
+      field: 'transaction_type',
+      header: '',
+      style: { width: '44px' },
+      bodyClassName: 'py-2 pl-3 pr-0',
+      body: (t) => {
+        const meta = TYPE_META[t.transaction_type] ?? TYPE_META.other
+        return (
+          <span
+            className={'grid h-7 w-7 place-items-center rounded-full text-sm ' + meta.bg}
+            aria-hidden="true"
+          >
+            {meta.emoji}
+          </span>
+        )
+      },
+    },
+    {
+      field: '_date_ts',
+      header: 'Date',
+      sortable: true,
+      dataType: 'numeric',
+      bodyClassName: 'whitespace-nowrap text-gray-600',
+      body: (t) => formatTxnDate(t.transaction_date),
+    },
+    {
+      field: '_member',
+      header: memberColumnLabel,
+      sortable: true,
+      filter: true,
+      dataType: 'text',
+      body: (t) => (
+        <div>
+          <div className="text-sm font-medium text-gray-900">
+            {t.member_name ?? <span className="text-gray-400">—</span>}
+          </div>
+          {/* When the Type column is hidden (showType=false), keep the type as
+              a subtitle here so the info isn't lost. */}
+          {!showType && (
+            <div className="text-xs text-gray-500">{t._type_label}</div>
+          )}
+        </div>
+      ),
+    },
+    // Type column — only rendered when showType. Carries the dropdown filter.
+    ...(showType
+      ? ([
+          {
+            field: '_type_label',
+            header: 'Type',
+            sortable: true,
+            filter: true,
+            filterElement: ({ value, filterApplyCallback }) => (
+              <Dropdown
+                value={(value as string) ?? null}
+                options={typeOptions}
+                onChange={(e) => filterApplyCallback(e.value)}
+                placeholder="Any type"
+                showClear
+                className="w-full"
+              />
+            ),
+            bodyClassName: 'whitespace-nowrap text-xs text-gray-500',
+            body: (t: TxnRowAug) => t._type_label,
+          },
+        ] as PrColumn<TxnRowAug>[])
+      : []),
+    ...(showDonationColumns
+      ? ([
+          {
+            field: '_beneficiary',
+            header: 'Beneficiary',
+            sortable: true,
+            bodyClassName: 'text-sm text-gray-700',
+            body: (t: TxnRowAug) =>
+              t.beneficiary_name || <span className="text-gray-300">—</span>,
+          },
+          {
+            field: '_poll_question',
+            header: 'Poll',
+            bodyClassName: 'text-sm',
+            body: (t: TxnRowAug) =>
+              t.poll ? (
+                <PollModal pollId={t.poll.id} pollQuestion={t.poll.question} variant="icon" />
+              ) : (
+                <span className="text-gray-300">—</span>
+              ),
+          },
+        ] as PrColumn<TxnRowAug>[])
+      : []),
+    {
+      field: '_amount',
+      header: 'Amount',
+      sortable: true,
+      align: 'right',
+      dataType: 'numeric',
+      bodyClassName: 'whitespace-nowrap text-right font-semibold tabular-nums text-gray-900',
+      body: (t) => formatRupees(t.amount),
+    },
+    {
+      field: 'transaction_id',
+      header: 'Transaction ID',
+      sortable: true,
+      bodyClassName: 'whitespace-nowrap font-mono text-xs text-gray-500',
+      body: (t) => (
+        <div>
+          <div>{t.transaction_id}</div>
+          {t.bank_transaction_id && (
+            <div className="text-[11px] text-gray-400" title="Bank reference">
+              {t.bank_transaction_id}
+            </div>
+          )}
+        </div>
+      ),
+    },
+    {
+      field: '_description',
+      header: 'Description',
+      sortable: true,
+      style: { maxWidth: '280px' },
+      bodyClassName: 'truncate text-gray-600',
+      body: (t) => t.description || <span className="text-gray-300">—</span>,
+    },
+    ...(showActions
+      ? ([
+          {
+            field: 'manage_href',
+            header: 'Actions',
+            align: 'right',
+            bodyClassName: 'whitespace-nowrap text-right',
+            body: (t: TxnRowAug) =>
+              t.manage_href ? (
+                <a
+                  href={t.manage_href}
+                  className="text-xs font-medium text-blue-600 hover:underline"
+                >
+                  Manage →
+                </a>
+              ) : (
+                <span className="text-xs text-gray-300">—</span>
+              ),
+          },
+        ] as PrColumn<TxnRowAug>[])
+      : []),
+  ]
+
+  const globalFilterFields: (keyof TxnRowAug & string)[] = ['_search_blob']
+
+  const exportMenu = (
+    <TableExportMenu
+      filename={exportName}
+      title={exportTitle}
+      columns={exportColumns}
+      rows={exportRows}
+      footer={exportFooter}
+      criteria={allCriteria}
+    />
+  )
 
   return (
     <div className="overflow-clip rounded-2xl border border-gray-200 bg-white">
-      {rows.length > 0 && (
-        <div className="flex items-center justify-between gap-3 border-b border-gray-200 bg-gray-50/30 px-3 py-2">
-          {enableSearch ? (
-            <TableSearch
-              value={query}
-              onChange={setQuery}
-              placeholder={`Search by ${memberColumnLabel.toLowerCase()}, description, ID…`}
-              matched={filtered.length}
-              total={rows.length}
-            />
-          ) : (
-            <span />
-          )}
-          <TableExportMenu
-            filename={exportName}
-            title={exportTitle}
-            columns={exportColumns}
-            rows={exportRows}
-            footer={exportFooter}
-            criteria={allCriteria}
-          />
-        </div>
-      )}
+      <PrDataTable<TxnRowAug>
+        value={augmented}
+        columns={columns}
+        dataKey="id"
+        emptyMessage={emptyLabel}
+        globalFilterFields={enableSearch ? globalFilterFields : undefined}
+        globalSearchPlaceholder={`Search by ${memberColumnLabel.toLowerCase()}, description, ID…`}
+        header={exportMenu}
+        onValueChange={setProcessed}
+        onGlobalFilterChange={setSearchQuery}
+      />
 
-      {/* lg:overflow-x-visible drops the local scroll context at desktop
-          widths so the .sticky-thead rule pins headers against the
-          viewport (under the TopBar) instead of against this wrapper.
-          At <lg the wrapper keeps overflow-x:auto so wide tables can
-          still scroll horizontally on narrow viewports. */}
-      <div className="overflow-x-auto lg:overflow-x-visible">
-        <table className="sticky-thead min-w-full text-sm">
-          <thead>
-            <tr className="border-b border-gray-200 bg-gray-50/60">
-              <th scope="col" className="w-[40px] px-3 py-2.5"></th>
-              <SortableHeader
-                col="date"
-                label="Date"
-                sort={sort}
-                onToggle={toggleSort}
-                compact
-              />
-              <SortableHeader
-                col="member"
-                label={memberColumnLabel}
-                sort={sort}
-                onToggle={toggleSort}
-                compact
-              />
-              {showDonationColumns && (
-                <>
-                  <th
-                    scope="col"
-                    className="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-500"
-                  >
-                    Beneficiary
-                  </th>
-                  <th
-                    scope="col"
-                    className="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-500"
-                  >
-                    Poll
-                  </th>
-                </>
-              )}
-              <SortableHeader
-                col="amount"
-                label="Amount"
-                align="right"
-                sort={sort}
-                onToggle={toggleSort}
-                compact
-              />
-              <SortableHeader
-                col="txn_id"
-                label="Transaction ID"
-                sort={sort}
-                onToggle={toggleSort}
-                compact
-              />
-              <SortableHeader
-                col="description"
-                label="Description"
-                sort={sort}
-                onToggle={toggleSort}
-                compact
-              />
-              {showActions && (
-                <th scope="col" className="px-3 py-2.5 text-right text-[11px] font-semibold uppercase tracking-wider text-gray-500">
-                  Actions
-                </th>
-              )}
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-100">
-            {sorted.length === 0 ? (
-              <tr>
-                <td
-                  colSpan={6 + (showActions ? 1 : 0) + (showDonationColumns ? 2 : 0)}
-                  className="px-4 py-12 text-center text-sm text-gray-400"
-                >
-                  {query ? `No matches for "${query}"` : emptyLabel}
-                </td>
-              </tr>
-            ) : (
-              sorted.map((t) => {
-                const meta = TYPE_META[t.transaction_type] ?? TYPE_META.other
-                return (
-                  <tr key={t.id} className="transition-colors hover:bg-gray-50">
-                    <td className="w-[40px] py-2 pl-3 pr-0">
-                      <span
-                        className={
-                          'grid h-7 w-7 place-items-center rounded-full text-sm ' + meta.bg
-                        }
-                        aria-hidden="true"
-                      >
-                        {meta.emoji}
-                      </span>
-                    </td>
-                    <td className="whitespace-nowrap px-3 py-1.5 text-gray-600">
-                      {new Date(t.transaction_date).toLocaleDateString('en-IN', {
-                        day: '2-digit', month: 'short', year: 'numeric',
-                      })}
-                    </td>
-                    <td className="px-3 py-1.5 align-middle">
-                      <div className="text-sm font-medium text-gray-900">
-                        {t.member_name ?? <span className="text-gray-400">—</span>}
-                      </div>
-                      {showType && (
-                        <div className="text-xs text-gray-500">{typeLabel(t)}</div>
-                      )}
-                    </td>
-                    {showDonationColumns && (
-                      <>
-                        <td className="px-3 py-1.5 align-middle text-sm text-gray-700">
-                          {t.beneficiary_name || <span className="text-gray-300">—</span>}
-                        </td>
-                        <td className="px-3 py-1.5 align-middle text-sm">
-                          {t.poll ? (
-                            <PollModal
-                              pollId={t.poll.id}
-                              pollQuestion={t.poll.question}
-                              variant="icon"
-                            />
-                          ) : (
-                            <span className="text-gray-300">—</span>
-                          )}
-                        </td>
-                      </>
-                    )}
-                    <td className="whitespace-nowrap px-3 py-1.5 text-right font-semibold tabular-nums text-gray-900">
-                      {formatRupees(t.amount)}
-                    </td>
-                    <td className="whitespace-nowrap px-3 py-1.5 font-mono text-xs text-gray-500">
-                      <div>{t.transaction_id}</div>
-                      {t.bank_transaction_id && (
-                        <div className="text-[11px] text-gray-400" title="Bank reference">
-                          {t.bank_transaction_id}
-                        </div>
-                      )}
-                    </td>
-                    <td className="max-w-[280px] truncate px-3 py-1.5 text-gray-600">
-                      {t.description || <span className="text-gray-300">—</span>}
-                    </td>
-                    {showActions && (
-                      <td className="whitespace-nowrap px-3 py-1.5 text-right">
-                        {t.manage_href ? (
-                          <a
-                            href={t.manage_href}
-                            className="text-xs font-medium text-blue-600 hover:underline"
-                          >
-                            Manage →
-                          </a>
-                        ) : (
-                          <span className="text-xs text-gray-300">—</span>
-                        )}
-                      </td>
-                    )}
-                  </tr>
-                )
-              })
-            )}
-          </tbody>
-        </table>
-      </div>
-
-      {sorted.length > 0 && (
+      {visible.length > 0 && (
         <div className="flex items-center justify-between border-t border-gray-200 bg-gray-50/30 px-5 py-3 text-xs text-gray-500">
           <span>
-            Showing <span className="font-medium text-gray-900">{sorted.length}</span>{' '}
-            {sorted.length === 1 ? 'transaction' : 'transactions'}
-            {query && rows.length !== sorted.length && (
-              <span className="text-gray-400"> · filtered from {rows.length}</span>
+            Showing <span className="font-medium text-gray-900">{visible.length}</span>{' '}
+            {visible.length === 1 ? 'transaction' : 'transactions'}
+            {augmented.length !== visible.length && (
+              <span className="text-gray-400"> · filtered from {augmented.length}</span>
             )}
           </span>
           <span className="font-medium text-gray-400">
             Total{' '}
-            <span className="ml-1 tabular-nums text-gray-900">
-              {formatRupees(sorted.reduce((s, r) => s + Number(r.amount || 0), 0))}
-            </span>
+            <span className="ml-1 tabular-nums text-gray-900">{formatRupees(total)}</span>
           </span>
         </div>
       )}

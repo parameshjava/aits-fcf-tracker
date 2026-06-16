@@ -4,13 +4,7 @@ import { useEffect, useMemo, useState, useSyncExternalStore } from 'react'
 import Image from 'next/image'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-  SheetDescription,
-} from '@/components/ui/sheet'
+import { PrDrawer } from '@/components/ui/pr/sidebar-drawer'
 import { EmiCalculatorIcon } from '@/components/icons/emi-calculator-icon'
 
 type NavItem = {
@@ -473,27 +467,25 @@ export function Sidebar({ user }: { user: SidebarUser }) {
         />
       </div>
 
-      {/* Mobile drawer — shadcn Sheet provides focus trap, escape-to-close,
-          inert-content-behind, and the slide-in animation for free. */}
-      <Sheet open={drawerOpen} onOpenChange={setDrawerOpen}>
-        <SheetContent
-          side="left"
-          className="w-72 max-w-[85vw] border-0 bg-transparent p-0 shadow-none lg:hidden"
-        >
-          <SheetHeader className="sr-only">
-            <SheetTitle>Navigation</SheetTitle>
-            <SheetDescription>Site navigation</SheetDescription>
-          </SheetHeader>
-          <SidebarBody
-            collapsed={false}
-            setCollapsed={() => undefined}
-            closeDrawer={() => setDrawerOpen(false)}
-            pathname={pathname}
-            groups={groups}
-            isMobile={true}
-          />
-        </SheetContent>
-      </Sheet>
+      {/* Mobile drawer — PrimeReact Sidebar provides focus trap, escape-to-close,
+          scrim-dismiss, scroll-lock, and the slide-in animation for free. Hidden
+          on lg+ where the persistent sidebar above takes over. */}
+      <PrDrawer
+        visible={drawerOpen}
+        onHide={() => setDrawerOpen(false)}
+        position="left"
+        className="lg:hidden"
+        maskClassName="lg:hidden"
+      >
+        <SidebarBody
+          collapsed={false}
+          setCollapsed={() => undefined}
+          closeDrawer={() => setDrawerOpen(false)}
+          pathname={pathname}
+          groups={groups}
+          isMobile={true}
+        />
+      </PrDrawer>
     </>
   )
 }

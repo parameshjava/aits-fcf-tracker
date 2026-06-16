@@ -3,7 +3,12 @@
 import { useActionState, useState } from 'react'
 import { closeLoan, reopenLoan } from '@/lib/actions/loans'
 import { formatRupees, todayISO } from '@/lib/format'
-import { AmountInput } from '@/components/amount-input'
+import { numberToIndianWords } from '@/lib/number-to-words'
+import { PrDropdown, type SelectOption } from '@/components/ui/pr/dropdown'
+import { PrAmountInput } from '@/components/ui/pr/amount-input'
+import { PrDatePicker } from '@/components/ui/pr/date-picker'
+import { Field } from '@/components/ui/pr/field'
+import { Button } from '@/components/ui/pr/button'
 
 type Props = {
   loanId: string
@@ -13,6 +18,11 @@ type Props = {
   /** Current pending interest as computed server-side. */
   pendingInterest: number
 }
+
+const STATUS_OPTIONS: SelectOption[] = [
+  { value: 'paid', label: 'Paid' },
+  { value: 'write_off', label: 'Write off / waive' },
+]
 
 export function CloseLoanForm({
   loanId,
@@ -27,6 +37,9 @@ export function CloseLoanForm({
   const [finalStatus, setFinalStatus] = useState<'paid' | 'write_off'>(
     hasDues ? 'write_off' : 'paid',
   )
+  const [badDebt, setBadDebt] = useState<number | null>(pendingPrincipal)
+  const [interestWaived, setInterestWaived] = useState<number | null>(pendingInterest)
+  const [endDate, setEndDate] = useState<string>(todayISO())
 
   const [state, action, pending] = useActionState(
     async (_prev: unknown, formData: FormData) => closeLoan(formData),
@@ -50,13 +63,9 @@ export function CloseLoanForm({
             .
           </p>
           <form action={reopenAction}>
-            <button
-              type="submit"
-              disabled={reopening}
-              className="rounded-md border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-50"
-            >
+            <Button type="submit" variant="outline" size="sm" disabled={reopening}>
               {reopening ? 'Reopening…' : 'Reopen loan'}
-            </button>
+            </Button>
           </form>
         </div>
         {reopenState?.ok && reopenState.message && <p className="mt-2 text-xs text-green-600">{reopenState.message}</p>}
@@ -71,16 +80,12 @@ export function CloseLoanForm({
         <div className="flex items-center justify-between">
           <p className="text-sm text-gray-600">
             {hasDues
-              ? `This loan still has ₹${pendingPrincipal.toFixed(0)} principal and ₹${pendingInterest.toFixed(0)} interest pending — a Paid close is blocked. Use Write off to waive the dues.`
+              ? `This loan still has ${formatRupees(pendingPrincipal)} principal and ${formatRupees(pendingInterest)} interest pending — a Paid close is blocked. Use Write off to waive the dues.`
               : 'No dues outstanding. Closing as Paid records the end date.'}
           </p>
-          <button
-            type="button"
-            onClick={() => setOpen(true)}
-            className="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700"
-          >
+          <Button type="button" onClick={() => setOpen(true)}>
             Close loan
-          </button>
+          </Button>
         </div>
       </div>
     )
@@ -121,79 +126,69 @@ export function CloseLoanForm({
       </div>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <div>
-          <label htmlFor="status" className="block text-xs font-medium text-gray-700">
-            Final status
-          </label>
-          <select
+        <Field
+          label="Final status"
+          htmlFor="status"
+          hint={
+            hasDues
+              ? 'Paid is blocked while dues remain — use Write off / waive.'
+              : undefined
+          }
+        >
+          <PrDropdown
             id="status"
             name="status"
+            options={STATUS_OPTIONS}
             value={finalStatus}
-            onChange={(e) => setFinalStatus(e.target.value as 'paid' | 'write_off')}
-            className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-          >
-            <option value="paid" disabled={hasDues}>
-              Paid {hasDues ? '— blocked, dues pending' : ''}
-            </option>
-            <option value="write_off">Write off / waive</option>
-          </select>
-        </div>
+            onChange={(v) => setFinalStatus((v as 'paid' | 'write_off') || 'paid')}
+            filter={false}
+          />
+        </Field>
 
-        <div>
-          <label htmlFor="end_date" className="block text-xs font-medium text-gray-700">
-            End date
-          </label>
-          <input
+        <Field label="End date" htmlFor="end_date" required>
+          <PrDatePicker
             id="end_date"
             name="end_date"
-            type="date"
             required
-            defaultValue={today}
+            value={endDate}
             max={today}
-            className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            onChange={setEndDate}
+            placeholder="dd/mm/yyyy"
           />
-        </div>
+        </Field>
 
         {finalStatus === 'write_off' && (
           <>
-            <div>
-              <label htmlFor="bad_debt" className="block text-xs font-medium text-gray-700">
-                Principal write-off
-              </label>
-              <AmountInput
+            <Field
+              label="Principal write-off"
+              htmlFor="bad_debt"
+              hint={
+                numberToIndianWords(badDebt) ||
+                `Cannot exceed pending principal (${formatRupees(pendingPrincipal)}).`
+              }
+            >
+              <PrAmountInput
                 id="bad_debt"
                 name="bad_debt"
-                step="0.01"
-                min="0"
-                max={pendingPrincipal}
-                key={`bad_debt-${pendingPrincipal}`}
-                defaultValue={pendingPrincipal}
-                className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                wordsClassName="mt-1 min-h-[1.1rem] text-[11px] italic text-gray-500"
+                value={badDebt}
+                onChange={setBadDebt}
               />
-              <p className="mt-1 text-[11px] text-gray-400">
-                Cannot exceed pending principal ({formatRupees(pendingPrincipal)}).
-              </p>
-            </div>
-            <div>
-              <label htmlFor="interest_waived" className="block text-xs font-medium text-gray-700">
-                Interest waived
-              </label>
-              <AmountInput
+            </Field>
+            <Field
+              label="Interest waived"
+              htmlFor="interest_waived"
+              hint={
+                numberToIndianWords(interestWaived) ||
+                `Cannot exceed pending interest (${formatRupees(pendingInterest)}).`
+              }
+            >
+              <PrAmountInput
                 id="interest_waived"
                 name="interest_waived"
-                step="0.01"
-                min="0"
-                max={pendingInterest}
-                key={`interest_waived-${pendingInterest}`}
-                defaultValue={pendingInterest}
-                className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                wordsClassName="mt-1 min-h-[1.1rem] text-[11px] italic text-gray-500"
+                value={interestWaived}
+                onChange={setInterestWaived}
               />
-              <p className="mt-1 text-[11px] text-gray-400">
-                Cannot exceed pending interest ({formatRupees(pendingInterest)}).
-              </p>
-            </div>
+            </Field>
           </>
         )}
       </div>
@@ -216,13 +211,9 @@ export function CloseLoanForm({
       {state?.ok && state.message && <p className="text-sm text-green-600">{state.message}</p>}
 
       <div className="flex justify-end">
-        <button
-          type="submit"
-          disabled={pending || paidBlocked}
-          className="rounded-md bg-blue-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
-        >
+        <Button type="submit" disabled={pending || paidBlocked}>
           {pending ? 'Closing…' : 'Confirm close'}
-        </button>
+        </Button>
       </div>
     </form>
   )

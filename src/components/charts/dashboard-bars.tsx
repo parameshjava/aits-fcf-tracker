@@ -1,44 +1,30 @@
 'use client'
 
-import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  Cell,
-  ComposedChart,
-  LabelList,
-  Line,
-  Pie,
-  PieChart,
-  XAxis,
-  YAxis,
-} from 'recharts'
+// Chart.js + datalabels are registered as a module side-effect here; importing
+// it runs that registration before any <Chart> mounts.
+import '@/lib/chartjs-setup'
+
+import { Chart } from 'primereact/chart'
+import type {
+  ChartData,
+  ChartOptions,
+  TooltipItem,
+  ChartEvent,
+  ActiveElement,
+} from 'chart.js'
+import type { Context as DataLabelsContext } from 'chartjs-plugin-datalabels'
 import { useRouter, useSearchParams, usePathname } from 'next/navigation'
-import { formatRupees, formatRupeesCompact } from '@/lib/format'
+import { fullRupee, compactRupee, BAR_SIZING, BAR_TOP_RADIUS } from '@/lib/chartjs-setup'
 import { DASHBOARD_BAR_COLORS, type SectionKey } from '@/lib/transaction-groups'
 import type { DashboardMonth, MemberTotal } from '@/lib/aggregate'
-import {
-  ChartContainer,
-  ChartLegend,
-  ChartLegendContent,
-  ChartTooltip,
-  ChartTooltipContent,
-  type ChartConfig,
-} from '@/components/ui/chart'
 
 type SeriesKey = 'contributions' | 'loanInterest' | 'bankInterest'
 
 const SERIES: { key: SeriesKey; label: string; color: string }[] = [
-  { key: 'contributions', label: 'Contributions',  color: DASHBOARD_BAR_COLORS.contributions },
-  { key: 'loanInterest',  label: 'Loan interest',  color: DASHBOARD_BAR_COLORS.loanInterest },
-  { key: 'bankInterest',  label: 'Bank interest',  color: DASHBOARD_BAR_COLORS.bankInterest },
+  { key: 'contributions', label: 'Contributions', color: DASHBOARD_BAR_COLORS.contributions },
+  { key: 'loanInterest', label: 'Loan interest', color: DASHBOARD_BAR_COLORS.loanInterest },
+  { key: 'bankInterest', label: 'Bank interest', color: DASHBOARD_BAR_COLORS.bankInterest },
 ]
-
-const STACKED_BARS_CONFIG = {
-  contributions: { label: 'Contributions', color: DASHBOARD_BAR_COLORS.contributions },
-  loanInterest:  { label: 'Loan interest', color: DASHBOARD_BAR_COLORS.loanInterest },
-  bankInterest:  { label: 'Bank interest', color: DASHBOARD_BAR_COLORS.bankInterest },
-} satisfies ChartConfig
 
 function pad2(n: number) {
   return n < 10 ? '0' + n : '' + n
@@ -66,86 +52,82 @@ export function DashboardBars({
   }
 
   // Precomputed stack total for the top-of-bar label.
-  const shaped = data.map((d) => ({
-    ...d,
-    total: (d.contributions ?? 0) + (d.loanInterest ?? 0) + (d.bankInterest ?? 0),
-  }))
+  const totals = data.map(
+    (d) => (d.contributions ?? 0) + (d.loanInterest ?? 0) + (d.bankInterest ?? 0),
+  )
 
-  // The total label must sit at the very top of the stack. A LabelList only
-  // emits a label for a segment that actually renders, so attaching it to a
-  // fixed series (e.g. the top `bankInterest` bar) drops the label for any
-  // month where that series is zero (e.g. a month with no bank interest).
-  // Instead, attach a label to EVERY series and let each one emit the total
-  // only when it is the topmost non-zero segment for that month — that
-  // segment's top is, by definition, the top of the whole stack.
-  function topNonZeroSeries(d: (typeof shaped)[number]): SeriesKey | null {
+  // The total label must sit at the very top of the stack. A datalabel only
+  // wants to be emitted by the topmost non-zero segment per month — that
+  // segment's top is, by definition, the top of the whole stack. For each
+  // month index we pick which series should carry the label (bankInterest if
+  // >0, else loanInterest if >0, else contributions if >0, else none).
+  function topNonZeroSeries(d: DashboardMonth): SeriesKey | null {
     if ((d.bankInterest ?? 0) > 0) return 'bankInterest'
     if ((d.loanInterest ?? 0) > 0) return 'loanInterest'
     if ((d.contributions ?? 0) > 0) return 'contributions'
     return null
   }
+  const labelCarrier: (SeriesKey | null)[] = data.map((d) => topNonZeroSeries(d))
+
+  const chartData: ChartData<'bar'> = {
+    labels: data.map((d) => d.month),
+    datasets: SERIES.map((s) => ({
+      label: s.label,
+      data: data.map((d) => d[s.key] ?? 0),
+      backgroundColor: s.color,
+      stack: 'inflow',
+      borderRadius: s.key === 'bankInterest' ? BAR_TOP_RADIUS : 0,
+      ...BAR_SIZING,
+    })),
+  }
+
+  const options: ChartOptions<'bar'> = {
+    responsive: true,
+    maintainAspectRatio: false,
+    onClick: (_event: ChartEvent, elements: ActiveElement[]) => {
+      const el = elements[0]
+      if (!el) return
+      const series = SERIES[el.datasetIndex]?.key
+      const monthIndex = data[el.index]?.monthIndex
+      if (series) pick(monthIndex, series)
+    },
+    scales: {
+      x: { stacked: true, grid: { display: false }, ticks: { font: { size: 12 } } },
+      y: {
+        stacked: true,
+        grid: { display: true },
+        ticks: {
+          font: { size: 12 },
+          callback: (value) => compactRupee(Number(value)),
+        },
+      },
+    },
+    plugins: {
+      legend: { display: true, position: 'top' },
+      tooltip: {
+        callbacks: {
+          label: (item: TooltipItem<'bar'>) =>
+            `${item.dataset.label}: ${fullRupee(Number(item.raw ?? 0))}`,
+        },
+      },
+      datalabels: {
+        display: (ctx: DataLabelsContext) => {
+          const series = SERIES[ctx.datasetIndex]?.key
+          return labelCarrier[ctx.dataIndex] === series && totals[ctx.dataIndex] > 0
+        },
+        anchor: 'end',
+        align: 'top',
+        font: { size: 10 },
+        formatter: (_v: number, ctx: DataLabelsContext) =>
+          compactRupee(totals[ctx.dataIndex]),
+      },
+    },
+  }
 
   return (
-    // ChartContainer wraps Recharts' ResponsiveContainer and:
-    //   • injects the per-series CSS variables (`--color-contributions`, …)
-    //     from STACKED_BARS_CONFIG so themes apply via CSS, not hard-coded
-    //     hex props on individual <Bar fill>.
-    //   • normalises Recharts' default sub-element styling against the
-    //     shadcn token palette — fewer raw stroke="#e5e7eb" overrides here.
-    <ChartContainer config={STACKED_BARS_CONFIG} className="aspect-auto h-80 w-full">
-      <BarChart data={shaped} margin={{ top: 24, right: 12, left: 0, bottom: 4 }}>
-        <CartesianGrid strokeDasharray="3 3" vertical={false} />
-        <XAxis dataKey="month" tickLine={false} axisLine={false} fontSize={12} />
-        <YAxis
-          tickLine={false}
-          axisLine={false}
-          fontSize={12}
-          tickFormatter={(v: number) => formatRupeesCompact(v)}
-          width={70}
-        />
-        <ChartTooltip
-          cursor={{ className: 'fill-muted' }}
-          content={
-            <ChartTooltipContent
-              valueFormatter={(v) => formatRupees(Number(v ?? 0))}
-              indicator="dot"
-            />
-          }
-        />
-        <ChartLegend content={<ChartLegendContent />} />
-        {SERIES.map((s, i) => {
-          const isTop = i === SERIES.length - 1
-          return (
-            <Bar
-              key={s.key}
-              dataKey={s.key}
-              name={s.label}
-              fill={`var(--color-${s.key})`}
-              stackId="inflow"
-              radius={isTop ? [4, 4, 0, 0] : [0, 0, 0, 0]}
-              cursor="pointer"
-              activeBar={false}
-              onClick={(d: { payload?: DashboardMonth }) =>
-                pick(d?.payload?.monthIndex, s.key)
-              }
-            >
-              <LabelList
-                position="top"
-                offset={6}
-                className="fill-foreground"
-                fontSize={10}
-                valueAccessor={(entry) => {
-                  const row = (entry as { payload?: (typeof shaped)[number] })
-                    ?.payload
-                  if (!row || topNonZeroSeries(row) !== s.key) return ''
-                  return row.total > 0 ? formatRupeesCompact(row.total) : ''
-                }}
-              />
-            </Bar>
-          )
-        })}
-      </BarChart>
-    </ChartContainer>
+    <div className="h-80 w-full">
+      <Chart type="bar" data={chartData} options={options} className="h-full w-full" />
+    </div>
   )
 }
 
@@ -187,83 +169,83 @@ function familyName(name: string): string {
   return first.replace(/\.+$/, '').replace(/^\.+/, '')
 }
 
-const MEMBER_BARS_CONFIG = {
-  total: { label: 'Contributions', color: DASHBOARD_BAR_COLORS.contributions },
-} satisfies ChartConfig
-
 export function MemberContributionBars({ data }: { data: MemberTotal[] }) {
   // Compact label for the axis tick — see memberShortLabel docstring.
   // The tooltip still shows the full canonical name from `member`.
   // When two members share the same short label (e.g. "Sunil" for both
   // "Meda Sunil Kumar Reddy" and "Pulipati Sunil Kumar"), append the
-  // family name. Without this, Recharts collapses the duplicate
-  // categorical x-axis keys into a single slot — one bar renders invisibly.
+  // family name so the two categorical x-axis keys stay distinct.
   const baseLabels = data.map((d) => memberShortLabel(d.member))
   const labelCounts = baseLabels.reduce<Map<string, number>>((acc, l) => {
     acc.set(l, (acc.get(l) ?? 0) + 1)
     return acc
   }, new Map())
-  const shaped = data.map((d, i) => {
+  const labels = data.map((d, i) => {
     const base = baseLabels[i]
     const family = familyName(d.member)
-    const label =
-      (labelCounts.get(base) ?? 0) > 1 && family && family !== base
-        ? `${base} ${family}`
-        : base
-    return { ...d, label }
+    return (labelCounts.get(base) ?? 0) > 1 && family && family !== base
+      ? `${base} ${family}`
+      : base
   })
 
+  const chartData: ChartData<'bar'> = {
+    labels,
+    datasets: [
+      {
+        label: 'Contributions',
+        data: data.map((d) => d.total ?? 0),
+        backgroundColor: DASHBOARD_BAR_COLORS.contributions,
+        borderRadius: BAR_TOP_RADIUS,
+        ...BAR_SIZING,
+      },
+    ],
+  }
+
+  const options: ChartOptions<'bar'> = {
+    responsive: true,
+    maintainAspectRatio: false,
+    scales: {
+      x: {
+        grid: { display: false },
+        ticks: {
+          maxRotation: 35,
+          minRotation: 35,
+          autoSkip: false,
+          font: { size: 11 },
+        },
+      },
+      y: {
+        grid: { display: true },
+        ticks: {
+          font: { size: 12 },
+          callback: (value) => compactRupee(Number(value)),
+        },
+      },
+    },
+    plugins: {
+      legend: { display: false },
+      tooltip: {
+        callbacks: {
+          title: (items: TooltipItem<'bar'>[]) =>
+            data[items[0]?.dataIndex ?? 0]?.member ?? '',
+          label: (item: TooltipItem<'bar'>) => fullRupee(Number(item.raw ?? 0)),
+        },
+      },
+      datalabels: {
+        display: (ctx: DataLabelsContext) =>
+          Number((ctx.dataset.data as number[])[ctx.dataIndex] ?? 0) > 0,
+        anchor: 'end',
+        align: 'top',
+        font: { size: 10 },
+        formatter: (v: number) => compactRupee(Number(v ?? 0)),
+      },
+    },
+  }
+
   return (
-    <ChartContainer config={MEMBER_BARS_CONFIG} className="aspect-auto h-80 w-full">
-      <BarChart data={shaped} margin={{ top: 24, right: 12, left: 0, bottom: 56 }}>
-        <CartesianGrid strokeDasharray="3 3" vertical={false} />
-        <XAxis
-          dataKey="label"
-          tickLine={false}
-          axisLine={false}
-          fontSize={11}
-          interval={0}
-          angle={-35}
-          textAnchor="end"
-          height={60}
-        />
-        <YAxis
-          tickLine={false}
-          axisLine={false}
-          fontSize={12}
-          tickFormatter={(v: number) => formatRupeesCompact(v)}
-          width={70}
-        />
-        <ChartTooltip
-          cursor={{ className: 'fill-muted' }}
-          content={
-            <ChartTooltipContent
-              labelFormatter={(_label, payload) =>
-                (payload?.[0]?.payload as MemberTotal | undefined)?.member ?? ''
-              }
-              formatter={(v) => formatRupees(Number(v ?? 0))}
-              indicator="dot"
-            />
-          }
-        />
-        <Bar
-          dataKey="total"
-          name="Contributions"
-          fill="var(--color-total)"
-          radius={[4, 4, 0, 0]}
-          activeBar={false}
-        >
-          <LabelList
-            dataKey="total"
-            position="top"
-            offset={6}
-            className="fill-foreground"
-            fontSize={10}
-            formatter={(v) => formatRupeesCompact(Number(v ?? 0))}
-          />
-        </Bar>
-      </BarChart>
-    </ChartContainer>
+    <div className="h-80 w-full">
+      <Chart type="bar" data={chartData} options={options} className="h-full w-full" />
+    </div>
   )
 }
 
@@ -284,46 +266,41 @@ export function DashboardPie({ data }: { data: DashboardPieSlice[] }) {
     )
   }
 
-  // Build a config from the slice list so each slice gets a CSS variable
-  // (`--color-<name>`) and the tooltip / legend can pull human labels.
-  const config = Object.fromEntries(
-    data.map((d) => [d.name, { label: d.name, color: d.color }]),
-  ) satisfies ChartConfig
+  const chartData: ChartData<'doughnut'> = {
+    labels: data.map((d) => d.name),
+    datasets: [
+      {
+        data: data.map((d) => d.value),
+        backgroundColor: data.map((d) => d.color),
+        borderColor: 'white',
+        borderWidth: 2,
+      },
+    ],
+  }
+
+  const options: ChartOptions<'doughnut'> = {
+    responsive: true,
+    maintainAspectRatio: false,
+    cutout: '56%',
+    plugins: {
+      legend: { display: true, position: 'bottom' },
+      tooltip: {
+        callbacks: {
+          label: (item: TooltipItem<'doughnut'>) => {
+            const n = Number(item.raw ?? 0)
+            const pct = total > 0 ? (n / total) * 100 : 0
+            return `${fullRupee(n)} (${pct.toFixed(1)}%)`
+          },
+        },
+      },
+      datalabels: { display: false },
+    },
+  }
 
   return (
-    <ChartContainer config={config} className="aspect-auto h-80 w-full">
-      <PieChart>
-        <Pie
-          data={data}
-          dataKey="value"
-          nameKey="name"
-          cx="50%"
-          cy="50%"
-          outerRadius={110}
-          innerRadius={62}
-          paddingAngle={2}
-          stroke="#fff"
-          strokeWidth={2}
-        >
-          {data.map((d) => (
-            <Cell key={d.name} fill={d.color} />
-          ))}
-        </Pie>
-        <ChartTooltip
-          content={
-            <ChartTooltipContent
-              formatter={(v) => {
-                const n = Number(v ?? 0)
-                const pct = total > 0 ? (n / total) * 100 : 0
-                return `${formatRupees(n)} (${pct.toFixed(1)}%)`
-              }}
-              indicator="dot"
-            />
-          }
-        />
-        <ChartLegend content={<ChartLegendContent />} />
-      </PieChart>
-    </ChartContainer>
+    <div className="h-80 w-full">
+      <Chart type="doughnut" data={chartData} options={options} className="h-full w-full" />
+    </div>
   )
 }
 
@@ -347,106 +324,110 @@ export function SectionBars({
         ? DASHBOARD_BAR_COLORS.loanInterest
         : DASHBOARD_BAR_COLORS.bankInterest
 
-  const hasCeiling  = data.some((d) => d.ceiling != null)
+  const hasCeiling = data.some((d) => d.ceiling != null)
   const hasWriteOff = data.some((d) => (d.writeOff ?? 0) > 0)
 
-  // Precomputed stack total for the top-of-bar label (donations + write-offs
-  // when the section stacks them; otherwise just `value`).
-  const shaped = data.map((d) => ({
-    ...d,
-    total: (d.value ?? 0) + (d.writeOff ?? 0),
-  }))
+  // Stack total for the top-of-bar label (value + writeOff).
+  const totals = data.map((d) => (d.value ?? 0) + (d.writeOff ?? 0))
 
-  const config = {
-    value:    { label: hasCeiling ? 'Donated' : 'Total', color },
-    writeOff: { label: 'Written off',         color: '#9333ea' }, // purple — distinct from the donation tone
-    ceiling:  { label: 'Eligibility ceiling', color: '#dc2626' },
-  } satisfies ChartConfig
+  // A datalabels block that emits the stack total only on the topmost bar:
+  // the writeOff bar when present (it sits on top), otherwise the value bar.
+  // Hidden when the total is 0.
+  const totalLabel = {
+    display: (ctx: DataLabelsContext) => totals[ctx.dataIndex] > 0,
+    anchor: 'end' as const,
+    align: 'top' as const,
+    font: { size: 10 },
+    formatter: (_v: number, ctx: DataLabelsContext) => compactRupee(totals[ctx.dataIndex]),
+  }
+
+  // Chart.js renders a mixed bar/line chart from a base type of 'bar'; the
+  // line dataset carries its own `type: 'line'`. We type the data as the
+  // looser `'bar' | 'line'` union so the line dataset typechecks.
+  const datasets: ChartData<'bar' | 'line'>['datasets'] = []
+
+  // The ceiling line is pushed FIRST but given a lower `order` so Chart.js
+  // draws it ON TOP of the bars (lower order = drawn last/on top).
+  if (hasCeiling) {
+    datasets.push({
+      type: 'line',
+      label: 'Eligibility ceiling',
+      data: data.map((d) => d.ceiling ?? null),
+      borderColor: '#dc2626',
+      borderDash: [6, 4],
+      borderWidth: 2,
+      pointRadius: 3,
+      pointBackgroundColor: '#dc2626',
+      order: 0,
+      datalabels: { display: false },
+    })
+  }
+
+  datasets.push({
+    type: 'bar',
+    label: hasCeiling ? 'Donated' : 'Total',
+    data: data.map((d) => d.value ?? 0),
+    backgroundColor: color,
+    stack: hasWriteOff ? 'outflow' : undefined,
+    borderRadius: hasWriteOff ? 0 : BAR_TOP_RADIUS,
+    order: 1,
+    ...BAR_SIZING,
+    // Label on the value bar only when there is no writeOff bar above it.
+    datalabels: hasWriteOff ? { display: false } : totalLabel,
+  })
+
+  if (hasWriteOff) {
+    datasets.push({
+      type: 'bar',
+      label: 'Written off',
+      data: data.map((d) => d.writeOff ?? 0),
+      backgroundColor: '#9333ea',
+      stack: 'outflow',
+      borderRadius: BAR_TOP_RADIUS,
+      order: 1,
+      ...BAR_SIZING,
+      // The writeOff bar is the top of the stack → carries the total label.
+      datalabels: totalLabel,
+    })
+  }
+
+  const chartData: ChartData<'bar' | 'line'> = {
+    labels: data.map((d) => d.month),
+    datasets,
+  }
+
+  const options: ChartOptions<'bar' | 'line'> = {
+    responsive: true,
+    maintainAspectRatio: false,
+    scales: {
+      x: { stacked: true, grid: { display: false }, ticks: { font: { size: 11 } } },
+      y: {
+        stacked: true,
+        grid: { display: true },
+        ticks: {
+          font: { size: 11 },
+          callback: (value) => compactRupee(Number(value)),
+        },
+      },
+    },
+    plugins: {
+      legend: { display: hasCeiling || hasWriteOff },
+      tooltip: {
+        callbacks: {
+          label: (item: TooltipItem<'bar' | 'line'>) =>
+            `${item.dataset.label}: ${fullRupee(Number(item.raw ?? 0))}`,
+        },
+      },
+    },
+  }
 
   return (
-    <ChartContainer config={config} className="aspect-auto h-64 w-full">
-      <ComposedChart data={shaped} margin={{ top: 24, right: 8, left: 0, bottom: 4 }}>
-        <CartesianGrid strokeDasharray="3 3" vertical={false} />
-        <XAxis dataKey="month" tickLine={false} axisLine={false} fontSize={11} />
-        <YAxis
-          tickLine={false}
-          axisLine={false}
-          fontSize={11}
-          tickFormatter={(v: number) => formatRupeesCompact(v)}
-          width={60}
-        />
-        <ChartTooltip
-          cursor={{ className: 'fill-muted' }}
-          content={
-            <ChartTooltipContent
-              valueFormatter={(v) => formatRupees(Number(v ?? 0))}
-              indicator="dot"
-            />
-          }
-        />
-        {(hasCeiling || hasWriteOff) && <ChartLegend content={<ChartLegendContent />} />}
-        {/* Render the ceiling line BEFORE the bars so bars paint on top
-            and aren't sliced by the dashed line where they overlap. The
-            line also keeps a mild opacity so it reads as a guide rather
-            than a hard divider when it crosses a tall bar. */}
-        {hasCeiling && (
-          <Line
-            type="monotone"
-            dataKey="ceiling"
-            name="Eligibility ceiling"
-            stroke="var(--color-ceiling)"
-            strokeOpacity={0.65}
-            strokeWidth={2}
-            strokeDasharray="6 4"
-            dot={{ r: 3, fill: 'var(--color-ceiling)', strokeWidth: 0, fillOpacity: 0.65 }}
-            activeDot={{ r: 4 }}
-          />
-        )}
-        <Bar
-          dataKey="value"
-          name={hasCeiling ? 'Donated' : undefined}
-          fill="var(--color-value)"
-          stackId={hasWriteOff ? 'outflow' : undefined}
-          radius={hasWriteOff ? [0, 0, 0, 0] : [4, 4, 0, 0]}
-          activeBar={false}
-        >
-          {!hasWriteOff && (
-            <LabelList
-              dataKey="total"
-              position="top"
-              offset={6}
-              className="fill-foreground"
-              fontSize={10}
-              formatter={(v) => {
-                const n = Number(v ?? 0)
-                return n > 0 ? formatRupeesCompact(n) : ''
-              }}
-            />
-          )}
-        </Bar>
-        {hasWriteOff && (
-          <Bar
-            dataKey="writeOff"
-            name="Written off"
-            fill="var(--color-writeOff)"
-            stackId="outflow"
-            radius={[4, 4, 0, 0]}
-            activeBar={false}
-          >
-            <LabelList
-              dataKey="total"
-              position="top"
-              offset={6}
-              className="fill-foreground"
-              fontSize={10}
-              formatter={(v) => {
-                const n = Number(v ?? 0)
-                return n > 0 ? formatRupeesCompact(n) : ''
-              }}
-            />
-          </Bar>
-        )}
-      </ComposedChart>
-    </ChartContainer>
+    <div className="h-64 w-full">
+      <Chart
+        type="bar"
+        data={chartData as ChartData}
+        options={options as ChartOptions}
+      />
+    </div>
   )
 }

@@ -1,4 +1,8 @@
-import type { SelectOption } from '@/components/searchable-select'
+/** Shape of a poll picker option. `{ id, name }` is the public API of this
+ *  helper — consumers map it to whatever their select control expects (e.g.
+ *  `{ value, label }` for PrDropdown). Decoupled from any specific select
+ *  component so it stays stable. */
+export type PollPickerOption = { id: string; name: string }
 
 const MAX_LABEL_CHARS = 80
 
@@ -15,7 +19,7 @@ type PollPickerInput = {
  *  single line. Shared by loan and donation pickers. */
 export function buildPollPickerOptions(
   polls: PollPickerInput[],
-): SelectOption[] {
+): PollPickerOption[] {
   return polls.map((p) => {
     const status =
       p.status === 'open' && new Date(p.closes_at).getTime() > Date.now()

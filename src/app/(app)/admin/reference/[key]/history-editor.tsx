@@ -7,7 +7,11 @@ import {
   type ReferenceHistoryRow,
 } from '@/lib/actions/reference'
 import { DeleteIconButton } from '@/components/ui/delete-icon-button'
-import { AmountInput } from '@/components/amount-input'
+import { PrAmountInput } from '@/components/ui/pr/amount-input'
+import { PrDatePicker } from '@/components/ui/pr/date-picker'
+import { Field } from '@/components/ui/pr/field'
+import { Button } from '@/components/ui/pr/button'
+import { numberToIndianWords } from '@/lib/number-to-words'
 import {
   formatReferenceValue,
   inputDateToYmdInt,
@@ -34,6 +38,12 @@ export function ReferenceHistoryEditor({
   // For date-typed keys the visible control is a date picker; a hidden `value`
   // field carries the YYYYMMDD integer the server action stores.
   const [dateValue, setDateValue] = useState('')
+  // Money-typed value: controlled so PrAmountInput shows ₹ grouping + words.
+  const [moneyValue, setMoneyValue] = useState<number | null>(null)
+  // Effective window: controlled so the PrDatePicker hidden inputs post the
+  // raw yyyy-mm-dd to the server (which parses both with new Date(...)).
+  const [effectiveFrom, setEffectiveFrom] = useState('')
+  const [effectiveTo, setEffectiveTo] = useState('')
 
   const [state, action, pending] = useActionState(
     async (_prev: unknown, formData: FormData) => addReferenceHistory(formData),
@@ -124,19 +134,19 @@ export function ReferenceHistoryEditor({
         <form action={action} className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-4">
           <input type="hidden" name="key" value={referenceKey} />
 
-          <div>
-            <label htmlFor="value" className="block text-xs font-medium text-gray-700">
-              Value
-            </label>
+          <Field
+            label="Value"
+            htmlFor="value"
+            hint={isMoney ? numberToIndianWords(moneyValue) || undefined : undefined}
+          >
             {isDate ? (
               <>
-                <input
+                <PrDatePicker
                   id="value"
-                  type="date"
                   required
                   value={dateValue}
-                  onChange={(e) => setDateValue(e.target.value)}
-                  className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  onChange={setDateValue}
+                  placeholder="dd/mm/yyyy"
                 />
                 {/* Submitted as a YYYYMMDD integer to match numeric storage. */}
                 <input
@@ -148,31 +158,41 @@ export function ReferenceHistoryEditor({
                   })()}
                 />
               </>
-            ) : (
-              <AmountInput
+            ) : isMoney ? (
+              <PrAmountInput
                 id="value"
                 name="value"
+                required
+                value={moneyValue}
+                onChange={setMoneyValue}
+                placeholder="500000"
+              />
+            ) : (
+              // Percentage / plain number: a bare numeric input (no ₹).
+              <input
+                id="value"
+                name="value"
+                type="number"
                 step="0.01"
                 required
-                showWords={isMoney}
-                showPrefix={isMoney}
-                placeholder={isMoney ? '500000' : '25'}
+                placeholder="25"
                 className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                wordsClassName="mt-1 min-h-[1.1rem] text-[11px] italic text-gray-500"
               />
             )}
-          </div>
+          </Field>
 
           <div>
             <label htmlFor="effective_from" className="block text-xs font-medium text-gray-700">
               Effective from
             </label>
-            <input
+            <PrDatePicker
               id="effective_from"
               name="effective_from"
-              type="date"
               required
-              className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              value={effectiveFrom}
+              onChange={setEffectiveFrom}
+              className="mt-1"
+              placeholder="dd/mm/yyyy"
             />
           </div>
 
@@ -180,11 +200,13 @@ export function ReferenceHistoryEditor({
             <label htmlFor="effective_to" className="block text-xs font-medium text-gray-700">
               Effective to (optional)
             </label>
-            <input
+            <PrDatePicker
               id="effective_to"
               name="effective_to"
-              type="date"
-              className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              value={effectiveTo}
+              onChange={setEffectiveTo}
+              className="mt-1"
+              placeholder="dd/mm/yyyy"
             />
             <p className="mt-1 text-[11px] text-gray-400">Blank = open-ended (currently active).</p>
           </div>
@@ -209,13 +231,9 @@ export function ReferenceHistoryEditor({
             {state?.ok && state.message && (
               <p className="mb-2 text-xs text-emerald-600">{state.message}</p>
             )}
-            <button
-              type="submit"
-              disabled={pending}
-              className="rounded-md bg-blue-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
-            >
+            <Button type="submit" disabled={pending}>
               {pending ? 'Adding…' : 'Add period'}
-            </button>
+            </Button>
           </div>
         </form>
       </section>
