@@ -69,7 +69,7 @@ type PrDataTableProps<T extends Record<string, unknown>> = {
   dataKey: keyof T & string
   /** stack into cards below this breakpoint; falls back to horizontal scroll if omitted */
   responsiveBreakpoint?: string
-  emptyMessage?: string
+  emptyMessage?: ReactNode
   /** Expanded-row template (the panel rendered under an expanded row). */
   rowExpansion?: (row: T) => ReactNode
   /** Controlled expansion state. Pair with `onRowToggle`. */
@@ -185,7 +185,7 @@ export function PrDataTable<T extends Record<string, unknown>>({
       // switch the stack-vs-scroll decision to `scrollable` + breakpoint CSS.
       responsiveLayout="stack"
       breakpoint={responsiveBreakpoint}
-      emptyMessage={emptyMessage}
+      emptyMessage={emptyMessage as never}
       header={toolbar}
       // Filtering -----------------------------------------------------------
       filterDisplay={hasColumnFilters || hasGlobal ? filterDisplay : undefined}
