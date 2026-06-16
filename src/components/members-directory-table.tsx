@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react'
 import { ContactChip, MemberContactsList } from '@/components/member-contacts'
 import { CopyButton } from '@/components/copy-button'
-import { Accordion } from '@/components/ui/accordion'
+import { PrAccordion, PrAccordionTab } from '@/components/ui/pr/accordion'
 import { TableExportMenu } from '@/components/table-export'
 import type { Cell, ExportCriterion } from '@/lib/table-export'
 import { ManageContactsList } from '@/components/manage-contacts-list'
@@ -293,11 +293,11 @@ function MemberSection({
   ]
 
   return (
-    <Accordion
-      title={title}
-      subtitle={`${members.length} ${members.length === 1 ? 'member' : 'members'}`}
-      defaultOpen={defaultOpen}
-    >
+    <PrAccordion defaultActiveIndex={defaultOpen ? [0] : []}>
+      <PrAccordionTab
+        header={title}
+        subtitle={`${members.length} ${members.length === 1 ? 'member' : 'members'}`}
+      >
       <div className="-mx-5 -mb-4">
         <PrDataTable<MemberRowAug>
           value={members}
@@ -339,7 +339,8 @@ function MemberSection({
           )}
         />
       </div>
-    </Accordion>
+      </PrAccordionTab>
+    </PrAccordion>
   )
 }
 

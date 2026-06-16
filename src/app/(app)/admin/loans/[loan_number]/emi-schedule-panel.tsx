@@ -13,7 +13,7 @@ import type { ActionResult } from '@/lib/actions/action-result'
 import { formatRupees, todayISO } from '@/lib/format'
 import { overdueParts, formatDueLabel } from '@/lib/due'
 import { recomputeAfterPrepayment } from '@/lib/emi-math'
-import { Accordion } from '@/components/ui/accordion'
+import { PrAccordion, PrAccordionTab } from '@/components/ui/pr/accordion'
 import { PrDialog } from '@/components/ui/pr/dialog'
 import { PrDatePicker } from '@/components/ui/pr/date-picker'
 
@@ -644,11 +644,11 @@ export function EmiSchedulePanel({
       )}
 
       <div className="mt-4 space-y-3">
-        <Accordion
-          title="Repayment schedule"
-          defaultOpen
-          subtitle={`${schedule.length} installment${schedule.length === 1 ? '' : 's'}`}
-        >
+        <PrAccordion defaultActiveIndex={[0]}>
+          <PrAccordionTab
+            header="Repayment schedule"
+            subtitle={`${schedule.length} installment${schedule.length === 1 ? '' : 's'}`}
+          >
           <div className="overflow-x-auto">
             <table className="w-full table-fixed text-sm">
           <colgroup>
@@ -738,16 +738,22 @@ export function EmiSchedulePanel({
           </tbody>
             </table>
           </div>
-        </Accordion>
+          </PrAccordionTab>
+        </PrAccordion>
 
         {loan.interest_rate_pct != null && schedule.some((r) => UNPAID.has(r.status)) && (
-          <Accordion title="Prepayment estimate" subtitle="Estimate the impact of an advance payment">
-            <PrepaymentWhatIf
-              schedule={schedule}
-              interestRatePct={Number(loan.interest_rate_pct)}
-              emiAmount={Number(loan.emi_amount ?? 0)}
-            />
-          </Accordion>
+          <PrAccordion defaultActiveIndex={[]}>
+            <PrAccordionTab
+              header="Prepayment estimate"
+              subtitle="Estimate the impact of an advance payment"
+            >
+              <PrepaymentWhatIf
+                schedule={schedule}
+                interestRatePct={Number(loan.interest_rate_pct)}
+                emiAmount={Number(loan.emi_amount ?? 0)}
+              />
+            </PrAccordionTab>
+          </PrAccordion>
         )}
       </div>
     </section>
