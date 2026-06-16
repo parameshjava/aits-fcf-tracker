@@ -53,6 +53,36 @@
     height: 1.75rem;
   }
 
+  /* Compact paginator — Lara's page-link buttons and rows-per-page dropdown
+     are ~3rem tall, making the footer pager bar very tall. Shrink the bar
+     padding and every control to match the small table density. */
+  .p-datatable-sm .p-paginator {
+    padding: 0.25rem 0.5rem;
+    font-size: 0.8125rem;
+    gap: 0.125rem;
+  }
+  .p-datatable-sm .p-paginator .p-paginator-first,
+  .p-datatable-sm .p-paginator .p-paginator-prev,
+  .p-datatable-sm .p-paginator .p-paginator-next,
+  .p-datatable-sm .p-paginator .p-paginator-last,
+  .p-datatable-sm .p-paginator .p-paginator-pages .p-paginator-page {
+    min-width: 1.85rem;
+    height: 1.85rem;
+  }
+  .p-datatable-sm .p-paginator .p-dropdown {
+    height: 1.85rem;
+  }
+  .p-datatable-sm .p-paginator .p-dropdown .p-dropdown-label {
+    padding-top: 0;
+    padding-bottom: 0;
+    display: flex;
+    align-items: center;
+  }
+  .p-datatable-sm .p-paginator .p-paginator-current {
+    height: 1.85rem;
+    line-height: 1.85rem;
+  }
+
   /* Calendar (date picker) header: Lara renders the month + year as adjacent
      buttons with no gap, so the title reads "June2026". Add a small gap. */
   .p-datepicker .p-datepicker-title {

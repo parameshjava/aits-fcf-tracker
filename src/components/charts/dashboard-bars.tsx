@@ -95,6 +95,9 @@ export function DashboardBars({
       x: { stacked: true, grid: { display: false }, ticks: { font: { size: 12 } } },
       y: {
         stacked: true,
+        // Headroom above the tallest bar so its top-of-bar total label has room
+        // to sit without colliding with the legend / top gridline.
+        grace: '12%',
         grid: { display: true },
         ticks: {
           font: { size: 12 },
@@ -103,7 +106,11 @@ export function DashboardBars({
       },
     },
     plugins: {
-      legend: { display: true, position: 'top' },
+      // No in-chart legend — the "TOTALS" strip rendered above the chart
+      // already lists every series with its colour, value and percentage, so a
+      // second legend inside the plot is redundant and collided with the
+      // top-of-bar total label on the tallest bar.
+      legend: { display: false },
       tooltip: {
         callbacks: {
           label: (item: TooltipItem<'bar'>) =>
@@ -117,6 +124,8 @@ export function DashboardBars({
         },
         anchor: 'end',
         align: 'top',
+        // Keep the label inside the chart area even for a near-max bar.
+        clamp: true,
         font: { size: 10 },
         formatter: (_v: number, ctx: DataLabelsContext) =>
           compactRupee(totals[ctx.dataIndex]),
@@ -188,22 +197,73 @@ export function MemberContributionBars({ data }: { data: MemberTotal[] }) {
       : base
   })
 
-  const chartData: ChartData<'bar'> = {
-    labels,
-    datasets: [
-      {
-        label: 'Contributions',
-        data: data.map((d) => d.total ?? 0),
-        backgroundColor: DASHBOARD_BAR_COLORS.contributions,
-        borderRadius: BAR_TOP_RADIUS,
-        ...BAR_SIZING,
+  // Mean contribution across all members — drawn as a flat dashed reference
+  // line over the bars (mixed bar/line, same pattern as SectionBars' ceiling).
+  const sum = data.reduce((s, d) => s + (d.total ?? 0), 0)
+  const avg = data.length ? sum / data.length : 0
+
+  const datasets: ChartData<'bar' | 'line'>['datasets'] = [
+    {
+      type: 'bar',
+      label: 'Contributions',
+      data: data.map((d) => d.total ?? 0),
+      backgroundColor: DASHBOARD_BAR_COLORS.contributions,
+      borderRadius: BAR_TOP_RADIUS,
+      order: 1,
+      ...BAR_SIZING,
+      // Per-dataset so the average line below doesn't inherit these labels.
+      datalabels: {
+        display: (ctx: DataLabelsContext) =>
+          Number((ctx.dataset.data as number[])[ctx.dataIndex] ?? 0) > 0,
+        anchor: 'end',
+        align: 'top',
+        clamp: true,
+        font: { size: 10 },
+        formatter: (v: number) => compactRupee(Number(v ?? 0)),
       },
-    ],
+    },
+  ]
+
+  if (avg > 0) {
+    datasets.push({
+      type: 'line',
+      label: 'Average',
+      data: data.map(() => avg),
+      // Muted slate, not alarm-red — it's a quiet reference, not a warning.
+      borderColor: '#94a3b8',
+      borderDash: [6, 5],
+      borderWidth: 1.5,
+      // No markers / hit area — it's a reference line, not a hoverable series.
+      pointRadius: 0,
+      pointHitRadius: 0,
+      order: 0,
+      // Label the line once, at the right end, ABOVE the line (not on it) with
+      // a white pill so the text never blends into the dashes.
+      datalabels: {
+        display: (ctx: DataLabelsContext) => ctx.dataIndex === data.length - 1,
+        anchor: 'end',
+        // 225° = up-and-to-the-left of the line's right end, so the pill floats
+        // just inside the plot above the line without needing wide edge padding.
+        align: 225,
+        offset: 6,
+        clamp: true,
+        color: '#64748b',
+        backgroundColor: 'rgba(255,255,255,0.9)',
+        borderRadius: 4,
+        padding: { top: 2, bottom: 2, left: 5, right: 5 },
+        font: { size: 10, weight: 'bold' },
+        formatter: () => `Avg ${compactRupee(avg)}`,
+      },
+    })
   }
 
-  const options: ChartOptions<'bar'> = {
+  const chartData: ChartData<'bar' | 'line'> = { labels, datasets }
+
+  const options: ChartOptions<'bar' | 'line'> = {
     responsive: true,
     maintainAspectRatio: false,
+    // Small right padding so the "Avg ₹X" pill clears the plot edge.
+    layout: { padding: { right: 10 } },
     scales: {
       x: {
         grid: { display: false },
@@ -215,6 +275,8 @@ export function MemberContributionBars({ data }: { data: MemberTotal[] }) {
         },
       },
       y: {
+        // Headroom above the tallest bar so its value label clears the top.
+        grace: '12%',
         grid: { display: true },
         ticks: {
           font: { size: 12 },
@@ -225,26 +287,27 @@ export function MemberContributionBars({ data }: { data: MemberTotal[] }) {
     plugins: {
       legend: { display: false },
       tooltip: {
+        // The flat average line carries no useful per-point tooltip; only the
+        // bars (dataset 0) should show one.
+        filter: (item: TooltipItem<'bar' | 'line'>) => item.datasetIndex === 0,
         callbacks: {
-          title: (items: TooltipItem<'bar'>[]) =>
+          title: (items: TooltipItem<'bar' | 'line'>[]) =>
             data[items[0]?.dataIndex ?? 0]?.member ?? '',
-          label: (item: TooltipItem<'bar'>) => fullRupee(Number(item.raw ?? 0)),
+          label: (item: TooltipItem<'bar' | 'line'>) =>
+            fullRupee(Number(item.raw ?? 0)),
         },
-      },
-      datalabels: {
-        display: (ctx: DataLabelsContext) =>
-          Number((ctx.dataset.data as number[])[ctx.dataIndex] ?? 0) > 0,
-        anchor: 'end',
-        align: 'top',
-        font: { size: 10 },
-        formatter: (v: number) => compactRupee(Number(v ?? 0)),
       },
     },
   }
 
   return (
     <div className="h-80 w-full">
-      <Chart type="bar" data={chartData} options={options} className="h-full w-full" />
+      <Chart
+        type="bar"
+        data={chartData as ChartData}
+        options={options as ChartOptions}
+        className="h-full w-full"
+      />
     </div>
   )
 }
@@ -337,6 +400,7 @@ export function SectionBars({
     display: (ctx: DataLabelsContext) => totals[ctx.dataIndex] > 0,
     anchor: 'end' as const,
     align: 'top' as const,
+    clamp: true as const,
     font: { size: 10 },
     formatter: (_v: number, ctx: DataLabelsContext) => compactRupee(totals[ctx.dataIndex]),
   }
@@ -403,6 +467,8 @@ export function SectionBars({
       x: { stacked: true, grid: { display: false }, ticks: { font: { size: 11 } } },
       y: {
         stacked: true,
+        // Headroom so the top-of-bar total label clears the top gridline.
+        grace: '12%',
         grid: { display: true },
         ticks: {
           font: { size: 11 },

@@ -3,6 +3,7 @@
 import Image from 'next/image'
 import { useEffect, useRef, useState } from 'react'
 import { signOut } from '@/lib/actions/auth'
+import { Avatar } from '@/components/ui/avatar'
 import { ShareLinkButton } from './share-link-button'
 
 type Props = {
@@ -13,7 +14,6 @@ type Props = {
 
 export function TopBar({ fullName, email, avatarUrl }: Props) {
   const displayName = fullName || email.split('@')[0]
-  const initials = displayName.slice(0, 2).toUpperCase()
   const [menuOpen, setMenuOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement | null>(null)
 
@@ -73,20 +73,7 @@ export function TopBar({ fullName, email, avatarUrl }: Props) {
             aria-expanded={menuOpen}
             className="flex cursor-pointer items-center gap-3 rounded-2xl border border-gray-200/80 bg-white py-1.5 pl-1.5 pr-3 text-left text-sm text-gray-700 transition-colors hover:bg-gray-50"
           >
-            {avatarUrl ? (
-              <Image
-                src={avatarUrl}
-                alt={displayName}
-                width={36}
-                height={36}
-                referrerPolicy="no-referrer"
-                className="h-9 w-9 rounded-full object-cover"
-              />
-            ) : (
-              <span className="grid h-9 w-9 place-items-center rounded-full bg-stone-200 text-xs font-semibold text-gray-700">
-                {initials}
-              </span>
-            )}
+            <Avatar src={avatarUrl} name={displayName} size={36} />
             <span className="hidden min-w-0 flex-col leading-tight sm:flex">
               <span className="truncate text-sm font-semibold text-gray-900">{displayName}</span>
               <span className="truncate text-xs text-gray-500">{email}</span>

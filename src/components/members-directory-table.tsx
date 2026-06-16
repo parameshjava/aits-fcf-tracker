@@ -1,8 +1,7 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { ContactChip, MemberContactsList } from '@/components/member-contacts'
-import { CopyButton } from '@/components/copy-button'
+import { ContactInline, MemberContactsList } from '@/components/member-contacts'
 import { PrAccordion, PrAccordionTab } from '@/components/ui/pr/accordion'
 import { TableExportMenu } from '@/components/table-export'
 import type { Cell, ExportCriterion } from '@/lib/table-export'
@@ -11,6 +10,7 @@ import { AddContactForm } from '@/components/add-contact-form'
 import { MemberBankAccountsManager } from '@/components/member-bank-accounts-manager'
 import { BankAccountForm } from '@/components/bank-account-form'
 import { PrDataTable, type PrColumn } from '@/components/ui/pr/data-table'
+import { Avatar } from '@/components/ui/avatar'
 import type {
   MemberBankAccount,
   MemberContact,
@@ -238,18 +238,24 @@ function MemberSection({
       field: 'name',
       header: 'Name',
       sortable: true,
-      bodyClassName: 'whitespace-nowrap font-medium text-gray-900',
-      body: (m) => m.name,
+      filter: true,
+      filterPlaceholder: 'Search by name',
+      bodyClassName: 'whitespace-nowrap',
+      body: (m) => (
+        <span className="flex items-center gap-2">
+          <Avatar src={m.avatar_url} name={m.name} size={28} />
+          <span className="font-medium text-gray-900">{m.name}</span>
+        </span>
+      ),
     },
     {
       field: '_primary_phone_value',
       header: 'Primary phone',
+      filter: true,
+      filterPlaceholder: 'Search by phone',
       body: (m) =>
         m._primaryPhone ? (
-          <span className="inline-flex items-center gap-1">
-            <ContactChip contact={m._primaryPhone} size="sm" hidePrimaryBadge />
-            <CopyButton value={m._primaryPhone.value} label="Phone" />
-          </span>
+          <ContactInline contact={m._primaryPhone} />
         ) : (
           <span className="text-gray-400">—</span>
         ),
@@ -257,12 +263,11 @@ function MemberSection({
     {
       field: '_primary_email_value',
       header: 'Primary email',
+      filter: true,
+      filterPlaceholder: 'Search by email',
       body: (m) =>
         m._primaryEmail ? (
-          <span className="inline-flex items-center gap-1">
-            <ContactChip contact={m._primaryEmail} size="sm" hidePrimaryBadge />
-            <CopyButton value={m._primaryEmail.value} label="Email" />
-          </span>
+          <ContactInline contact={m._primaryEmail} />
         ) : (
           <span className="text-gray-400">—</span>
         ),
@@ -279,7 +284,6 @@ function MemberSection({
     <PrAccordion defaultActiveIndex={defaultOpen ? [0] : []}>
       <PrAccordionTab
         header={title}
-        subtitle={`${members.length} ${members.length === 1 ? 'member' : 'members'}`}
         badge={members.length}
       >
       <div className="-mx-5 -mb-4">
@@ -288,6 +292,10 @@ function MemberSection({
           columns={columns}
           dataKey="id"
           emptyMessage={emptyLabel}
+          // Menu-mode filters: a funnel icon per filterable column header opens
+          // a small filter popover. The inline per-column search row is dropped
+          // as redundant with the global keyword box above the table.
+          filterDisplay="menu"
           globalFilterFields={members.length > 0 ? ['_search_blob'] : undefined}
           globalSearchPlaceholder="Search by name, phone, email…"
           onValueChange={onValueChange}

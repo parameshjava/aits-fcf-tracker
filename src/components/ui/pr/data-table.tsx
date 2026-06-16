@@ -28,7 +28,9 @@ export type PrColumn<T> = {
   /** Field key on the row. Drives default sort + global-filter inclusion. */
   field: keyof T & string
   header: ReactNode
-  body?: (row: T) => ReactNode
+  /** Custom cell. `options.rowIndex` is the row's position in the current
+   *  displayed (filtered + sorted + paginated) order — use it for serial #s. */
+  body?: (row: T, options: { rowIndex: number }) => ReactNode
   align?: 'left' | 'right' | 'center'
   sortable?: boolean
   /** Sort against a different field (e.g. a numeric timestamp for a date). */
@@ -39,6 +41,8 @@ export type PrColumn<T> = {
   filterField?: string
   /** Match mode for this column's filter. Defaults by `dataType`. */
   filterMatchMode?: FilterMatchMode
+  /** Placeholder for this column's row-filter input (filterDisplay="row"). */
+  filterPlaceholder?: string
   /** Hint that selects sensible default match modes + alignment. */
   dataType?: 'text' | 'numeric' | 'date'
   /** Custom filter UI (e.g. a Dropdown for a Type column). */
@@ -98,6 +102,11 @@ type PrDataTableProps<T extends Record<string, unknown>> = {
   paginated?: boolean
   /** Initial page size when paginated. Defaults to 10. */
   rows?: number
+  /** Content pinned to the LEFT end of the paginator bar (e.g. a row-count
+   *  summary). Lets callers fold a separate footer strip into the pager row. */
+  paginatorLeft?: ReactNode
+  /** Content pinned to the RIGHT end of the paginator bar (e.g. a total). */
+  paginatorRight?: ReactNode
 }
 
 /** Pick a sensible default match mode when a column enables filtering. */
@@ -128,6 +137,8 @@ export function PrDataTable<T extends Record<string, unknown>>({
   scrollHeight,
   paginated = true,
   rows = 10,
+  paginatorLeft,
+  paginatorRight,
 }: PrDataTableProps<T>) {
   const hasGlobal = !!globalFilterFields && globalFilterFields.length > 0
   const hasColumnFilters = columns.some((c) => c.filter)
@@ -224,12 +235,15 @@ export function PrDataTable<T extends Record<string, unknown>>({
       scrollHeight={scrollHeight}
       // Pagination — 10 rows/page by default; the rows-per-page dropdown lets a
       // user open it up to 100. `paginated={false}` (pivots) drops the pager.
-      // On a single short page PrimeReact still renders a tidy "1–N of N" bar.
-      paginator={paginated && value.length > 0}
+      // Hide it entirely when everything already fits on one page (rows ≤ page
+      // size) — a pager over a single short list is just noise.
+      paginator={paginated && value.length > rows}
       rows={rows}
       rowsPerPageOptions={[10, 25, 50, 100]}
       paginatorTemplate="FirstPageLink PrevPageLink PageLinks NextPageLink LastPageLink RowsPerPageDropdown CurrentPageReport"
       currentPageReportTemplate="{first}–{last} of {totalRecords}"
+      paginatorLeft={paginatorLeft}
+      paginatorRight={paginatorRight}
       // Third click on a sorted column clears the sort (asc → desc → none).
       removableSort
       // Compact density — Lara's default cell/header padding is large; `small`
@@ -246,9 +260,15 @@ export function PrDataTable<T extends Record<string, unknown>>({
           sortable={c.sortable}
           sortField={c.sortField}
           align={c.align}
-          body={c.body ? (row) => c.body!(row as unknown as T) : undefined}
+          body={
+            c.body
+              ? (row, opts) =>
+                  c.body!(row as unknown as T, { rowIndex: opts.rowIndex })
+              : undefined
+          }
           filter={c.filter}
           filterField={c.filterField}
+          filterPlaceholder={c.filterPlaceholder}
           dataType={c.dataType}
           filterMatchMode={c.filter ? defaultMatchMode(c as PrColumn<unknown>) : undefined}
           filterElement={

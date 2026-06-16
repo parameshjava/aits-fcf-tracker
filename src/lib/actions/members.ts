@@ -53,6 +53,9 @@ export type MemberWithContacts = MemberRow & {
 export type MemberDirectoryRow = MemberRow & {
   contacts: MemberContact[]
   bank_accounts: MemberBankAccount[]
+  /** Google profile photo, cached onto members from auth metadata by email
+   *  (migration 049). Null for members who have never signed in. */
+  avatar_url: string | null
 }
 
 /**

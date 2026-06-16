@@ -650,7 +650,6 @@ export function EmiSchedulePanel({
         <PrAccordion defaultActiveIndex={[0]}>
           <PrAccordionTab
             header="Repayment schedule"
-            subtitle={`${schedule.length} installment${schedule.length === 1 ? '' : 's'}`}
             badge={schedule.length}
           >
           <div className="overflow-x-auto">
