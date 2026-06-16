@@ -6,7 +6,11 @@ import { TRANSACTION_TYPES } from '@/lib/constants'
 import { submitPayment } from '@/lib/actions/payments'
 import { getActiveLoansWithBalance, type ActiveLoanOption } from '@/lib/actions/loans'
 import { formatRupees, todayISO } from '@/lib/format'
-import { AmountInput } from '@/components/amount-input'
+import { numberToIndianWords } from '@/lib/number-to-words'
+import { PrDropdown, type SelectOption } from '@/components/ui/pr/dropdown'
+import { PrAmountInput } from '@/components/ui/pr/amount-input'
+import { Field } from '@/components/ui/pr/field'
+import { Button } from '@/components/ui/pr/button'
 
 export function SubmitPaymentForm() {
   const [state, action, pending] = useActionState(
@@ -25,16 +29,29 @@ export function SubmitPaymentForm() {
 
   const [transactionType, setTransactionType] = useState<string>('')
   const [loanId, setLoanId] = useState<string>('')
-  // Used to seed the AmountInput when an admin picks a loan. We bump a key
-  // on each prefill so the (uncontrolled) AmountInput remounts and picks
-  // up the new defaultValue — see handleLoanChange below.
-  const [prefillAmount, setPrefillAmount] = useState<string>('')
-  const [prefillKey, setPrefillKey] = useState(0)
+  // Controlled amount (PrAmountInput is controlled). Picking a loan prefills
+  // the full pending principal; the member can lower it for a partial payment.
+  const [amount, setAmount] = useState<number | null>(null)
   const [loans, setLoans] = useState<ActiveLoanOption[]>([])
   const [loansLoading, setLoansLoading] = useState(false)
 
   const isLoanRepayment = transactionType === 'loan_repayment'
   const selectedLoan = loans.find((l) => l.id === loanId) ?? null
+
+  const TYPE_OPTIONS: SelectOption[] = TRANSACTION_TYPES.map((type) => ({
+    value: type,
+    label: type.replace(/_/g, ' '),
+  }))
+
+  const loanOptions: SelectOption[] = loans.map((l) => ({
+    value: l.id,
+    label:
+      `${l.loan_number}` +
+      (l.member_name ? ` · ${l.member_name}` : '') +
+      ` — pending ${formatRupees(l.balance)}`,
+  }))
+
+  const amountWords = numberToIndianWords(amount)
 
   function handleTransactionTypeChange(value: string) {
     setTransactionType(value)
@@ -60,8 +77,7 @@ export function SubmitPaymentForm() {
     if (picked) {
       // Prefill the full pending principal. The member can lower it for a
       // partial payment — that's the whole reason we surfaced this number.
-      setPrefillAmount(picked.balance > 0 ? String(picked.balance) : '')
-      setPrefillKey((k) => k + 1)
+      setAmount(picked.balance > 0 ? picked.balance : null)
     }
   }
 
@@ -73,13 +89,7 @@ export function SubmitPaymentForm() {
 
       <form action={action} className="space-y-4">
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <div>
-            <label
-              htmlFor="transaction_date"
-              className="block text-sm font-medium text-gray-700"
-            >
-              Transaction date
-            </label>
+          <Field label="Transaction date" htmlFor="transaction_date" required>
             <input
               id="transaction_date"
               name="transaction_date"
@@ -88,18 +98,13 @@ export function SubmitPaymentForm() {
               max={todayISO()}
               className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
             />
-          </div>
+          </Field>
 
-          <div>
-            <label
-              htmlFor="bank_transaction_id"
-              className="block text-sm font-medium text-gray-700"
-            >
-              Bank Transaction ID
-              <span className="ml-1 text-xs font-normal text-gray-400">
-                (optional)
-              </span>
-            </label>
+          <Field
+            label="Bank Transaction ID"
+            htmlFor="bank_transaction_id"
+            hint="optional · UPI ref / NEFT UTR"
+          >
             <input
               id="bank_transaction_id"
               name="bank_transaction_id"
@@ -107,105 +112,76 @@ export function SubmitPaymentForm() {
               className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
               placeholder="e.g. UPI ref / NEFT UTR"
             />
-          </div>
+          </Field>
 
-          <div>
-            <label
-              htmlFor="transaction_type"
-              className="block text-sm font-medium text-gray-700"
-            >
-              Contribution type
-            </label>
-            <select
+          <Field label="Contribution type" htmlFor="transaction_type" required>
+            <PrDropdown
               id="transaction_type"
               name="transaction_type"
+              options={TYPE_OPTIONS}
+              value={transactionType || null}
+              onChange={(v) => handleTransactionTypeChange(v ?? '')}
               required
-              value={transactionType}
-              onChange={(e) => handleTransactionTypeChange(e.target.value)}
-              className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-            >
-              <option value="">Select type</option>
-              {TRANSACTION_TYPES.map((type) => (
-                <option key={type} value={type}>
-                  {type.replace(/_/g, ' ')}
-                </option>
-              ))}
-            </select>
-          </div>
+              placeholder="Select type"
+            />
+          </Field>
 
-          <div>
-            <label
-              htmlFor="amount"
-              className="block text-sm font-medium text-gray-700"
-            >
-              Amount
-            </label>
-            <AmountInput
-              key={prefillKey}
+          <Field
+            label="Amount"
+            htmlFor="amount"
+            required
+            hint={
+              isLoanRepayment && selectedLoan
+                ? `Pending principal: ${formatRupees(selectedLoan.balance)} — edit to pay a partial amount.`
+                : amountWords || undefined
+            }
+          >
+            <PrAmountInput
               id="amount"
               name="amount"
               required
-              defaultValue={prefillAmount}
+              value={amount}
+              onChange={setAmount}
               placeholder="0.00"
-              className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
             />
-            {isLoanRepayment && selectedLoan && (
-              <p className="mt-1 text-xs text-gray-500">
-                Pending principal: <span className="font-medium text-gray-700">{formatRupees(selectedLoan.balance)}</span>
-                {' '}— edit to pay a partial amount.
-              </p>
-            )}
-          </div>
+          </Field>
 
           {isLoanRepayment && (
-            <div className="sm:col-span-2">
-              <label
-                htmlFor="loan_id"
-                className="block text-sm font-medium text-gray-700"
-              >
-                Loan
-              </label>
-              <select
+            <Field
+              label="Loan"
+              htmlFor="loan_id"
+              required
+              className="sm:col-span-2"
+              hint={
+                !loansLoading && loans.length === 0
+                  ? 'No active loans found.'
+                  : undefined
+              }
+            >
+              <PrDropdown
                 id="loan_id"
                 name="loan_id"
+                options={loanOptions}
+                value={loanId || null}
+                onChange={(v) => handleLoanChange(v ?? '')}
                 required
-                value={loanId}
-                onChange={(e) => handleLoanChange(e.target.value)}
-                className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-              >
-                <option value="">
-                  {loansLoading ? 'Loading loans…' : 'Select a loan'}
-                </option>
-                {loans.map((l) => (
-                  <option key={l.id} value={l.id}>
-                    {l.loan_number}
-                    {l.member_name ? ` · ${l.member_name}` : ''}
-                    {' '}— pending {formatRupees(l.balance)}
-                  </option>
-                ))}
-              </select>
-              {!loansLoading && loans.length === 0 && (
-                <p className="mt-1 text-xs text-gray-500">
-                  No active loans found.
-                </p>
-              )}
-            </div>
+                placeholder={loansLoading ? 'Loading loans…' : 'Select a loan'}
+              />
+            </Field>
           )}
 
-          <div className="sm:col-span-2">
-            <label
-              htmlFor="description"
-              className="block text-sm font-medium text-gray-700"
-            >
-              Description (optional)
-            </label>
+          <Field
+            label="Description (optional)"
+            htmlFor="description"
+            className="sm:col-span-2"
+          >
             <textarea
               id="description"
               name="description"
               rows={2}
               className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
             />
-          </div>
+          </Field>
         </div>
 
         {/* Success → toast (see useEffect above); error stays inline with
@@ -215,13 +191,9 @@ export function SubmitPaymentForm() {
         )}
 
         <div className="flex justify-end">
-          <button
-            type="submit"
-            disabled={pending}
-            className="rounded-md bg-blue-600 px-6 py-2 text-sm font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50"
-          >
+          <Button type="submit" disabled={pending}>
             {pending ? 'Submitting...' : 'Submit payment'}
-          </button>
+          </Button>
         </div>
       </form>
     </section>

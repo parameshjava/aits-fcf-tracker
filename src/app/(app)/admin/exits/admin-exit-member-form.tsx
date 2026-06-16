@@ -6,7 +6,9 @@ import { toast } from 'sonner'
 import { proposeExitForMember, getExitEstimate } from '@/lib/actions/exits'
 import { formatRupees } from '@/lib/format'
 import { MarkdownEditor, type MarkdownEditorMode } from '@/components/markdown-editor'
-import { SearchableSelect } from '@/components/searchable-select'
+import { PrDropdown, type SelectOption } from '@/components/ui/pr/dropdown'
+import { Field } from '@/components/ui/pr/field'
+import { Button } from '@/components/ui/pr/button'
 import type { ExitMathResult } from '@/lib/exit-math'
 
 type Member = { id: string; name: string }
@@ -52,6 +54,11 @@ export function AdminExitMemberForm({ members }: { members: Member[] }) {
   const ineligible = estimate !== null && !estimate.eligible
   const canSubmit = memberId !== '' && !estimating && !ineligible && !pending
 
+  const memberOptions: SelectOption[] = members.map((m) => ({
+    value: m.id,
+    label: m.name,
+  }))
+
   return (
     <section className="rounded-xl border border-gray-200 bg-white p-5">
       <h2 className="text-sm font-semibold text-gray-900">Exit a member</h2>
@@ -63,19 +70,25 @@ export function AdminExitMemberForm({ members }: { members: Member[] }) {
         <p className="mt-4 text-sm text-gray-500">No active members are available to exit.</p>
       ) : (
         <form action={action} className="mt-4 space-y-4">
-          <div className="space-y-1.5">
-            <span className="text-xs font-medium text-gray-600">Member</span>
-            <SearchableSelect
+          <Field
+            label="Member"
+            htmlFor="member_id"
+            error={
+              state && !state.ok && state.field === 'member_id'
+                ? state.error
+                : undefined
+            }
+          >
+            <PrDropdown
+              id="member_id"
               name="member_id"
-              options={members}
-              value={memberId}
-              onChange={onSelectMember}
+              options={memberOptions}
+              value={memberId || null}
+              onChange={(v) => onSelectMember(v ?? '')}
+              showClear
               placeholder="Select a member…"
             />
-            {state && !state.ok && state.field === 'member_id' && (
-              <p className="text-sm text-red-600">{state.error}</p>
-            )}
-          </div>
+          </Field>
 
           {estimating && <p className="text-sm text-gray-500">Loading settlement estimate…</p>}
 
@@ -125,10 +138,9 @@ export function AdminExitMemberForm({ members }: { members: Member[] }) {
             <p className="text-sm text-red-600">{state.error}</p>
           )}
 
-          <button type="submit" disabled={!canSubmit}
-            className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50">
+          <Button type="submit" disabled={!canSubmit}>
             {pending ? 'Creating…' : 'Create exit request'}
-          </button>
+          </Button>
         </form>
       )}
     </section>

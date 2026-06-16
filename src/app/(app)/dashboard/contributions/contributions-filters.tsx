@@ -3,16 +3,19 @@
 import { useState } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import { todayISO } from '@/lib/format'
-import { MultiSelect } from '@/components/multi-select'
+import { PrMultiSelect } from '@/components/ui/pr/multiselect'
+import type { SelectOption } from '@/components/ui/pr/dropdown'
+import { Field } from '@/components/ui/pr/field'
+import { Button } from '@/components/ui/pr/button'
 
 export type MemberOption = { id: string; name: string }
 
 type TypeKey = 'contribution' | 'interest_loans' | 'interest_bank'
 
-const TYPE_OPTIONS: { id: TypeKey; name: string }[] = [
-  { id: 'contribution',    name: 'Contribution' },
-  { id: 'interest_loans',  name: 'Loan interest' },
-  { id: 'interest_bank',   name: 'Bank interest' },
+const TYPE_OPTIONS: SelectOption[] = [
+  { value: 'contribution',    label: 'Contribution' },
+  { value: 'interest_loans',  label: 'Loan interest' },
+  { value: 'interest_bank',   label: 'Bank interest' },
 ]
 
 type Props = {
@@ -37,6 +40,11 @@ export function ContributionsFilters({
   const [types, setTypes] = useState<TypeKey[]>(defaultTypes)
   const [from, setFrom] = useState(defaultFrom)
   const [to, setTo] = useState(defaultTo)
+
+  const memberOptions: SelectOption[] = members.map((m) => ({
+    value: m.id,
+    label: m.name,
+  }))
 
   // The props ARE the applied (URL-backed) state. Selections stay local until
   // the user clicks Apply, so we don't fire an API request on every keystroke.
@@ -64,91 +72,62 @@ export function ContributionsFilters({
     router.push(pathname)
   }
 
-  const memberLabel =
-    memberIds.length === 0
-      ? 'All members'
-      : memberIds.length === 1
-        ? members.find((m) => m.id === memberIds[0])?.name ?? '1 member'
-        : `${memberIds.length} members`
-
-  const typeLabel =
-    types.length === 0
-      ? 'All types'
-      : types.length === 1
-        ? TYPE_OPTIONS.find((t) => t.id === types[0])?.name ?? '1 type'
-        : `${types.length} types`
-
   return (
     <div className="rounded-2xl border border-gray-200/80 bg-white p-3 sm:p-4">
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_1fr_1fr_auto] lg:items-end">
-        <div>
-          <label className="mb-1 block text-xs font-medium uppercase tracking-wider text-gray-500">
-            Member
-          </label>
-          <MultiSelect
-            options={members}
-            selected={memberIds}
-            label={memberLabel}
-            searchable
-            searchPlaceholder="Search members…"
+      {/* [&>*]:min-w-0 lets each grid track shrink below its content's intrinsic
+          width — without it a multi-selected member field blows out its 1fr
+          column and pushes the date fields off-screen (grid items default to
+          min-width:auto). */}
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_1fr_1fr_auto] lg:items-end [&>*]:min-w-0">
+        <Field label="Member" htmlFor="contrib-filter-members">
+          <PrMultiSelect
+            id="contrib-filter-members"
+            values={memberIds}
+            options={memberOptions}
+            placeholder="All members"
             onChange={setMemberIds}
           />
-        </div>
+        </Field>
 
-        <div>
-          <label className="mb-1 block text-xs font-medium uppercase tracking-wider text-gray-500">
-            Type
-          </label>
-          <MultiSelect
+        <Field label="Type" htmlFor="contrib-filter-types">
+          <PrMultiSelect
+            id="contrib-filter-types"
+            values={types}
             options={TYPE_OPTIONS}
-            selected={types}
-            label={typeLabel}
+            placeholder="All types"
             onChange={(next) => setTypes(next as TypeKey[])}
           />
-        </div>
+        </Field>
 
-        <div>
-          <label className="mb-1 block text-xs font-medium uppercase tracking-wider text-gray-500">
-            From
-          </label>
+        <Field label="From" htmlFor="contrib-filter-from">
           <input
+            id="contrib-filter-from"
             type="date"
             value={from}
             max={todayISO()}
             onChange={(e) => setFrom(e.target.value)}
             className="block w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
           />
-        </div>
+        </Field>
 
-        <div>
-          <label className="mb-1 block text-xs font-medium uppercase tracking-wider text-gray-500">
-            To
-          </label>
+        <Field label="To" htmlFor="contrib-filter-to">
           <input
+            id="contrib-filter-to"
             type="date"
             value={to}
             max={todayISO()}
             onChange={(e) => setTo(e.target.value)}
             className="block w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
           />
-        </div>
+        </Field>
 
         <div className="flex justify-end gap-2">
-          <button
-            type="button"
-            onClick={resetAll}
-            className="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50"
-          >
+          <Button type="button" variant="outline" size="sm" onClick={resetAll}>
             Reset
-          </button>
-          <button
-            type="button"
-            onClick={applyNow}
-            disabled={!dirty}
-            className="rounded-md bg-blue-600 px-4 py-1.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-gray-300"
-          >
+          </Button>
+          <Button type="button" size="sm" onClick={applyNow} disabled={!dirty}>
             Apply
-          </button>
+          </Button>
         </div>
       </div>
 

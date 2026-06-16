@@ -9,9 +9,12 @@ import {
 import { TRANSACTION_TYPES } from '@/lib/constants'
 import type { TransactionType } from '@/lib/constants'
 import { todayISO } from '@/lib/format'
-import { SearchableSelect } from '@/components/searchable-select'
+import { numberToIndianWords } from '@/lib/number-to-words'
+import { PrDropdown, type SelectOption } from '@/components/ui/pr/dropdown'
+import { PrAmountInput } from '@/components/ui/pr/amount-input'
+import { Field } from '@/components/ui/pr/field'
+import { Button } from '@/components/ui/pr/button'
 import { BankBalanceUpdater } from '@/components/bank-balance-updater'
-import { AmountInput } from '@/components/amount-input'
 import { defaultDirectionForContribution } from '@/lib/balance-direction'
 import { buildPollPickerOptions } from '@/lib/loan-poll-picker'
 
@@ -26,6 +29,11 @@ type LoanOption = {
 }
 
 const TYPES_NEEDING_LOAN = new Set(['loan_repayment', 'penalty'])
+
+const TYPE_OPTIONS: SelectOption[] = TRANSACTION_TYPES.map((t) => ({
+  value: t,
+  label: t.replace(/_/g, ' '),
+}))
 
 export function NewTransactionForm({
   members,
@@ -54,8 +62,17 @@ export function NewTransactionForm({
   const [memberId, setMemberId] = useState<string>('')
   const [loanId, setLoanId] = useState<string>('')
   const [pollId, setPollId] = useState<string>('')
+  const [amount, setAmount] = useState<number | null>(null)
   const [formKey, setFormKey] = useState(0)
-  const pollOptions = buildPollPickerOptions(polls)
+  const pollOptions: SelectOption[] = buildPollPickerOptions(polls).map((p) => ({
+    value: p.id,
+    label: p.name,
+  }))
+
+  const memberOptions: SelectOption[] = members.map((m) => ({
+    value: m.id,
+    label: m.name,
+  }))
 
   // On success, fire a toast and reset the form in place so the admin can
   // record another transaction without re-navigating. (The previous behaviour
@@ -78,6 +95,7 @@ export function NewTransactionForm({
       setMemberId('')
       setLoanId('')
       setPollId('')
+      setAmount(null)
       setFormKey((k) => k + 1)
     }
   }, [state])
@@ -101,56 +119,55 @@ export function NewTransactionForm({
     ? loans.filter((l) => l.member_id === memberId)
     : loans
 
+  const loanOptions: SelectOption[] = visibleLoans.map((l) => ({
+    value: l.id,
+    label: `${l.loan_number} · ${l.member_name} · ₹${l.principal_amount.toLocaleString('en-IN')}`,
+  }))
+
   const balanceDefault = type
     ? defaultDirectionForContribution(type as TransactionType)
     : 'add'
 
+  const amountWords = numberToIndianWords(amount)
+
   return (
     <form key={formKey} ref={formRef} action={action} className="space-y-4 rounded-lg border bg-white p-6">
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <div>
-          <label htmlFor="member_id" className="block text-sm font-medium text-gray-700">
-            {isDonation ? 'Referred by' : 'Member'}
-            <span className="ml-1 text-xs font-normal text-gray-400">
-              {isDonation
-                ? '(optional · fund member who proposed this donation)'
-                : '(optional · type to search)'}
-            </span>
-          </label>
-          <div className="mt-1">
-            <SearchableSelect
-              name="member_id"
-              options={members}
-              value={memberId}
-              onChange={(v) => {
-                setMemberId(v)
-                setLoanId('')
-              }}
-              emptyOption={isDonation ? '— No referrer —' : '— No member —'}
-              placeholder={isDonation ? 'Search members…' : 'Search members…'}
-            />
-          </div>
-        </div>
+        <Field
+          label={isDonation ? 'Referred by' : 'Member'}
+          htmlFor="member_id"
+          hint={
+            isDonation
+              ? 'optional · fund member who proposed this donation'
+              : 'optional · type to search'
+          }
+        >
+          <PrDropdown
+            id="member_id"
+            name="member_id"
+            options={memberOptions}
+            value={memberId || null}
+            onChange={(v) => {
+              setMemberId(v ?? '')
+              setLoanId('')
+            }}
+            showClear
+            placeholder={isDonation ? '— No referrer —' : '— No member —'}
+          />
+        </Field>
 
-        <div>
-          <label htmlFor="amount" className="block text-sm font-medium text-gray-700">
-            Amount
-          </label>
-          <AmountInput
+        <Field label="Amount" htmlFor="amount" required hint={amountWords || undefined}>
+          <PrAmountInput
             id="amount"
             name="amount"
-            step="0.01"
-            min="0"
             required
-            className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            value={amount}
+            onChange={setAmount}
             placeholder="0.00"
           />
-        </div>
+        </Field>
 
-        <div>
-          <label htmlFor="transaction_date" className="block text-sm font-medium text-gray-700">
-            Transaction date
-          </label>
+        <Field label="Transaction date" htmlFor="transaction_date" required>
           <input
             id="transaction_date"
             name="transaction_date"
@@ -159,38 +176,28 @@ export function NewTransactionForm({
             max={todayISO()}
             className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
           />
-        </div>
+        </Field>
 
-        <div>
-          <label htmlFor="transaction_type" className="block text-sm font-medium text-gray-700">
-            Contribution type
-          </label>
-          <select
+        <Field label="Contribution type" htmlFor="transaction_type" required>
+          <PrDropdown
             id="transaction_type"
             name="transaction_type"
+            options={TYPE_OPTIONS}
+            value={type || null}
+            onChange={(v) => setType(v ?? '')}
             required
-            value={type}
-            onChange={(e) => setType(e.target.value)}
-            className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-          >
-            <option value="">Select type</option>
-            {TRANSACTION_TYPES.map((t) => (
-              <option key={t} value={t}>
-                {t.replace(/_/g, ' ')}
-              </option>
-            ))}
-          </select>
-        </div>
+            placeholder="Select type"
+          />
+        </Field>
 
         {isDonation && (
           <>
-            <div className="sm:col-span-2">
-              <label htmlFor="beneficiary_name" className="block text-sm font-medium text-gray-700">
-                Beneficiary
-                <span className="ml-1 text-xs font-normal text-gray-400">
-                  (optional · who receives this donation)
-                </span>
-              </label>
+            <Field
+              label="Beneficiary"
+              htmlFor="beneficiary_name"
+              hint="optional · who receives this donation"
+              className="sm:col-span-2"
+            >
               <input
                 id="beneficiary_name"
                 name="beneficiary_name"
@@ -198,26 +205,24 @@ export function NewTransactionForm({
                 className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                 placeholder="e.g. Naidruva"
               />
-            </div>
+            </Field>
 
-            <div className="sm:col-span-2">
-              <label className="block text-sm font-medium text-gray-700">
-                Approval poll
-                <span className="ml-1 text-xs font-normal text-gray-400">
-                  (optional · the poll that authorised this donation)
-                </span>
-              </label>
-              <div className="mt-1">
-                <SearchableSelect
-                  name="poll_id"
-                  options={pollOptions}
-                  value={pollId}
-                  onChange={setPollId}
-                  placeholder="No poll attached"
-                  emptyOption="No poll attached"
-                />
-              </div>
-            </div>
+            <Field
+              label="Approval poll"
+              htmlFor="poll_id"
+              hint="optional · the poll that authorised this donation"
+              className="sm:col-span-2"
+            >
+              <PrDropdown
+                id="poll_id"
+                name="poll_id"
+                options={pollOptions}
+                value={pollId || null}
+                onChange={(v) => setPollId(v ?? '')}
+                showClear
+                placeholder="No poll attached"
+              />
+            </Field>
           </>
         )}
 
@@ -252,36 +257,34 @@ export function NewTransactionForm({
         )}
 
         {needsLoan && (
-          <div className="sm:col-span-2">
-            <label htmlFor="loan_id" className="block text-sm font-medium text-gray-700">
-              Loan
-              <span className="ml-1 text-xs font-normal text-gray-400">
-                (required for {type === 'interest' ? 'loan interest' : type.replace(/_/g, ' ')}
-                {memberId ? ' — showing only this member’s active loans' : ' — showing all active loans'})
-              </span>
-            </label>
-            <select
+          <Field
+            label="Loan"
+            htmlFor="loan_id"
+            required
+            hint={
+              `required for ${type === 'interest' ? 'loan interest' : type.replace(/_/g, ' ')}` +
+              (memberId
+                ? ' — showing only this member’s active loans'
+                : ' — showing all active loans')
+            }
+            className="sm:col-span-2"
+          >
+            <PrDropdown
               id="loan_id"
               name="loan_id"
+              options={loanOptions}
+              value={loanId || null}
+              onChange={(v) => setLoanId(v ?? '')}
               required
-              value={loanId}
-              onChange={(e) => setLoanId(e.target.value)}
-              className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-            >
-              <option value="">
-                {visibleLoans.length === 0
+              placeholder={
+                visibleLoans.length === 0
                   ? memberId
                     ? 'No active loans for this member'
                     : 'No active loans'
-                  : 'Select loan'}
-              </option>
-              {visibleLoans.map((l) => (
-                <option key={l.id} value={l.id}>
-                  {l.loan_number} · {l.member_name} · ₹{l.principal_amount.toLocaleString('en-IN')}
-                </option>
-              ))}
-            </select>
-          </div>
+                  : 'Select loan'
+              }
+            />
+          </Field>
         )}
 
         {isLoanInterest && (
@@ -308,13 +311,12 @@ export function NewTransactionForm({
           </div>
         )}
 
-        <div className="sm:col-span-2">
-          <label htmlFor="bank_transaction_id" className="block text-sm font-medium text-gray-700">
-            Bank Transaction ID
-            <span className="ml-1 text-xs font-normal text-gray-400">
-              (optional · UPI/NEFT/cheque reference)
-            </span>
-          </label>
+        <Field
+          label="Bank Transaction ID"
+          htmlFor="bank_transaction_id"
+          hint="optional · UPI/NEFT/cheque reference"
+          className="sm:col-span-2"
+        >
           <input
             id="bank_transaction_id"
             name="bank_transaction_id"
@@ -322,19 +324,16 @@ export function NewTransactionForm({
             className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
             placeholder="e.g. UPI ref / NEFT UTR"
           />
-        </div>
+        </Field>
 
-        <div className="sm:col-span-2">
-          <label htmlFor="description" className="block text-sm font-medium text-gray-700">
-            Description (optional)
-          </label>
+        <Field label="Description (optional)" htmlFor="description" className="sm:col-span-2">
           <textarea
             id="description"
             name="description"
             rows={3}
             className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
           />
-        </div>
+        </Field>
       </div>
 
       {/* Re-key on balanceDefault so the radio re-mounts (and re-reads its
@@ -360,13 +359,9 @@ export function NewTransactionForm({
         >
           Cancel
         </a>
-        <button
-          type="submit"
-          disabled={pending || isLoanInterest}
-          className="rounded-md bg-blue-600 px-6 py-2 text-sm font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50"
-        >
+        <Button type="submit" disabled={pending || isLoanInterest}>
           {pending ? 'Saving...' : 'Save transaction'}
-        </button>
+        </Button>
       </div>
     </form>
   )

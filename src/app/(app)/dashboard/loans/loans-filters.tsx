@@ -2,7 +2,10 @@
 
 import { useState } from 'react'
 import { useRouter, usePathname, useSearchParams } from 'next/navigation'
-import { MultiSelect } from '@/components/multi-select'
+import { PrMultiSelect } from '@/components/ui/pr/multiselect'
+import type { SelectOption } from '@/components/ui/pr/dropdown'
+import { Field } from '@/components/ui/pr/field'
+import { Button } from '@/components/ui/pr/button'
 
 export type MemberOption = { id: string; name: string }
 
@@ -17,6 +20,11 @@ export function LoansFilters({ members, defaultMemberIds }: Props) {
   const searchParams = useSearchParams()
 
   const [memberIds, setMemberIds] = useState<string[]>(defaultMemberIds)
+
+  const memberOptions: SelectOption[] = members.map((m) => ({
+    value: m.id,
+    label: m.name,
+  }))
 
   function push(nextMembers: string[]) {
     const sp = new URLSearchParams(searchParams?.toString() ?? '')
@@ -35,41 +43,28 @@ export function LoansFilters({ members, defaultMemberIds }: Props) {
     router.push(qs ? `${pathname}?${qs}` : pathname)
   }
 
-  const memberLabel =
-    memberIds.length === 0
-      ? 'All members'
-      : memberIds.length === 1
-        ? members.find((m) => m.id === memberIds[0])?.name ?? '1 member'
-        : `${memberIds.length} members`
-
   return (
     <div className="rounded-2xl border border-gray-200/80 bg-white p-3 sm:p-4">
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_auto] sm:items-end">
-        <div>
-          <label className="mb-1 block text-xs font-medium uppercase tracking-wider text-gray-500">
-            Member
-          </label>
-          <MultiSelect
-            options={members}
-            selected={memberIds}
-            label={memberLabel}
-            searchable
-            searchPlaceholder="Search members…"
+      {/* [&>*]:min-w-0 stops a multi-selected member field from blowing out its
+          1fr track and overflowing the row (grid items default min-width:auto). */}
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_auto] sm:items-end [&>*]:min-w-0">
+        <Field label="Member" htmlFor="loans-filter-members">
+          <PrMultiSelect
+            id="loans-filter-members"
+            values={memberIds}
+            options={memberOptions}
+            placeholder="All members"
             onChange={(next) => {
               setMemberIds(next)
               push(next)
             }}
           />
-        </div>
+        </Field>
 
         <div className="flex justify-end">
-          <button
-            type="button"
-            onClick={resetAll}
-            className="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50"
-          >
+          <Button type="button" variant="outline" size="sm" onClick={resetAll}>
             Reset
-          </button>
+          </Button>
         </div>
       </div>
     </div>
