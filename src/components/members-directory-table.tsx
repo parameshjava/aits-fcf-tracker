@@ -5,7 +5,7 @@ import { ContactChip, MemberContactsList } from '@/components/member-contacts'
 import { CopyButton } from '@/components/copy-button'
 import { Accordion } from '@/components/ui/accordion'
 import { TableExportMenu } from '@/components/table-export'
-import type { Cell } from '@/lib/table-export'
+import type { Cell, ExportCriterion } from '@/lib/table-export'
 import { ManageContactsList } from '@/components/manage-contacts-list'
 import { AddContactForm } from '@/components/add-contact-form'
 import { MemberBankAccountsManager } from '@/components/member-bank-accounts-manager'
@@ -124,6 +124,15 @@ export function MembersDirectoryTable({
     [members, normalizedUserEmail, isAdmin],
   )
 
+  // Each section's PrDataTable reports its current filtered+sorted rows and
+  // its search query here, so the export reflects what's visible on screen
+  // (consistent with the other migrated tables). `null` until the first
+  // onValueChange fires → fall back to the section's full set.
+  const [processedActive, setProcessedActive] = useState<MemberRowAug[] | null>(null)
+  const [processedInactive, setProcessedInactive] = useState<MemberRowAug[] | null>(null)
+  const [searchActive, setSearchActive] = useState('')
+  const [searchInactive, setSearchInactive] = useState('')
+
   function toggle(id: string) {
     setExpandedIds((prev) => {
       const next = new Set(prev)
@@ -133,19 +142,34 @@ export function MembersDirectoryTable({
     })
   }
 
+  // Active in one section; everything else (inactive + archived) in the other.
+  const activeMembers = augmented.filter((m) => m.status === 'active')
+  const inactiveMembers = augmented.filter((m) => m.status !== 'active')
+
   const exportColumns = ['Name', 'Status', 'Primary phone', 'Primary email', 'Login email', 'Member since']
-  const exportRows: Cell[][] = augmented.map((m) => [
+  const toExportRow = (m: MemberRowAug): Cell[] => [
     m.name,
     m._status_label,
     m._primary_phone_value,
     m._primary_email_value,
     m.email ?? '',
     formatMemberSince(m.created_at),
-  ])
+  ]
+  // Export = the combined filtered+sorted rows visible across both sections,
+  // active first then inactive (preserving the on-screen section order).
+  const visibleActive = processedActive ?? activeMembers
+  const visibleInactive = processedInactive ?? inactiveMembers
+  const exportRows: Cell[][] = [...visibleActive, ...visibleInactive].map(toExportRow)
 
-  // Active in one section; everything else (inactive + archived) in the other.
-  const activeMembers = augmented.filter((m) => m.status === 'active')
-  const inactiveMembers = augmented.filter((m) => m.status !== 'active')
+  // Record each section's non-empty search term as an export criterion.
+  const searchCriteria: ExportCriterion[] = [
+    ...(searchActive.trim()
+      ? [{ label: 'Search (active)', value: searchActive.trim() }]
+      : []),
+    ...(searchInactive.trim()
+      ? [{ label: 'Search (inactive)', value: searchInactive.trim() }]
+      : []),
+  ]
 
   return (
     <div className="space-y-6">
@@ -156,6 +180,7 @@ export function MembersDirectoryTable({
             title="Members directory"
             columns={exportColumns}
             rows={exportRows}
+            criteria={searchCriteria}
           />
         </div>
       )}
@@ -166,6 +191,8 @@ export function MembersDirectoryTable({
         defaultOpen
         expandedIds={expandedIds}
         toggle={toggle}
+        onValueChange={setProcessedActive}
+        onGlobalFilterChange={setSearchActive}
       />
       <MemberSection
         title="Inactive members"
@@ -174,6 +201,8 @@ export function MembersDirectoryTable({
         defaultOpen={false}
         expandedIds={expandedIds}
         toggle={toggle}
+        onValueChange={setProcessedInactive}
+        onGlobalFilterChange={setSearchInactive}
       />
     </div>
   )
@@ -186,6 +215,8 @@ function MemberSection({
   defaultOpen = false,
   expandedIds,
   toggle,
+  onValueChange,
+  onGlobalFilterChange,
 }: {
   title: string
   emptyLabel: string
@@ -193,6 +224,8 @@ function MemberSection({
   defaultOpen?: boolean
   expandedIds: Set<string>
   toggle: (id: string) => void
+  onValueChange: (rows: MemberRowAug[]) => void
+  onGlobalFilterChange: (query: string) => void
 }) {
   // Project the shared id Set into PrimeReact's controlled expansion object,
   // scoped to this section's rows.
@@ -273,6 +306,8 @@ function MemberSection({
           emptyMessage={emptyLabel}
           globalFilterFields={members.length > 0 ? ['_search_blob'] : undefined}
           globalSearchPlaceholder="Search by name, phone, email…"
+          onValueChange={onValueChange}
+          onGlobalFilterChange={onGlobalFilterChange}
           expandedRows={expandedRows}
           onRowToggle={(rows) => {
             // Diff the incoming expansion object against the shared Set so the
