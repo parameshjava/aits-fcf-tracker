@@ -167,6 +167,7 @@ export function NewTransactionForm({
             value={amount}
             onChange={setAmount}
             placeholder="0.00"
+            step={500}
           />
         </Field>
 

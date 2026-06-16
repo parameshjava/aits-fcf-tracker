@@ -9,15 +9,20 @@
 
    - THEME: primereact@10.9.7 ships no `aura-*` CSS theme (Aura is preset-only in
      this version), so `lara-light-blue` is used — chosen per the design decision.
-   - LOAD PATH: relative paths into the repo-root node_modules (globals.css lives
-     at src/app/). Bare `primereact/resources/...` specifiers do NOT resolve via
-     Turbopack's CSS @import, but relative paths do — required for layering.
+   - LOAD PATH: bare package specifiers. Tailwind v4 (@tailwindcss/postcss)
+     bundles these @imports via Lightning CSS, which resolves bare specifiers
+     through node module resolution but SILENTLY DROPS relative
+     `../../node_modules/...` paths (the theme then never reaches the output and
+     every PrimeReact component renders unstyled). So the theme is imported by
+     package name, matching the tailwindcss / tw-animate-css imports below. Next
+     16's Turbopack guidance says the same: import node_modules CSS by bare
+     specifier, not relative or `~` paths. primereact's deprecated, now-empty
+     `primereact.min.css` core file is intentionally omitted.
    - primeicons is intentionally unlayered: an icon font with no chrome that
      competes with Tailwind utilities. */
 @layer theme, base, primereact, components, utilities;
-@import "../../node_modules/primereact/resources/themes/lara-light-blue/theme.css" layer(primereact);
-@import "../../node_modules/primereact/resources/primereact.min.css" layer(primereact);
-@import "../../node_modules/primeicons/primeicons.css";
+@import "primereact/resources/themes/lara-light-blue/theme.css" layer(primereact);
+@import "primeicons/primeicons.css";
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";

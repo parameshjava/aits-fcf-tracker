@@ -92,6 +92,12 @@ type PrDataTableProps<T extends Record<string, unknown>> = {
   /** Opt into horizontal scrolling (wide tables) instead of card stacking. */
   scrollable?: boolean
   scrollHeight?: string
+  /** Paginate the rows. Default `true` — 10 rows/page with a 10/25/50/100
+   *  rows-per-page dropdown. Set `false` for pivots/bounded grids (e.g. the
+   *  member×month matrix) where paging the whole set makes no sense. */
+  paginated?: boolean
+  /** Initial page size when paginated. Defaults to 10. */
+  rows?: number
 }
 
 /** Pick a sensible default match mode when a column enables filtering. */
@@ -120,6 +126,8 @@ export function PrDataTable<T extends Record<string, unknown>>({
   footerColumnGroup,
   scrollable,
   scrollHeight,
+  paginated = true,
+  rows = 10,
 }: PrDataTableProps<T>) {
   const hasGlobal = !!globalFilterFields && globalFilterFields.length > 0
   const hasColumnFilters = columns.some((c) => c.filter)
@@ -214,6 +222,16 @@ export function PrDataTable<T extends Record<string, unknown>>({
       footerColumnGroup={footerColumnGroup as never}
       scrollable={scrollable}
       scrollHeight={scrollHeight}
+      // Pagination — 10 rows/page by default; the rows-per-page dropdown lets a
+      // user open it up to 100. `paginated={false}` (pivots) drops the pager.
+      // On a single short page PrimeReact still renders a tidy "1–N of N" bar.
+      paginator={paginated && value.length > 0}
+      rows={rows}
+      rowsPerPageOptions={[10, 25, 50, 100]}
+      paginatorTemplate="FirstPageLink PrevPageLink PageLinks NextPageLink LastPageLink RowsPerPageDropdown CurrentPageReport"
+      currentPageReportTemplate="{first}–{last} of {totalRecords}"
+      // Third click on a sorted column clears the sort (asc → desc → none).
+      removableSort
       // Compact density — Lara's default cell/header padding is large; `small`
       // plus the `.p-datatable-sm` overrides in globals.css restore the prior
       // tight, scannable rows + small uppercase headers this app used.

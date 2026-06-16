@@ -170,6 +170,9 @@ export function MemberMonthMatrix({
         onGlobalFilterChange={setSearchQuery}
         // Wide 12-month grid → horizontal scroll instead of card stacking.
         scrollable
+        // It's a bounded pivot (all members at once, with a footer totals row);
+        // paginating it would hide rows and break the column totals reading.
+        paginated={false}
       />
     </div>
   )

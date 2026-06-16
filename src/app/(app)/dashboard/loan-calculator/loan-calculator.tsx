@@ -5,9 +5,8 @@ import { buildSchedule, computeEmiAmount } from '@/lib/emi-math'
 import { formatRupees, todayISO } from '@/lib/format'
 import { InfoTooltip } from '@/components/ui/info-tooltip'
 import { PrDatePicker } from '@/components/ui/pr/date-picker'
-
-const FIELD =
-  'mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500'
+import { PrAmountInput } from '@/components/ui/pr/amount-input'
+import { PrNumberInput } from '@/components/ui/pr/number-input'
 
 export function LoanCalculator({
   interestRatePct,
@@ -20,21 +19,21 @@ export function LoanCalculator({
   maxWaiverMonths: number
   medicalWaiverDefault: number
 }) {
-  const [principal, setPrincipal] = useState('100000')
-  const [termMonths, setTermMonths] = useState('18')
+  const [principal, setPrincipal] = useState(100000)
+  const [termMonths, setTermMonths] = useState(18)
   const [loanType, setLoanType] = useState<'personal' | 'medical'>('personal')
-  const [waiverMonths, setWaiverMonths] = useState('0')
+  const [waiverMonths, setWaiverMonths] = useState(0)
   const [startDate, setStartDate] = useState(todayISO())
 
   // Switching loan type pre-fills the typical waiver (medical) / 0 (personal).
   function onLoanTypeChange(next: 'personal' | 'medical') {
     setLoanType(next)
-    setWaiverMonths(next === 'medical' ? String(medicalWaiverDefault) : '0')
+    setWaiverMonths(next === 'medical' ? medicalWaiverDefault : 0)
   }
 
-  const p = Number(principal)
-  const n = Number(termMonths)
-  const w = Number(waiverMonths)
+  const p = principal
+  const n = termMonths
+  const w = waiverMonths
 
   const result = useMemo(() => {
     if (!(p > 0) || !Number.isInteger(n) || n < 1 || n > maxTermMonths || !startDate) {
@@ -65,15 +64,14 @@ export function LoanCalculator({
             <label htmlFor="calc_principal" className="block text-sm font-medium text-gray-700">
               Loan amount
             </label>
-            <input
+            <PrAmountInput
               id="calc_principal"
-              type="number"
-              min="1"
-              step="0.01"
+              min={1}
+              step={1000}
               value={principal}
-              onChange={(e) => setPrincipal(e.target.value)}
+              onChange={(v) => setPrincipal(v ?? 0)}
               placeholder="e.g. 100000"
-              className={FIELD}
+              className="mt-1"
             />
           </div>
 
@@ -82,14 +80,15 @@ export function LoanCalculator({
               Term (months)
               <span className="ml-1 text-xs font-normal text-gray-400">(1 to {maxTermMonths})</span>
             </label>
-            <input
+            <PrNumberInput
               id="calc_term"
-              type="number"
-              min="1"
+              min={1}
               max={maxTermMonths}
+              step={1}
+              maxFractionDigits={0}
               value={termMonths}
-              onChange={(e) => setTermMonths(e.target.value)}
-              className={FIELD}
+              onChange={(v) => setTermMonths(v ?? 0)}
+              className="mt-1"
             />
           </div>
 
@@ -124,14 +123,15 @@ export function LoanCalculator({
               Interest waiver
               <span className="ml-1 text-xs font-normal text-gray-400">(months, 0 to {maxWaiverMonths})</span>
             </label>
-            <input
+            <PrNumberInput
               id="calc_waiver"
-              type="number"
-              min="0"
+              min={0}
               max={maxWaiverMonths}
+              step={1}
+              maxFractionDigits={0}
               value={waiverMonths}
-              onChange={(e) => setWaiverMonths(e.target.value)}
-              className={FIELD}
+              onChange={(v) => setWaiverMonths(v ?? 0)}
+              className="mt-1"
             />
           </div>
 

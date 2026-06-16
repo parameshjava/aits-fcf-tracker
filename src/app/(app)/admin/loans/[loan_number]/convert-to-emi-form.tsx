@@ -1,10 +1,11 @@
 'use client'
 
-import { useActionState, useEffect } from 'react'
+import { useActionState, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { convertToEmi } from '@/lib/actions/emi'
 import type { ActionResult } from '@/lib/actions/action-result'
+import { PrNumberInput } from '@/components/ui/pr/number-input'
 
 type Props = {
   loanId: string
@@ -13,6 +14,7 @@ type Props = {
 
 export function ConvertToEmiForm({ loanId, maxTerm }: Props) {
   const router = useRouter()
+  const [termMonths, setTermMonths] = useState<number | null>(null)
   const [state, formAction, isPending] = useActionState<ActionResult | null, FormData>(
     async (_prev, formData) => convertToEmi(formData),
     null,
@@ -35,14 +37,16 @@ export function ConvertToEmiForm({ loanId, maxTerm }: Props) {
         <input type="hidden" name="loan_id" value={loanId} />
         <label className="flex flex-col text-xs">
           <span className="text-gray-500">Term (months)</span>
-          <input
-            type="number"
+          <PrNumberInput
             name="term_months"
-            min="1"
+            min={1}
             max={maxTerm}
-            step="1"
+            step={1}
+            maxFractionDigits={0}
             required
-            className="mt-1 w-32 rounded-md border border-gray-300 px-2 py-1 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            value={termMonths}
+            onChange={setTermMonths}
+            className="mt-1 w-32"
           />
         </label>
         <button

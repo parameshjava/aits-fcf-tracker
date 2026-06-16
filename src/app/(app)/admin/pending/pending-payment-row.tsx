@@ -153,6 +153,7 @@ export function PendingPaymentRow({
                   name="amount"
                   value={amount}
                   onChange={setAmount}
+                  step={500}
                 />
               </Field>
               <div className="sm:col-span-2">

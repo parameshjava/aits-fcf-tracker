@@ -8,6 +8,7 @@ import {
 } from '@/lib/actions/reference'
 import { DeleteIconButton } from '@/components/ui/delete-icon-button'
 import { PrAmountInput } from '@/components/ui/pr/amount-input'
+import { PrNumberInput } from '@/components/ui/pr/number-input'
 import { PrDatePicker } from '@/components/ui/pr/date-picker'
 import { Field } from '@/components/ui/pr/field'
 import { Button } from '@/components/ui/pr/button'
@@ -40,6 +41,8 @@ export function ReferenceHistoryEditor({
   const [dateValue, setDateValue] = useState('')
   // Money-typed value: controlled so PrAmountInput shows ₹ grouping + words.
   const [moneyValue, setMoneyValue] = useState<number | null>(null)
+  // Plain number (percentage / per-lakh rate): controlled for the stepper wrapper.
+  const [numberValue, setNumberValue] = useState<number | null>(null)
   // Effective window: controlled so the PrDatePicker hidden inputs post the
   // raw yyyy-mm-dd to the server (which parses both with new Date(...)).
   const [effectiveFrom, setEffectiveFrom] = useState('')
@@ -71,8 +74,8 @@ export function ReferenceHistoryEditor({
             No history yet. Add the first period below.
           </p>
         ) : (
-          <div className="overflow-hidden rounded-md border border-gray-200 bg-white">
-            <table className="min-w-full text-sm">
+          <div className="overflow-x-auto rounded-md border border-gray-200 bg-white">
+            <table className="min-w-[36rem] text-sm">
               <thead className="bg-gray-50 text-[11px] font-semibold uppercase tracking-wider text-gray-500">
                 <tr>
                   <th className="px-3 py-2 text-left">Effective from</th>
@@ -166,17 +169,19 @@ export function ReferenceHistoryEditor({
                 value={moneyValue}
                 onChange={setMoneyValue}
                 placeholder="500000"
+                step={1000}
               />
             ) : (
-              // Percentage / plain number: a bare numeric input (no ₹).
-              <input
+              // Percentage / plain number: stacked stepper (no ₹).
+              <PrNumberInput
                 id="value"
                 name="value"
-                type="number"
-                step="0.01"
                 required
+                value={numberValue}
+                onChange={setNumberValue}
+                step={1}
+                maxFractionDigits={2}
                 placeholder="25"
-                className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
               />
             )}
           </Field>

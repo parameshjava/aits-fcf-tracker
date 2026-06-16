@@ -7,6 +7,7 @@ import { toast } from 'sonner'
 import { createPoll } from '@/lib/actions/polls'
 import { defaultClosesAtLocal } from '@/lib/poll-format'
 import { MarkdownEditor } from '@/components/markdown-editor'
+import { PrNumberInput } from '@/components/ui/pr/number-input'
 import {
   POLL_DESCRIPTION_MAX,
   POLL_OPTION_MAX,
@@ -23,7 +24,7 @@ export function NewPollForm() {
   const [visibility, setVisibility] = useState<Visibility>('public')
   const [allowOther, setAllowOther] = useState(false)
   const [options, setOptions] = useState<string[]>(['', ''])
-  const [maxSelections, setMaxSelections] = useState<string>('')
+  const [maxSelections, setMaxSelections] = useState<number | null>(null)
   const [closesAt, setClosesAt] = useState<string>(defaultClosesAtLocal())
   const [description, setDescription] = useState('')
 
@@ -142,16 +143,16 @@ export function NewPollForm() {
               (leave blank for no limit)
             </span>
           </label>
-          <input
+          <PrNumberInput
             id="max_selections"
             name="max_selections"
-            type="number"
             min={1}
             step={1}
+            maxFractionDigits={0}
             value={maxSelections}
-            onChange={(e) => setMaxSelections(e.target.value)}
+            onChange={(v) => setMaxSelections(v)}
             placeholder="e.g. 3"
-            className="mt-1 block w-32 rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            className="mt-1 w-32"
           />
         </div>
       ) : null}

@@ -11,6 +11,7 @@ import {
 import type { ActionResult } from '@/lib/actions/action-result'
 import { formatRupees, todayISO } from '@/lib/format'
 import { PrDatePicker } from '@/components/ui/pr/date-picker'
+import { PrAmountInput } from '@/components/ui/pr/amount-input'
 import type { BalanceDirection } from '@/lib/balance-direction'
 
 type Props = {
@@ -33,9 +34,9 @@ export function PendingInterestPanel({ loanId, accruals }: Props) {
   const [selected, setSelected] = useState<Record<string, boolean>>(
     Object.fromEntries(pending.map((a) => [a.id, true])),
   )
-  const [amounts, setAmounts] = useState<Record<string, string>>(
+  const [amounts, setAmounts] = useState<Record<string, number | null>>(
     Object.fromEntries(
-      pending.map((a) => [a.id, (a.amount_due - a.paid_amount).toFixed(2)]),
+      pending.map((a) => [a.id, Math.max(a.amount_due - a.paid_amount, 0)]),
     ),
   )
   const [txnDate, setTxnDate] = useState<string>(todayISO())
@@ -46,7 +47,7 @@ export function PendingInterestPanel({ loanId, accruals }: Props) {
 
   const allocations: InterestAllocation[] = pending
     .filter((a) => selected[a.id])
-    .map((a) => ({ accrualId: a.id, amount: Number(amounts[a.id] ?? 0) }))
+    .map((a) => ({ accrualId: a.id, amount: amounts[a.id] ?? 0 }))
     .filter((a) => Number.isFinite(a.amount) && a.amount > 0)
 
   const total = allocations.reduce((s, a) => s + a.amount, 0)
@@ -149,25 +150,16 @@ export function PendingInterestPanel({ loanId, accruals }: Props) {
                       {formatRupees(a.paid_amount)}
                     </td>
                     <td className="py-2 pr-2">
-                      <input
-                        type="number"
-                        step="0.01"
-                        min="0"
+                      <PrAmountInput
+                        value={amounts[a.id] ?? null}
+                        onChange={(n) =>
+                          setAmounts((prev) => ({ ...prev, [a.id]: n }))
+                        }
+                        step={1000}
+                        min={0}
                         max={remaining}
-                        value={amounts[a.id] ?? ''}
-                        onChange={(e) => {
-                          const raw = e.target.value
-                          // Clamp to [0, remaining] when a finite number is typed.
-                          let next = raw
-                          const n = Number(raw)
-                          if (raw !== '' && Number.isFinite(n)) {
-                            if (n < 0) next = '0'
-                            else if (n > remaining) next = remaining.toFixed(2)
-                          }
-                          setAmounts((prev) => ({ ...prev, [a.id]: next }))
-                        }}
                         disabled={!selected[a.id]}
-                        className="w-28 rounded-md border border-gray-300 px-2 py-1 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:bg-gray-50 disabled:text-gray-400"
+                        className="w-36"
                       />
                     </td>
                   </tr>

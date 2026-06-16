@@ -3,7 +3,7 @@
 import { InputNumber } from 'primereact/inputnumber'
 import { cn } from '@/lib/utils'
 
-type PrAmountInputProps = {
+type PrNumberInputProps = {
   value: number | null
   onChange: (value: number | null) => void
   disabled?: boolean
@@ -11,28 +11,32 @@ type PrAmountInputProps = {
   className?: string
   id?: string
   /** Form field name — emits a hidden input carrying the raw numeric value
-   * (no grouping), ready for `parseFloat` in server actions via FormData. */
+   * (no grouping), ready for `parseFloat`/`parseInt` in server actions via
+   * FormData. */
   name?: string
   /** Marks the hidden input required (only enforced when value is null). */
   required?: boolean
-  /** Stacked +/- stepper increment, in whole rupees. Pick per field (e.g. 500
-   *  for contributions, 1000 for loan amounts). Defaults to 1. */
+  /** Stacked +/- stepper increment. Defaults to 1. */
   step?: number
-  /** Optional clamps for the stepper buttons. */
   min?: number
   max?: number
+  /** Decimal places to allow; 0 (default) → integers only (months, counts).
+   *  Use 2 for rates / fractional values. */
+  maxFractionDigits?: number
+  /** e.g. " %" for an interest rate; rendered inside the field. */
+  suffix?: string
+  prefix?: string
 }
 
-// Rupee input. Locale pinned to en-IN so grouping renders 1,00,000-style
-// (lakh grouping), consistent with formatRupees. Currency mode shows ₹.
-// Renders the PrimeReact "stacked" stepper (up/down buttons on the right),
-// matching the app-wide numeric-input style; `step` is per-field whole rupees.
-// NOTE: the old AmountInput's number-to-words `showWords` helper is NOT
-// built in here — call sites that need it keep rendering it themselves.
-export function PrAmountInput({
+// Plain (non-currency) numeric input — the decimal sibling of {@link PrAmountInput}.
+// Renders the PrimeReact "stacked" stepper (up/down buttons on the right) so every
+// numeric input across the app shares one look. Grouping is OFF (a count of 1200
+// reads "1200", not "1,200") and integers are the default; pass maxFractionDigits
+// for rates. Emits a hidden input so it drops into existing FormData server actions.
+export function PrNumberInput({
   value, onChange, disabled, placeholder, className, id, name, required,
-  step = 1, min, max,
-}: PrAmountInputProps) {
+  step = 1, min, max, maxFractionDigits = 0, suffix, prefix,
+}: PrNumberInputProps) {
   return (
     <>
       {name && (
@@ -47,14 +51,15 @@ export function PrAmountInput({
         inputId={id}
         value={value}
         onValueChange={(e) => onChange(e.value ?? null)}
-        mode="currency"
-        currency="INR"
-        locale="en-IN"
         showButtons
         buttonLayout="stacked"
         step={step}
         min={min}
         max={max}
+        maxFractionDigits={maxFractionDigits}
+        useGrouping={false}
+        suffix={suffix}
+        prefix={prefix}
         disabled={disabled}
         placeholder={placeholder}
         // `flex` (not PrimeReact's default inline-flex) keeps the field block-
