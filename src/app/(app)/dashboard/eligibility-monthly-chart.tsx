@@ -90,7 +90,7 @@ export function EligibilityMonthlyChart({ data, year }: Props) {
       className="h-64 w-full"
       aria-label={`Eligibility carry-in plus fresh accrual by month for ${year}`}
     >
-      <Chart type="bar" data={chartData} options={options} />
+      <Chart type="bar" data={chartData} options={options} className="h-full w-full" />
     </div>
   )
 }

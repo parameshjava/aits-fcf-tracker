@@ -62,7 +62,7 @@ export function PollResultsPie({
     <div className="flex flex-col items-center gap-5">
       <div className="relative">
         <div className="aspect-square h-44 w-44">
-          <Chart type="doughnut" data={chartData} options={options} />
+          <Chart type="doughnut" data={chartData} options={options} className="h-full w-full" />
         </div>
         {/* Centre label — overlaid because Chart.js doughnuts have no native
             centre slot. pointer-events-none so it never intercepts hover, letting
