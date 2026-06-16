@@ -9,6 +9,9 @@ type PrDrawerProps = {
   onHide: () => void
   position?: 'left' | 'right' | 'top' | 'bottom'
   className?: string
+  /** Applied to the scrim/mask too, so visibility utilities (e.g. `lg:hidden`)
+   *  also tear down the backdrop + scroll-lock if the viewport grows while open. */
+  maskClassName?: string
   children?: ReactNode
 }
 
@@ -24,6 +27,7 @@ export function PrDrawer({
   onHide,
   position = 'left',
   className,
+  maskClassName,
   children,
 }: PrDrawerProps) {
   return (
@@ -40,6 +44,7 @@ export function PrDrawer({
         header: { className: 'hidden' },
         content: { className: '!p-0 h-full' },
         root: { className: '!bg-transparent' },
+        mask: maskClassName ? { className: maskClassName } : undefined,
       }}
     >
       {children}

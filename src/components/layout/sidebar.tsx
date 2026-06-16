@@ -475,6 +475,7 @@ export function Sidebar({ user }: { user: SidebarUser }) {
         onHide={() => setDrawerOpen(false)}
         position="left"
         className="lg:hidden"
+        maskClassName="lg:hidden"
       >
         <SidebarBody
           collapsed={false}
