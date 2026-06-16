@@ -74,7 +74,11 @@ export function ContributionsFilters({
 
   return (
     <div className="rounded-2xl border border-gray-200/80 bg-white p-3 sm:p-4">
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_1fr_1fr_auto] lg:items-end">
+      {/* [&>*]:min-w-0 lets each grid track shrink below its content's intrinsic
+          width — without it a multi-selected member field blows out its 1fr
+          column and pushes the date fields off-screen (grid items default to
+          min-width:auto). */}
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_1fr_1fr_auto] lg:items-end [&>*]:min-w-0">
         <Field label="Member" htmlFor="contrib-filter-members">
           <PrMultiSelect
             id="contrib-filter-members"

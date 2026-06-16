@@ -17,10 +17,18 @@ type PrMultiSelectProps = {
   name?: string
   /** Marks the field required (enforced via a hidden input when empty). */
   required?: boolean
+  /** How selections render in the closed control. 'comma' (default) shows up to
+   * `maxSelectedLabels` then collapses to "N selected" — keeps the field a
+   * single compact line so it never widens the row. 'chip' shows a chip each. */
+  display?: 'comma' | 'chip'
+  /** Beyond this many selections the control shows the count label instead of
+   * listing every item (prevents the field ballooning). Default 2. */
+  maxSelectedLabels?: number
 }
 
 export function PrMultiSelect({
   values, options, onChange, placeholder, disabled, className, id, name, required,
+  display = 'comma', maxSelectedLabels = 2,
 }: PrMultiSelectProps) {
   return (
     <>
@@ -45,7 +53,9 @@ export function PrMultiSelect({
         placeholder={placeholder}
         disabled={disabled}
         filter
-        display="chip"
+        display={display}
+        maxSelectedLabels={maxSelectedLabels}
+        selectedItemsLabel="{0} selected"
         className={cn('w-full', className)}
       />
     </>

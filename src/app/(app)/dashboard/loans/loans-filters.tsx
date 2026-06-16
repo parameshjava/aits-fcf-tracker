@@ -45,7 +45,9 @@ export function LoansFilters({ members, defaultMemberIds }: Props) {
 
   return (
     <div className="rounded-2xl border border-gray-200/80 bg-white p-3 sm:p-4">
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_auto] sm:items-end">
+      {/* [&>*]:min-w-0 stops a multi-selected member field from blowing out its
+          1fr track and overflowing the row (grid items default min-width:auto). */}
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_auto] sm:items-end [&>*]:min-w-0">
         <Field label="Member" htmlFor="loans-filter-members">
           <PrMultiSelect
             id="loans-filter-members"
