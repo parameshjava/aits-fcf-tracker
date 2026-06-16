@@ -4,7 +4,9 @@ import { useActionState, useState } from 'react'
 import { approvePayment, rejectPayment } from '@/lib/actions/payments'
 import { formatRupees, todayISO } from '@/lib/format'
 import { BankBalanceUpdater } from '@/components/bank-balance-updater'
-import { AmountInput } from '@/components/amount-input'
+import { PrAmountInput } from '@/components/ui/pr/amount-input'
+import { Field } from '@/components/ui/pr/field'
+import { Button } from '@/components/ui/pr/button'
 import { defaultDirectionForContribution } from '@/lib/balance-direction'
 import type { TransactionType } from '@/lib/constants'
 
@@ -30,6 +32,9 @@ export function PendingPaymentRow({
   members: MemberOption[]
 }) {
   const [editing, setEditing] = useState(false)
+  // Controlled amount for the editable approval form, seeded from the
+  // submitted value (PrAmountInput is controlled, unlike the old AmountInput).
+  const [amount, setAmount] = useState<number | null>(payment.amount)
 
   const [approveState, approveAction, approvePending] = useActionState(
     async (_prev: unknown, formData: FormData) => approvePayment(formData),
@@ -137,19 +142,14 @@ export function PendingPaymentRow({
                   className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-2 py-1 text-xs focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                 />
               </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-700">
-                  Amount
-                </label>
-                <AmountInput
+              <Field label="Amount" htmlFor="amount">
+                <PrAmountInput
+                  id="amount"
                   name="amount"
-                  step="0.01"
-                  min="0"
-                  defaultValue={payment.amount}
-                  className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-2 py-1 text-xs focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                  wordsClassName="mt-1 min-h-[1.1rem] text-[11px] italic text-gray-500"
+                  value={amount}
+                  onChange={setAmount}
                 />
-              </div>
+              </Field>
               <div className="sm:col-span-2">
                 <label className="block text-xs font-medium text-gray-700">
                   Description
@@ -196,25 +196,22 @@ export function PendingPaymentRow({
           )}
 
           <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="submit"
-              disabled={approvePending}
-              className="rounded-md bg-green-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50"
-            >
+            <Button type="submit" size="sm" disabled={approvePending}>
               {approvePending
                 ? 'Approving…'
                 : editing
                   ? 'Save & approve'
                   : 'Approve'}
-            </button>
+            </Button>
             {editing && (
-              <button
+              <Button
                 type="button"
+                variant="outline"
+                size="sm"
                 onClick={() => setEditing(false)}
-                className="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
               >
                 Cancel edit
-              </button>
+              </Button>
             )}
             {!editing && <RejectButton paymentId={payment.id} />}
           </div>
@@ -247,13 +244,15 @@ function RejectButton({ paymentId }: { paymentId: string }) {
         className="rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:border-red-500 focus:outline-none focus:ring-1 focus:ring-red-500"
       />
       <form id={`reject-${paymentId}`} action={action}>
-        <button
+        <Button
           type="submit"
+          variant="destructive"
+          size="sm"
+          outlined
           disabled={pending}
-          className="rounded-md border border-red-300 px-4 py-1.5 text-sm font-medium text-red-700 hover:bg-red-50 disabled:opacity-50"
         >
           {pending ? 'Rejecting…' : 'Reject'}
-        </button>
+        </Button>
       </form>
       {state && !state.ok && (
         <p className="text-sm text-red-600">{state.error}</p>
