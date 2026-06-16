@@ -1,20 +1,15 @@
 'use client'
 
-import { Fragment, useCallback, useRef, useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
+import { Dropdown } from 'primereact/dropdown'
 import { formatRupees } from '@/lib/format'
 import { overdueParts, formatOverdueDuration } from '@/lib/due'
 import { getLoanDetail, type LoanDetailData } from '@/lib/actions/loans'
 import { LoanDetailPanel } from '@/components/loan-detail-panel'
-import { ExpandToggle } from '@/components/ui/expand-toggle'
 import { TableExportMenu } from '@/components/table-export'
+import { PrDataTable, type PrColumn } from '@/components/ui/pr/data-table'
 import type { Cell } from '@/lib/table-export'
-import {
-  SortableHeader,
-  TableSearch,
-  useSortable,
-  useTableFilter,
-} from '@/components/table-controls'
 
 export type LoansListRow = {
   id: string
@@ -41,17 +36,16 @@ export type LoansListRow = {
   detail_href: string
 }
 
-type SortKey =
-  | 'loan_number'
-  | 'member'
-  | 'principal'
-  | 'start'
-  | 'end'
-  | 'status'
-  | 'type'
-  | 'paid_interest'
-  | 'interest_due'
-  | 'balance'
+/** Flattened fields baked onto each row so the DataTable can sort / filter /
+ *  globally search on flat values. */
+type LoansListRowAug = LoansListRow & {
+  _start_ts: number
+  _end_ts: number
+  _status_label: string
+  _status_rank: number
+  _type_label: string
+  _search_blob: string
+}
 
 const STATUS_PILL: Record<string, string> = {
   active:    'bg-blue-50 text-blue-700 ring-blue-200',
@@ -106,58 +100,64 @@ export function LoansListTable({
   mode?: 'active' | 'past'
 }) {
   const showEndDate = mode === 'past'
-  const colspan = showEndDate ? 11 : 10
-  const stringify = useCallback(
-    (l: LoansListRow) =>
-      [
-        l.loan_number,
-        l.member_name ?? '',
-        String(l.principal_amount),
-        formatDate(l.start_date),
-        STATUS_LABEL[l.status] ?? l.status,
-        TYPE_LABEL[l.loan_type] ?? l.loan_type,
-      ].join(' '),
-    [],
+
+  const augmented = useMemo<LoansListRowAug[]>(
+    () =>
+      loans.map((l) => {
+        const statusLabel = STATUS_LABEL[l.status] ?? l.status
+        const typeLabel = TYPE_LABEL[l.loan_type] ?? l.loan_type
+        return {
+          ...l,
+          _start_ts: new Date(l.start_date).getTime(),
+          _end_ts: l.end_date ? new Date(l.end_date).getTime() : 0,
+          _status_label: statusLabel,
+          _status_rank: STATUS_RANK[l.status] ?? 99,
+          _type_label: typeLabel,
+          _search_blob: [
+            l.loan_number,
+            l.member_name ?? '',
+            String(l.principal_amount),
+            formatDate(l.start_date),
+            statusLabel,
+            typeLabel,
+          ].join(' '),
+        }
+      }),
+    [loans],
   )
 
-  const { filtered, query, setQuery } = useTableFilter(loans, stringify)
+  // Distinct status labels present → drives the Status dropdown filter.
+  const statusOptions = useMemo(() => {
+    const seen = new Map<string, string>()
+    for (const l of augmented) seen.set(l._status_label, l._status_label)
+    return Array.from(seen.values())
+      .sort((a, b) => a.localeCompare(b))
+      .map((label) => ({ label, value: label }))
+  }, [augmented])
 
-  const accessor = useCallback((l: LoansListRow, col: SortKey) => {
-    if (col === 'loan_number')    return l.loan_number
-    if (col === 'member')         return l.member_name ?? ''
-    if (col === 'principal')      return l.principal_amount
-    if (col === 'start')          return new Date(l.start_date).getTime()
-    if (col === 'end')            return l.end_date ? new Date(l.end_date).getTime() : 0
-    if (col === 'status')         return STATUS_RANK[l.status] ?? 99
-    if (col === 'type')           return TYPE_LABEL[l.loan_type] ?? l.loan_type
-    if (col === 'paid_interest')  return l.paid_interest
-    if (col === 'interest_due')   return l.interest_due
-    if (col === 'balance')        return l.balance
-    return ''
-  }, [])
+  // The DataTable reports its current filtered+sorted rows here; export, the
+  // count strip and the totals footer all derive from these so they reflect
+  // what's on screen. `null` until the first onValueChange → full set.
+  const [processed, setProcessed] = useState<LoansListRowAug[] | null>(null)
+  const [searchQuery, setSearchQuery] = useState('')
+  const visible = processed ?? augmented
 
-  const { sorted, sort, toggleSort } = useSortable<LoansListRow, SortKey>(
-    filtered,
-    accessor,
-    { col: 'loan_number', dir: 'desc' },
-  )
+  const totalOutstanding = visible.reduce((s, l) => s + l.balance, 0)
 
-  const totalOutstanding = sorted.reduce((s, l) => s + l.balance, 0)
-
-  // Export reflects the current sort + search filter.
+  // --- Export (reflects the current filter + sort) -------------------------
   const exportColumns = [
     'Loan #', 'Member', 'Type', 'Principal (₹)', 'Start date',
     ...(showEndDate ? ['End date'] : []),
     'Status', 'Interest paid (₹)', 'Interest due (₹)', 'Outstanding (₹)',
   ]
-  const exportRows: Cell[][] = sorted.map((l) => [
+  const exportRows: Cell[][] = visible.map((l) => [
     l.loan_number,
     l.member_name ?? '',
-    TYPE_LABEL[l.loan_type] ?? l.loan_type,
+    l._type_label,
     l.principal_amount,
     formatDate(l.start_date),
     ...(showEndDate ? [formatDate(l.end_date ?? null)] : []),
-    STATUS_LABEL[l.status] ?? l.status,
+    l._status_label,
     l.paid_interest,
     l.status === 'paid' || l.status === 'write_off' ? '' : l.interest_due,
     l.balance,
@@ -165,15 +165,15 @@ export function LoansListTable({
   const exportFooter: Cell[] = exportColumns.map((c, i) =>
     i === 0 ? 'Total' : c === 'Outstanding (₹)' ? totalOutstanding : '',
   )
-  const exportCriteria = query.trim() ? [{ label: 'Search', value: query.trim() }] : []
+  const exportCriteria = searchQuery.trim()
+    ? [{ label: 'Search', value: searchQuery.trim() }]
+    : []
 
-  // --- Accordion state -----------------------------------------------------
+  // --- Lazy-loaded accordion state -----------------------------------------
   // Detail is fetched once per loan and stored in `cache`. Re-expanding the
-  // same row reads from cache instantly. `loading` and `errors` drive the
-  // expanded-row placeholders. `inflightRef` is the synchronous dedup guard
-  // for the fetch — state setters in React 18 run their updaters during the
-  // next render, so they can't be used as an immediate "have I started?" lock.
-  const [expanded, setExpanded] = useState<Set<string>>(() => new Set())
+  // same row reads from cache instantly. `inflightRef` is the synchronous
+  // dedup guard — state setters can't be used as an immediate "started?" lock.
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(() => new Set())
   const [cache, setCache] = useState<Map<string, LoanDetailData>>(() => new Map())
   const [loading, setLoading] = useState<Set<string>>(() => new Set())
   const [errors, setErrors] = useState<Map<string, string>>(() => new Map())
@@ -219,222 +219,298 @@ export function LoansListTable({
     [cache],
   )
 
-  const toggleExpand = useCallback(
-    (id: string) => {
-      setExpanded((prev) => {
-        const next = new Set(prev)
-        if (next.has(id)) next.delete(id)
-        else next.add(id)
-        return next
+  // PrimeReact controlled expansion object derived from the id Set.
+  const expandedRows = useMemo(() => {
+    const obj: Record<string, boolean> = {}
+    for (const id of expandedIds) obj[id] = true
+    return obj
+  }, [expandedIds])
+
+  const onRowToggle = useCallback(
+    (rows: unknown) => {
+      const nextIds = new Set(Object.keys(rows as Record<string, boolean>))
+      // Diff against current state to find the single toggled row; trigger a
+      // lazy fetch for any newly-opened loan.
+      setExpandedIds((prev) => {
+        for (const id of nextIds) {
+          if (!prev.has(id)) void fetchDetail(id)
+        }
+        return nextIds
       })
-      // Cached → returns immediately. In flight → de-duplicated. Else fetches.
-      void fetchDetail(id)
     },
     [fetchDetail],
   )
 
+  // --- Columns -------------------------------------------------------------
+  const columns: PrColumn<LoansListRowAug>[] = [
+    {
+      field: 'loan_number',
+      header: 'Loan #',
+      sortable: true,
+      filter: true,
+      dataType: 'text',
+      bodyClassName: 'whitespace-nowrap px-3 py-2.5 font-mono text-xs text-gray-700',
+      body: (l) => (
+        <span className="inline-flex items-center gap-1.5">
+          {l.loan_number}
+          {(l.overdue_count ?? 0) > 0 &&
+            (() => {
+              const parts =
+                todayIso && l.oldest_overdue_date
+                  ? overdueParts(l.oldest_overdue_date, todayIso)
+                  : null
+              const dur = parts ? formatOverdueDuration(parts) : null
+              const n = l.overdue_count ?? 0
+              const title =
+                `${n} EMI ${n === 1 ? 'payment is' : 'payments are'} overdue` +
+                (dur ? ` · oldest overdue by ${dur}` : '')
+              return (
+                <span
+                  title={title}
+                  aria-label={title}
+                  className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-rose-100 text-rose-600"
+                >
+                  <AlertIcon />
+                </span>
+              )
+            })()}
+        </span>
+      ),
+      footer: 'Total',
+    },
+    {
+      field: 'member_name',
+      header: 'Member',
+      sortable: true,
+      filter: true,
+      dataType: 'text',
+      bodyClassName: 'px-3 py-2.5 font-medium text-gray-900',
+      body: (l) => l.member_name ?? <span className="text-gray-400">—</span>,
+    },
+    {
+      field: '_type_label',
+      header: 'Type',
+      sortable: true,
+      bodyClassName: 'whitespace-nowrap px-3 py-2.5',
+      body: (l) => (
+        <div className="flex items-center gap-1.5">
+          <span
+            className={
+              'rounded-full px-2 py-0.5 text-xs font-medium ring-1 ' +
+              (TYPE_PILL[l.loan_type] ?? TYPE_PILL.personal)
+            }
+          >
+            {l._type_label}
+          </span>
+          {l.repayment_model === 'emi' && (
+            <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-xs font-medium text-indigo-700 ring-1 ring-indigo-200">
+              EMI
+            </span>
+          )}
+        </div>
+      ),
+    },
+    {
+      field: 'principal_amount',
+      header: 'Principal',
+      sortable: true,
+      align: 'right',
+      dataType: 'numeric',
+      bodyClassName: 'whitespace-nowrap px-3 py-2.5 text-right tabular-nums text-gray-700',
+      body: (l) => formatRupees(l.principal_amount),
+    },
+    {
+      field: '_start_ts',
+      header: 'Start date',
+      sortable: true,
+      dataType: 'numeric',
+      bodyClassName: 'whitespace-nowrap px-3 py-2.5 text-gray-600',
+      body: (l) => (
+        <>
+          {formatDate(l.start_date)}
+          {l.repayment_model === 'emi' && l.next_due_date && (
+            <span className="mt-0.5 block text-[11px] text-gray-400">
+              next EMI {formatDate(l.next_due_date)}
+            </span>
+          )}
+        </>
+      ),
+    },
+    ...(showEndDate
+      ? ([
+          {
+            field: '_end_ts',
+            header: 'End date',
+            sortable: true,
+            dataType: 'numeric',
+            bodyClassName: 'whitespace-nowrap px-3 py-2.5 text-gray-600',
+            body: (l: LoansListRowAug) => formatDate(l.end_date ?? null),
+          },
+        ] as PrColumn<LoansListRowAug>[])
+      : []),
+    {
+      field: '_status_label',
+      header: 'Status',
+      sortable: true,
+      sortField: '_status_rank',
+      filter: true,
+      filterField: '_status_label',
+      filterElement: ({ value, filterApplyCallback }) => (
+        <Dropdown
+          value={(value as string) ?? null}
+          options={statusOptions}
+          onChange={(e) => filterApplyCallback(e.value)}
+          placeholder="Any status"
+          showClear
+          className="w-full"
+        />
+      ),
+      bodyClassName: 'whitespace-nowrap px-3 py-2.5',
+      body: (l) => (
+        <span
+          className={
+            'inline-block whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium ring-1 ' +
+            (STATUS_PILL[l.status] ?? STATUS_PILL.active)
+          }
+        >
+          {l._status_label}
+        </span>
+      ),
+    },
+    {
+      field: 'paid_interest',
+      header: 'Interest paid',
+      sortable: true,
+      align: 'right',
+      dataType: 'numeric',
+      bodyClassName: 'whitespace-nowrap px-3 py-2.5 text-right tabular-nums text-gray-700',
+      body: (l) => formatRupees(l.paid_interest),
+    },
+    {
+      field: 'interest_due',
+      header: 'Interest due',
+      sortable: true,
+      align: 'right',
+      dataType: 'numeric',
+      body: (l) => {
+        const isClosedLoan = l.status === 'paid' || l.status === 'write_off'
+        return (
+          <span
+            className={
+              'whitespace-nowrap text-right tabular-nums ' +
+              (isClosedLoan
+                ? 'text-gray-400'
+                : l.interest_due > 0
+                ? 'font-medium text-amber-700'
+                : 'text-gray-500')
+            }
+          >
+            {isClosedLoan ? '—' : formatRupees(l.interest_due)}
+          </span>
+        )
+      },
+      bodyClassName: 'whitespace-nowrap px-3 py-2.5 text-right',
+    },
+    {
+      field: 'balance',
+      header: 'Outstanding',
+      sortable: true,
+      align: 'right',
+      dataType: 'numeric',
+      bodyClassName:
+        'whitespace-nowrap px-3 py-2.5 text-right font-semibold tabular-nums text-gray-900',
+      body: (l) => formatRupees(l.balance),
+      footer: (
+        <span className="font-semibold tabular-nums text-gray-900">
+          {formatRupees(totalOutstanding)}
+        </span>
+      ),
+    },
+  ]
+
+  // When not expandable, append an Actions column with the per-row link.
+  // (Expandable mode uses the wrapper's expander column instead.)
+  if (!expandable) {
+    columns.push({
+      field: 'detail_href',
+      header: '',
+      align: 'right',
+      bodyClassName: 'whitespace-nowrap px-3 py-2.5 text-right',
+      body: (l) => (
+        <Link
+          href={l.detail_href}
+          className="text-xs font-medium text-blue-600 hover:text-blue-800"
+        >
+          {linkLabel}
+        </Link>
+      ),
+    })
+  } else {
+    columns.push({
+      field: 'id',
+      header: '',
+      expander: true,
+      style: { width: '3.5rem' },
+    })
+  }
+
+  const exportMenu = (
+    <TableExportMenu
+      filename={mode === 'past' ? 'loans-closed' : 'loans'}
+      title={mode === 'past' ? 'Closed loans' : 'Loans'}
+      columns={exportColumns}
+      rows={exportRows}
+      footer={exportFooter}
+      criteria={exportCriteria}
+    />
+  )
+
   return (
     <div className="overflow-clip rounded-2xl border border-gray-200 bg-white">
-      {loans.length > 0 && (
-        <div className="flex items-center justify-between gap-3 border-b border-gray-200 bg-gray-50/30 px-3 py-2">
-          <TableSearch
-            value={query}
-            onChange={setQuery}
-            placeholder="Search by loan #, member, status…"
-            matched={filtered.length}
-            total={loans.length}
-          />
-          <TableExportMenu
-            filename={mode === 'past' ? 'loans-closed' : 'loans'}
-            title={mode === 'past' ? 'Closed loans' : 'Loans'}
-            columns={exportColumns}
-            rows={exportRows}
-            footer={exportFooter}
-            criteria={exportCriteria}
-          />
-        </div>
-      )}
-      <div className="overflow-x-auto lg:overflow-x-visible">
-        <table className="sticky-thead min-w-full text-sm">
-          <thead>
-            <tr className="border-b border-gray-200 bg-gray-50/60">
-              <SortableHeader compact col="loan_number"   label="Loan #"        sort={sort} onToggle={toggleSort} />
-              <SortableHeader compact col="member"        label="Member"        sort={sort} onToggle={toggleSort} />
-              <SortableHeader compact col="type"          label="Type"          sort={sort} onToggle={toggleSort} />
-              <SortableHeader compact col="principal"     label="Principal"     align="right" sort={sort} onToggle={toggleSort} />
-              <SortableHeader compact col="start"         label="Start date"    sort={sort} onToggle={toggleSort} />
-              {showEndDate && (
-                <SortableHeader compact col="end"         label="End date"      sort={sort} onToggle={toggleSort} />
-              )}
-              <SortableHeader compact col="status"        label="Status"        sort={sort} onToggle={toggleSort} />
-              <SortableHeader compact col="paid_interest" label="Interest paid" align="right" sort={sort} onToggle={toggleSort} />
-              <SortableHeader compact col="interest_due"  label="Interest due"  align="right" sort={sort} onToggle={toggleSort} />
-              <SortableHeader compact col="balance"       label="Outstanding"   align="right" sort={sort} onToggle={toggleSort} />
-              <th scope="col" className="px-3 py-2.5" />
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-100">
-            {sorted.length === 0 ? (
-              <tr>
-                <td colSpan={colspan} className="px-4 py-12 text-center text-sm text-gray-400">
-                  {query ? `No matches for "${query}"` : (emptyMessage ?? 'No loans yet.')}
-                </td>
-              </tr>
-            ) : (
-              sorted.map((l) => {
-                const isOpen = expandable && expanded.has(l.id)
-                const isClosedLoan = l.status === 'paid' || l.status === 'write_off'
+      <PrDataTable<LoansListRowAug>
+        value={augmented}
+        columns={columns}
+        dataKey="id"
+        emptyMessage={emptyMessage ?? 'No loans yet.'}
+        globalFilterFields={loans.length > 0 ? ['_search_blob'] : undefined}
+        globalSearchPlaceholder="Search by loan #, member, status…"
+        header={loans.length > 0 ? exportMenu : undefined}
+        onValueChange={setProcessed}
+        onGlobalFilterChange={setSearchQuery}
+        expandedRows={expandable ? expandedRows : undefined}
+        onRowToggle={expandable ? onRowToggle : undefined}
+        rowExpansion={
+          expandable
+            ? (l) => {
                 const cached = cache.get(l.id)
                 const isLoading = loading.has(l.id) && !cached
                 const errMsg = errors.get(l.id)
-                const rowBaseClasses = 'transition-colors'
-                const rowOpenClasses = isOpen
-                  ? 'bg-blue-50/40 ring-1 ring-inset ring-blue-100'
-                  : 'hover:bg-gray-50'
                 return (
-                  <Fragment key={l.id}>
-                    <tr className={`${rowBaseClasses} ${rowOpenClasses}`}>
-                      <td className="whitespace-nowrap px-3 py-2.5 font-mono text-xs text-gray-700">
-                        <span className="inline-flex items-center gap-1.5">
-                          {l.loan_number}
-                          {(l.overdue_count ?? 0) > 0 && (() => {
-                            const parts =
-                              todayIso && l.oldest_overdue_date
-                                ? overdueParts(l.oldest_overdue_date, todayIso)
-                                : null
-                            const dur = parts ? formatOverdueDuration(parts) : null
-                            const n = l.overdue_count ?? 0
-                            const title =
-                              `${n} EMI ${n === 1 ? 'payment is' : 'payments are'} overdue` +
-                              (dur ? ` · oldest overdue by ${dur}` : '')
-                            return (
-                              <span
-                                title={title}
-                                aria-label={title}
-                                className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-rose-100 text-rose-600"
-                              >
-                                <AlertIcon />
-                              </span>
-                            )
-                          })()}
-                        </span>
-                      </td>
-                      <td className="px-3 py-2.5 font-medium text-gray-900">
-                        {l.member_name ?? <span className="text-gray-400">—</span>}
-                      </td>
-                      <td className="whitespace-nowrap px-3 py-2.5">
-                        <div className="flex items-center gap-1.5">
-                          <span
-                            className={
-                              'rounded-full px-2 py-0.5 text-xs font-medium ring-1 ' +
-                              (TYPE_PILL[l.loan_type] ?? TYPE_PILL.personal)
-                            }
-                          >
-                            {TYPE_LABEL[l.loan_type] ?? l.loan_type}
-                          </span>
-                          {l.repayment_model === 'emi' && (
-                            <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-xs font-medium text-indigo-700 ring-1 ring-indigo-200">
-                              EMI
-                            </span>
-                          )}
-                        </div>
-                      </td>
-                      <td className="whitespace-nowrap px-3 py-2.5 text-right tabular-nums text-gray-700">
-                        {formatRupees(l.principal_amount)}
-                      </td>
-                      <td className="whitespace-nowrap px-3 py-2.5 text-gray-600">
-                        {formatDate(l.start_date)}
-                        {l.repayment_model === 'emi' && l.next_due_date && (
-                          <span className="mt-0.5 block text-[11px] text-gray-400">
-                            next EMI {formatDate(l.next_due_date)}
-                          </span>
-                        )}
-                      </td>
-                      {showEndDate && (
-                        <td className="whitespace-nowrap px-3 py-2.5 text-gray-600">
-                          {formatDate(l.end_date ?? null)}
-                        </td>
-                      )}
-                      <td className="whitespace-nowrap px-3 py-2.5">
-                        <span
-                          className={
-                            'inline-block whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium ring-1 ' +
-                            (STATUS_PILL[l.status] ?? STATUS_PILL.active)
-                          }
-                        >
-                          {STATUS_LABEL[l.status] ?? l.status}
-                        </span>
-                      </td>
-                      <td className="whitespace-nowrap px-3 py-2.5 text-right tabular-nums text-gray-700">
-                        {formatRupees(l.paid_interest)}
-                      </td>
-                      <td
-                        className={
-                          'whitespace-nowrap px-3 py-2.5 text-right tabular-nums ' +
-                          (isClosedLoan
-                            ? 'text-gray-400'
-                            : l.interest_due > 0
-                            ? 'font-medium text-amber-700'
-                            : 'text-gray-500')
-                        }
-                      >
-                        {isClosedLoan ? '—' : formatRupees(l.interest_due)}
-                      </td>
-                      <td className="whitespace-nowrap px-3 py-2.5 text-right font-semibold tabular-nums text-gray-900">
-                        {formatRupees(l.balance)}
-                      </td>
-                      <td className="whitespace-nowrap px-3 py-2.5 text-right">
-                        {expandable ? (
-                          <ExpandToggle
-                            isOpen={isOpen}
-                            onClick={() => toggleExpand(l.id)}
-                            controlsId={`loan-detail-${l.id}`}
-                            labelOpen={`Hide details for loan ${l.loan_number}`}
-                            labelClosed={`Show details for loan ${l.loan_number}`}
-                          />
-                        ) : (
-                          <Link
-                            href={l.detail_href}
-                            className="text-xs font-medium text-blue-600 hover:text-blue-800"
-                          >
-                            {linkLabel}
-                          </Link>
-                        )}
-                      </td>
-                    </tr>
-                    {isOpen && (
-                      <tr
-                        id={`loan-detail-${l.id}`}
-                        className="border-l-2 border-l-blue-500 bg-gradient-to-b from-blue-50/50 to-white"
-                      >
-                        <td colSpan={colspan} className="p-0">
-                          {isLoading ? (
-                            <div className="flex items-center gap-2 p-6 text-sm text-gray-500">
-                              <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-gray-300 border-t-blue-600" />
-                              Loading loan details…
-                            </div>
-                          ) : errMsg && !cached ? (
-                            <div className="p-6 text-sm text-rose-600">{errMsg}</div>
-                          ) : cached ? (
-                            <LoanDetailPanel data={cached} todayIso={todayIso} />
-                          ) : null}
-                        </td>
-                      </tr>
-                    )}
-                  </Fragment>
+                  <div className="border-l-2 border-l-blue-500 bg-gradient-to-b from-blue-50/50 to-white">
+                    {isLoading ? (
+                      <div className="flex items-center gap-2 p-6 text-sm text-gray-500">
+                        <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-gray-300 border-t-blue-600" />
+                        Loading loan details…
+                      </div>
+                    ) : errMsg && !cached ? (
+                      <div className="p-6 text-sm text-rose-600">{errMsg}</div>
+                    ) : cached ? (
+                      <LoanDetailPanel data={cached} todayIso={todayIso} />
+                    ) : null}
+                  </div>
                 )
-              })
-            )}
-          </tbody>
-        </table>
-      </div>
-      {sorted.length > 0 && (
+              }
+            : undefined
+        }
+      />
+
+      {visible.length > 0 && (
         <div className="flex items-center justify-between border-t border-gray-200 bg-gray-50/30 px-5 py-3 text-xs text-gray-500">
           <span>
-            Showing <span className="font-medium text-gray-900">{sorted.length}</span>{' '}
-            {sorted.length === 1 ? 'loan' : 'loans'}
-            {query && loans.length !== sorted.length && (
-              <span className="text-gray-400"> · filtered from {loans.length}</span>
+            Showing <span className="font-medium text-gray-900">{visible.length}</span>{' '}
+            {visible.length === 1 ? 'loan' : 'loans'}
+            {augmented.length !== visible.length && (
+              <span className="text-gray-400"> · filtered from {augmented.length}</span>
             )}
           </span>
           <span className="font-medium text-gray-400">

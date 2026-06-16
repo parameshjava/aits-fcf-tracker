@@ -1,15 +1,11 @@
 'use client'
 
-import { useCallback } from 'react'
+import { useMemo, useState } from 'react'
+import { Dropdown } from 'primereact/dropdown'
 import { formatRupees } from '@/lib/format'
 import { TableExportMenu } from '@/components/table-export'
+import { PrDataTable, type PrColumn } from '@/components/ui/pr/data-table'
 import type { Cell, ExportCriterion } from '@/lib/table-export'
-import {
-  SortableHeader,
-  TableSearch,
-  useSortable,
-  useTableFilter,
-} from '@/components/table-controls'
 
 export type ContributionRow = {
   id: string
@@ -23,7 +19,16 @@ export type ContributionRow = {
   bank_transaction_id?: string | null
 }
 
-type SortKey = 'date' | 'member' | 'type' | 'reference' | 'amount'
+/** Flattened fields baked onto each row so the DataTable can sort / filter /
+ *  globally search on flat string/number values. Mirrors the same global-search
+ *  coverage the old `useTableFilter` stringify provided. */
+type ContributionRowAug = ContributionRow & {
+  _date_ts: number
+  _amount: number
+  _type_label: string
+  _member: string
+  _search_blob: string
+}
 
 const TYPE_LABELS: Record<string, string> = {
   contribution: 'Contribution',
@@ -55,129 +60,167 @@ export function ContributionsTable({
    *  The live table search query is appended automatically. */
   exportCriteria?: ExportCriterion[]
 }) {
-  const stringify = useCallback(
-    (r: ContributionRow) =>
-      [
-        r.member_name ?? '',
-        typeLabel(r),
-        r.transaction_id,
-        r.bank_transaction_id ?? '',
-        formatDate(r.transaction_date),
-        String(r.amount),
-      ].join(' '),
-    [],
+  // Flatten nested + computed values onto each row so the DataTable can sort,
+  // filter and globally search over them (it operates on top-level fields).
+  const augmented = useMemo<ContributionRowAug[]>(
+    () =>
+      rows.map((r) => {
+        const label = typeLabel(r)
+        const member = r.member_name ?? ''
+        return {
+          ...r,
+          _date_ts: new Date(r.transaction_date).getTime(),
+          _amount: Number(r.amount) || 0,
+          _type_label: label,
+          _member: member,
+          _search_blob: [
+            member,
+            label,
+            r.transaction_id,
+            r.bank_transaction_id ?? '',
+            formatDate(r.transaction_date),
+            String(r.amount),
+          ].join(' '),
+        }
+      }),
+    [rows],
   )
 
-  const { filtered, query, setQuery } = useTableFilter(rows, stringify)
+  // Distinct type labels present in the data → drives the Type dropdown filter.
+  const typeOptions = useMemo(() => {
+    const seen = new Map<string, string>()
+    for (const r of augmented) seen.set(r._type_label, r._type_label)
+    return Array.from(seen.values())
+      .sort((a, b) => a.localeCompare(b))
+      .map((label) => ({ label, value: label }))
+  }, [augmented])
 
-  const accessor = useCallback((r: ContributionRow, col: SortKey) => {
-    if (col === 'date')      return new Date(r.transaction_date).getTime()
-    if (col === 'member')    return r.member_name ?? ''
-    if (col === 'type')      return typeLabel(r)
-    if (col === 'reference') return r.transaction_id
-    if (col === 'amount')    return Number(r.amount) || 0
-    return ''
-  }, [])
+  // The DataTable reports its current filtered+sorted rows here; export +
+  // footer summary are derived from these so they reflect what's on screen.
+  // `null` until the first onValueChange fires → fall back to the full set.
+  const [processed, setProcessed] = useState<ContributionRowAug[] | null>(null)
+  const [searchQuery, setSearchQuery] = useState('')
+  const visible = processed ?? augmented
 
-  const { sorted, sort, toggleSort } = useSortable<ContributionRow, SortKey>(
-    filtered,
-    accessor,
-    { col: 'date', dir: 'desc' }, // default sort: newest first
-  )
-
-  const total = sorted.reduce((s, r) => s + Number(r.amount || 0), 0)
+  const total = visible.reduce((s, r) => s + r._amount, 0)
 
   // Export reflects exactly what's on screen (current sort + search filter).
   const exportColumns = ['Date', 'Member', 'Transaction type', 'Transaction ID', 'Bank reference', 'Amount (₹)']
-  const exportRows: Cell[][] = sorted.map((t) => [
+  const exportRows: Cell[][] = visible.map((t) => [
     formatDate(t.transaction_date),
-    t.member_name ?? '',
-    typeLabel(t),
+    t._member,
+    t._type_label,
     t.transaction_id,
     t.bank_transaction_id ?? '',
-    Number(t.amount) || 0,
+    t._amount,
   ])
   const exportFooter: Cell[] = ['', '', '', '', 'Total', total]
   const allCriteria: ExportCriterion[] = [
     ...exportCriteria,
-    ...(query.trim() ? [{ label: 'Search', value: query.trim() }] : []),
+    ...(searchQuery.trim() ? [{ label: 'Search', value: searchQuery.trim() }] : []),
   ]
+
+  // --- Columns -------------------------------------------------------------
+  const columns: PrColumn<ContributionRowAug>[] = [
+    {
+      field: '_date_ts',
+      header: 'Date',
+      sortable: true,
+      dataType: 'numeric',
+      bodyClassName: 'whitespace-nowrap text-gray-600',
+      body: (t) => formatDate(t.transaction_date),
+    },
+    {
+      field: '_member',
+      header: 'Member',
+      sortable: true,
+      filter: true,
+      dataType: 'text',
+      bodyClassName: 'font-medium text-gray-900',
+      body: (t) =>
+        t.member_name ?? <span className="text-gray-400">—</span>,
+    },
+    {
+      field: '_type_label',
+      header: 'Transaction type',
+      sortable: true,
+      filter: true,
+      filterElement: ({ value, filterApplyCallback }) => (
+        <Dropdown
+          value={(value as string) ?? null}
+          options={typeOptions}
+          onChange={(e) => filterApplyCallback(e.value)}
+          placeholder="Any type"
+          showClear
+          className="w-full"
+        />
+      ),
+      bodyClassName: 'text-gray-700',
+      body: (t) => t._type_label,
+    },
+    {
+      field: 'transaction_id',
+      header: 'Transaction ID',
+      sortable: true,
+      bodyClassName: 'whitespace-nowrap font-mono text-xs text-gray-500',
+      body: (t) => (
+        <span>
+          <span>{t.transaction_id}</span>
+          {t.bank_transaction_id && (
+            <span className="ml-2 text-[11px] text-gray-400" title="Bank reference">
+              {t.bank_transaction_id}
+            </span>
+          )}
+        </span>
+      ),
+    },
+    {
+      field: '_amount',
+      header: 'Amount',
+      sortable: true,
+      align: 'right',
+      dataType: 'numeric',
+      bodyClassName: 'whitespace-nowrap text-right font-semibold tabular-nums text-gray-900',
+      body: (t) => formatRupees(t.amount),
+    },
+  ]
+
+  const exportMenu = (
+    <TableExportMenu
+      filename="contributions"
+      title="Contributions"
+      columns={exportColumns}
+      rows={exportRows}
+      footer={exportFooter}
+      criteria={allCriteria}
+    />
+  )
 
   return (
     <div className="overflow-clip rounded-2xl border border-gray-200 bg-white">
-      {rows.length > 0 && (
-        <div className="flex items-center justify-between gap-3 border-b border-gray-200 bg-gray-50/30 px-3 py-2">
-          <TableSearch
-            value={query}
-            onChange={setQuery}
-            placeholder="Search rows…"
-            matched={filtered.length}
-            total={rows.length}
-          />
-          <TableExportMenu
-            filename="contributions"
-            title="Contributions"
-            columns={exportColumns}
-            rows={exportRows}
-            footer={exportFooter}
-            criteria={allCriteria}
-          />
-        </div>
-      )}
-      <div className="overflow-x-auto lg:overflow-x-visible">
-        <table className="sticky-thead min-w-full text-sm">
-          <thead>
-            <tr className="border-b border-gray-200 bg-gray-50/60">
-              <SortableHeader compact col="date"      label="Date"             sort={sort} onToggle={toggleSort} />
-              <SortableHeader compact col="member"    label="Member"           sort={sort} onToggle={toggleSort} />
-              <SortableHeader compact col="type"      label="Transaction type" sort={sort} onToggle={toggleSort} />
-              <SortableHeader compact col="reference" label="Transaction ID"   sort={sort} onToggle={toggleSort} />
-              <SortableHeader compact col="amount"    label="Amount" align="right" sort={sort} onToggle={toggleSort} />
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-100">
-            {sorted.length === 0 ? (
-              <tr>
-                <td colSpan={5} className="px-3 py-12 text-center text-sm text-gray-400">
-                  {query
-                    ? `No matches for "${query}"`
-                    : 'No contributions matching the current filters'}
-                </td>
-              </tr>
-            ) : (
-              sorted.map((t) => (
-                <tr key={t.id} className="transition-colors hover:bg-gray-50">
-                  <td className="whitespace-nowrap px-3 py-1.5 text-gray-600">
-                    {formatDate(t.transaction_date)}
-                  </td>
-                  <td className="px-3 py-1.5 font-medium text-gray-900">
-                    {t.member_name ?? <span className="text-gray-400">—</span>}
-                  </td>
-                  <td className="px-3 py-1.5 text-gray-700">{typeLabel(t)}</td>
-                  <td className="whitespace-nowrap px-3 py-1.5 font-mono text-xs text-gray-500">
-                    <span>{t.transaction_id}</span>
-                    {t.bank_transaction_id && (
-                      <span className="ml-2 text-[11px] text-gray-400" title="Bank reference">
-                        {t.bank_transaction_id}
-                      </span>
-                    )}
-                  </td>
-                  <td className="whitespace-nowrap px-3 py-1.5 text-right font-semibold tabular-nums text-gray-900">
-                    {formatRupees(t.amount)}
-                  </td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
-      {sorted.length > 0 && (
+      <PrDataTable<ContributionRowAug>
+        value={augmented}
+        columns={columns}
+        dataKey="id"
+        emptyMessage={
+          searchQuery
+            ? `No matches for "${searchQuery}"`
+            : 'No contributions matching the current filters'
+        }
+        globalFilterFields={rows.length > 0 ? ['_search_blob'] : undefined}
+        globalSearchPlaceholder="Search rows…"
+        header={rows.length > 0 ? exportMenu : undefined}
+        onValueChange={setProcessed}
+        onGlobalFilterChange={setSearchQuery}
+      />
+
+      {visible.length > 0 && (
         <div className="flex items-center justify-between border-t border-gray-200 bg-gray-50/30 px-5 py-3 text-xs text-gray-500">
           <span>
-            Showing <span className="font-medium text-gray-900">{sorted.length}</span>{' '}
-            {sorted.length === 1 ? 'contribution' : 'contributions'}
-            {query && rows.length !== sorted.length && (
-              <span className="text-gray-400"> · filtered from {rows.length}</span>
+            Showing <span className="font-medium text-gray-900">{visible.length}</span>{' '}
+            {visible.length === 1 ? 'contribution' : 'contributions'}
+            {augmented.length !== visible.length && (
+              <span className="text-gray-400"> · filtered from {augmented.length}</span>
             )}
           </span>
           <span className="font-medium text-gray-400">
