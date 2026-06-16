@@ -1,5 +1,12 @@
 import type { Metadata } from 'next'
 import { Suspense } from 'react'
+// NOTE: primereact@10.9.7 does NOT ship an `aura-*` precompiled theme in its
+// resources/themes directory (Aura is the styled-mode preset system, not a CSS
+// file in this package version). We use `lara-light-blue` — the bundled blue
+// light theme — as the nearest equivalent. See globals.css for the layer caveat.
+import 'primereact/resources/themes/lara-light-blue/theme.css'
+import 'primereact/resources/primereact.min.css'
+import 'primeicons/primeicons.css'
 import './globals.css'
 import { Geist } from "next/font/google";
 import { cn } from "@/lib/utils";

@@ -1,3 +1,21 @@
+/* PrimeReact theme sits in a layer declared BEFORE Tailwind's layers so
+   Tailwind utilities (spacing, layout, sm:/md:/lg:) override PrimeReact
+   component chrome. Unlayered styles beat layered ones, so the theme MUST be
+   layered. */
+/* TWO DEVIATIONS FROM THE ORIGINAL PLAN — both documented as concerns:
+   1. THEME: primereact@10.9.7 ships NO `aura-*` precompiled theme (Aura is the
+      styled-mode preset system in this version, not a CSS file). We use the
+      bundled `lara-light-blue` theme as the nearest blue-light equivalent.
+   2. LOAD PATH: Turbopack could not resolve the `primereact/resources/...`
+      specifiers from a CSS @import, so the three theme/icon stylesheets are
+      imported as JS modules at the top of src/app/layout.tsx (the documented
+      fallback). CAVEAT: JS-imported CSS is UNLAYERED, which normally beats
+      layered Tailwind utilities — the layer-priority guarantee is therefore
+      WEAKER than the @import path. The @layer order line below still names the
+      `primereact` layer first, but it only governs styles that actually land in
+      that layer; the JS-imported theme CSS does not. Watch for the theme
+      overriding responsive/spacing utilities and revisit if it does. */
+@layer primereact, theme, base, components, utilities;
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
