@@ -47,6 +47,13 @@
     width: 1.75rem;
     height: 1.75rem;
   }
+
+  /* Calendar (date picker) header: Lara renders the month + year as adjacent
+     buttons with no gap, so the title reads "June2026". Add a small gap. */
+  .p-datepicker .p-datepicker-title {
+    display: inline-flex;
+    gap: 0.4rem;
+  }
 }
 
 /* @uiw/react-md-editor's split/read preview pane has its own renderer and
