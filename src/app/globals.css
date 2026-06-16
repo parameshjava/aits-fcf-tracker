@@ -37,13 +37,6 @@
 /* Library already disables markers on GFM task lists; that rule is more
    specific than ours, so it stays in effect. */
 
-.recharts-wrapper :focus,
-.recharts-wrapper :focus-visible,
-.recharts-surface :focus,
-.recharts-surface :focus-visible {
-  outline: none;
-}
-
 /* Sticky table headers — pin the <thead> below the sticky TopBar so the
    column labels stay visible while scrolling long tables.
 
