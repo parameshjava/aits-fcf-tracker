@@ -1,25 +1,19 @@
 'use client'
 
-import { TabView, TabPanel } from 'primereact/tabview'
 import type { ReactNode } from 'react'
 import { cn } from '@/lib/utils'
 
 /**
- * PrimeReact-flavored tab primitives. Two flavors, picked per consumer:
- *
- * 1. {@link PrTabStrip} — a controlled HEADER strip ONLY (clickable tab
- *    buttons + blue active underline). The caller renders its own panels with
- *    `hidden={value !== x}`, so nothing remounts on switch. Use this whenever
- *    panels are heavy (charts) or must keep client state across switches
- *    (editing buffers, expand/collapse maps). This is the chart-safe path —
- *    re-mounting destroys Recharts instances (see dashboard-tabs rationale).
- *
- * 2. {@link PrTabs} — convenience over PrimeReact `TabView`/`TabPanel` for
- *    SIMPLE content that is safe to remount on every switch.
+ * {@link PrTabStrip} — a controlled HEADER strip ONLY (clickable tab buttons +
+ * blue active underline). The caller renders its own panels with
+ * `hidden={value !== x}`, so nothing remounts on switch. Use this whenever
+ * panels are heavy (charts) or must keep client state across switches (editing
+ * buffers, expand/collapse maps) — every current consumer needs this. It is the
+ * chart-safe path: re-mounting destroys chart instances.
  *
  * The strip is a semantic `tablist` of `<button role="tab">` elements:
  * PrimeReact's Lara theme lives in a cascade layer, so Tailwind utilities win
- * for styling, and a button row gives us reliable keyboard nav + the exact
+ * for styling, and a button row gives reliable keyboard nav + the exact
  * existing blue-underline look without fighting TabMenu's anchor markup.
  */
 
@@ -96,43 +90,3 @@ export function PrTabStrip({
   )
 }
 
-type PrTabsProps = {
-  activeIndex: number
-  onTabChange: (index: number) => void
-  children: ReactNode
-  className?: string
-  panelClassName?: string
-}
-
-/**
- * Thin wrapper over PrimeReact `TabView`. Children must be `TabPanel`s (re-export
- * below). Remounts panel content on switch — only use for light, stateless tabs.
- * The header bar is restyled (pt) to the app's blue-underline look and made
- * horizontally scrollable so it never overflows on narrow viewports.
- */
-export function PrTabs({
-  activeIndex,
-  onTabChange,
-  children,
-  className,
-  panelClassName,
-}: PrTabsProps) {
-  return (
-    <TabView
-      activeIndex={activeIndex}
-      onTabChange={(e) => onTabChange(e.index)}
-      className={cn('pr-tabs', className)}
-      pt={{
-        nav: {
-          className:
-            '!flex !gap-4 sm:!gap-6 !border-0 !border-b !border-gray-200 !bg-transparent overflow-x-auto',
-        },
-        panelContainer: { className: cn('!px-0 !py-3 !bg-transparent', panelClassName) },
-      }}
-    >
-      {children}
-    </TabView>
-  )
-}
-
-export { TabPanel as PrTabPanel }
