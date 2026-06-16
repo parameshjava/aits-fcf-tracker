@@ -7,7 +7,7 @@ import '@/lib/chartjs-setup'
 import { Chart } from 'primereact/chart'
 import type { ChartData, ChartOptions, TooltipItem } from 'chart.js'
 import type { Context as DataLabelsContext } from 'chartjs-plugin-datalabels'
-import { fullRupee, compactRupee, BAR_SIZING } from '@/lib/chartjs-setup'
+import { fullRupee, compactRupee, BAR_SIZING, BAR_TOP_RADIUS } from '@/lib/chartjs-setup'
 import { DASHBOARD_BAR_COLORS } from '@/lib/transaction-groups'
 
 type Props = {
@@ -45,7 +45,7 @@ export function EligibilityMonthlyChart({ data, year }: Props) {
         data: data.map((d) => d.earned),
         backgroundColor: DASHBOARD_BAR_COLORS.contributions,
         stack: 'month',
-        borderRadius: 4,
+        borderRadius: BAR_TOP_RADIUS,
         ...BAR_SIZING,
       },
     ],
