@@ -3,14 +3,7 @@
 import { useActionState, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from '@/components/ui/dialog'
+import { PrDialog } from '@/components/ui/pr/dialog'
 import { updateMeeting } from '@/lib/actions/meetings'
 import { MEETING_TIMEZONES } from '@/lib/timezones'
 
@@ -58,14 +51,21 @@ export function EditMeetingTimeDialog({
     state && !state.ok && state.field === field ? state.error : null
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger className="rounded-md border border-gray-200 bg-white px-3 py-1.5 text-xs hover:bg-gray-50">
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="rounded-md border border-gray-200 bg-white px-3 py-1.5 text-xs hover:bg-gray-50"
+      >
         Edit time
-      </DialogTrigger>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Edit meeting time</DialogTitle>
-        </DialogHeader>
+      </button>
+
+      <PrDialog
+        visible={open}
+        onHide={() => setOpen(false)}
+        header="Edit meeting time"
+        widthClass="sm:!w-[34rem]"
+      >
         <form action={formAction} className="space-y-4">
           <input type="hidden" name="id" value={meetingId} />
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -114,16 +114,16 @@ export function EditMeetingTimeDialog({
             <p className="text-xs text-red-600">{state.error}</p>
           )}
 
-          <DialogFooter>
+          <div className="flex flex-col-reverse gap-2 border-t border-gray-100 pt-4 sm:flex-row sm:justify-end">
             <button type="button" onClick={() => setOpen(false)} className="rounded-md border border-gray-200 bg-white px-3 py-1.5 text-sm hover:bg-gray-50">
               Cancel
             </button>
             <button type="submit" disabled={pending} className="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60">
               {pending ? 'Saving…' : 'Save time'}
             </button>
-          </DialogFooter>
+          </div>
         </form>
-      </DialogContent>
-    </Dialog>
+      </PrDialog>
+    </>
   )
 }

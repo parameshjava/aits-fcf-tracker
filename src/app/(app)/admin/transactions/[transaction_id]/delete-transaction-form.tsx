@@ -2,14 +2,7 @@
 
 import { useActionState, useState } from 'react'
 import { deleteTransaction } from '@/lib/actions/transactions'
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
+import { PrDialog } from '@/components/ui/pr/dialog'
 
 export function DeleteTransactionForm({
   id,
@@ -45,29 +38,20 @@ export function DeleteTransactionForm({
           </p>
         </div>
 
-        <Dialog open={open} onOpenChange={setOpen}>
-          <button
-            type="button"
-            onClick={() => setOpen(true)}
-            className="rounded-md border border-rose-300 bg-white px-3 py-1.5 text-sm font-medium text-rose-700 hover:bg-rose-50"
-          >
-            Delete
-          </button>
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          className="rounded-md border border-rose-300 bg-white px-3 py-1.5 text-sm font-medium text-rose-700 hover:bg-rose-50"
+        >
+          Delete
+        </button>
 
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Delete this transaction?</DialogTitle>
-              <DialogDescription>
-                Permanently removes <span className="font-mono">{transactionId}</span>. This
-                action cannot be undone.
-              </DialogDescription>
-            </DialogHeader>
-
-            {state && !state.ok && (
-              <p className="text-sm text-red-600">{state.error}</p>
-            )}
-
-            <DialogFooter className="sm:justify-end">
+        <PrDialog
+          visible={open}
+          onHide={() => setOpen(false)}
+          header="Delete this transaction?"
+          footer={
+            <>
               <button
                 type="button"
                 onClick={() => setOpen(false)}
@@ -86,9 +70,18 @@ export function DeleteTransactionForm({
                   {pending ? 'Deleting…' : 'Yes, delete'}
                 </button>
               </form>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+            </>
+          }
+        >
+          <p className="text-sm text-gray-600">
+            Permanently removes <span className="font-mono">{transactionId}</span>. This
+            action cannot be undone.
+          </p>
+
+          {state && !state.ok && (
+            <p className="mt-3 text-sm text-red-600">{state.error}</p>
+          )}
+        </PrDialog>
       </div>
     </div>
   )

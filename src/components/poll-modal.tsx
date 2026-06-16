@@ -1,14 +1,8 @@
 'use client'
 
 import { useState, useTransition } from 'react'
-import { Vote, X } from 'lucide-react'
-import {
-  Dialog,
-  DialogClose,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
+import { Vote } from 'lucide-react'
+import { PrDialog } from '@/components/ui/pr/dialog'
 import { getLinkedPollDetail, type LinkedPollDetail } from '@/lib/actions/loans'
 import { LinkedPollResults } from '@/components/linked-poll-results'
 import { MarkdownView } from '@/components/markdown-view'
@@ -80,37 +74,30 @@ export function PollModal({ pollId, pollQuestion, variant = 'pill' }: Props) {
         )}
       </button>
 
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="flex max-h-[85vh] flex-col overflow-hidden sm:max-w-lg" showCloseButton={false}>
-          <DialogClose
-            aria-label="Close"
-            className="absolute right-3 top-3 z-10 inline-flex h-7 w-7 items-center justify-center rounded-md bg-popover text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-300"
-          >
-            <X className="h-4 w-4" aria-hidden />
-          </DialogClose>
-          <DialogHeader className="shrink-0">
-            <DialogTitle className="pr-8">{detail?.question ?? pollQuestion}</DialogTitle>
-          </DialogHeader>
-
-          {/* Description + results scroll together; only the title stays
-              pinned, so a long markdown description never squeezes the
-              results out of view. */}
-          <div className="min-h-0 flex-1 space-y-4 overflow-y-auto">
-            {pending && !detail ? (
-              <p className="text-sm text-gray-500">Loading poll…</p>
-            ) : error ? (
-              <p className="text-sm text-rose-600">{error}</p>
-            ) : detail ? (
-              <>
-                {detail.description ? (
-                  <MarkdownView source={detail.description} />
-                ) : null}
-                <LinkedPollResults detail={detail} />
-              </>
-            ) : null}
-          </div>
-        </DialogContent>
-      </Dialog>
+      <PrDialog
+        visible={open}
+        onHide={() => setOpen(false)}
+        header={detail?.question ?? pollQuestion}
+        widthClass="sm:!w-[32rem]"
+      >
+        {/* Description + results scroll together; the dialog header stays
+            pinned, so a long markdown description never squeezes the
+            results out of view. */}
+        <div className="max-h-[70vh] space-y-4 overflow-y-auto">
+          {pending && !detail ? (
+            <p className="text-sm text-gray-500">Loading poll…</p>
+          ) : error ? (
+            <p className="text-sm text-rose-600">{error}</p>
+          ) : detail ? (
+            <>
+              {detail.description ? (
+                <MarkdownView source={detail.description} />
+              ) : null}
+              <LinkedPollResults detail={detail} />
+            </>
+          ) : null}
+        </div>
+      </PrDialog>
     </>
   )
 }
