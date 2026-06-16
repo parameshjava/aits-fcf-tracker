@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, type ReactNode } from 'react'
+import { PrTabStrip } from '@/components/ui/pr/tabs'
 
 export type LoansTabKey = 'active' | 'past'
 
@@ -41,48 +42,34 @@ export function LoansTabs({
 
   return (
     <div className="space-y-4">
-      <nav
-        className="flex gap-6 border-b border-gray-200"
-        aria-label="Loan list tabs"
-      >
-        <TabButton active={tab === 'active'} onClick={() => switchTab('active')}>
-          Active Loans
-          <CountBadge active={tab === 'active'}>{activeCount}</CountBadge>
-        </TabButton>
-        <TabButton active={tab === 'past'} onClick={() => switchTab('past')}>
-          Past Loans
-          <CountBadge active={tab === 'past'}>{pastCount}</CountBadge>
-        </TabButton>
-      </nav>
+      <PrTabStrip
+        ariaLabel="Loan list tabs"
+        value={tab}
+        onValueChange={(next) => switchTab(next as LoansTabKey)}
+        tabs={[
+          {
+            value: 'active',
+            label: (
+              <>
+                Active Loans
+                <CountBadge active={tab === 'active'}>{activeCount}</CountBadge>
+              </>
+            ),
+          },
+          {
+            value: 'past',
+            label: (
+              <>
+                Past Loans
+                <CountBadge active={tab === 'past'}>{pastCount}</CountBadge>
+              </>
+            ),
+          },
+        ]}
+      />
       <div hidden={tab !== 'active'}>{activeTable}</div>
       <div hidden={tab !== 'past'}>{pastTable}</div>
     </div>
-  )
-}
-
-function TabButton({
-  active,
-  onClick,
-  children,
-}: {
-  active: boolean
-  onClick: () => void
-  children: ReactNode
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-current={active ? 'page' : undefined}
-      className={
-        'inline-flex items-center gap-2 whitespace-nowrap -mb-px ' +
-        (active
-          ? 'border-b-2 border-blue-600 px-1 py-2 text-sm font-semibold text-blue-700'
-          : 'border-b-2 border-transparent px-1 py-2 text-sm font-medium text-gray-500 hover:border-gray-300 hover:text-gray-700')
-      }
-    >
-      {children}
-    </button>
   )
 }
 

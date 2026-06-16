@@ -5,8 +5,10 @@ import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { MarkdownView } from '@/components/markdown-view'
 import { ExpandToggle } from '@/components/ui/expand-toggle'
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
+import { PrTabStrip } from '@/components/ui/pr/tabs'
 import type { MeetingDetail } from '@/lib/actions/meetings-reads'
+
+type NotesTab = 'member' | 'consolidated'
 
 type Props = {
   meeting: MeetingDetail
@@ -45,6 +47,7 @@ export function MeetingNotesViewer({ meeting }: Props) {
   const [open, setOpen] = useState<Record<string, boolean>>(
     Object.fromEntries(withNotes.map((a) => [a.member_id, true])),
   )
+  const [tab, setTab] = useState<NotesTab>('member')
 
   async function copyConsolidated() {
     try {
@@ -56,16 +59,22 @@ export function MeetingNotesViewer({ meeting }: Props) {
   }
 
   return (
-    <Tabs defaultValue="member" className="rounded-lg border border-gray-200 bg-white">
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 px-4 py-2">
+    <div className="rounded-lg border border-gray-200 bg-white">
+      <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-2">
         <h2 className="text-sm font-semibold text-gray-900">Meeting notes</h2>
-        <TabsList>
-          <TabsTrigger value="member">By member</TabsTrigger>
-          <TabsTrigger value="consolidated">Consolidated</TabsTrigger>
-        </TabsList>
+        <PrTabStrip
+          className="border-b-0"
+          ariaLabel="Meeting notes view"
+          value={tab}
+          onValueChange={(next) => setTab(next as NotesTab)}
+          tabs={[
+            { value: 'member', label: 'By member' },
+            { value: 'consolidated', label: 'Consolidated' },
+          ]}
+        />
       </div>
 
-      <TabsContent value="member" keepMounted>
+      <div hidden={tab !== 'member'}>
         {withNotes.length === 0 ? (
           <div className="px-4 py-8 text-center text-xs text-gray-400">
             No notes were captured for this meeting.
@@ -129,9 +138,9 @@ export function MeetingNotesViewer({ meeting }: Props) {
             </div>
           </div>
         )}
-      </TabsContent>
+      </div>
 
-      <TabsContent value="consolidated">
+      <div hidden={tab !== 'consolidated'}>
         {withNotes.length === 0 ? (
           <div className="px-4 py-8 text-center text-xs text-gray-400">
             No notes were captured for this meeting.
@@ -149,7 +158,7 @@ export function MeetingNotesViewer({ meeting }: Props) {
             <MarkdownView source={consolidatedMd} mentions={{ slugToName }} />
           </div>
         )}
-      </TabsContent>
-    </Tabs>
+      </div>
+    </div>
   )
 }
