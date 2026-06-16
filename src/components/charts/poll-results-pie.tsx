@@ -1,12 +1,12 @@
 'use client'
 
-import { Cell, Pie, PieChart } from 'recharts'
-import {
-  ChartContainer,
-  ChartTooltip,
-  ChartTooltipContent,
-  type ChartConfig,
-} from '@/components/ui/chart'
+// Chart.js + datalabels are registered as a module side-effect here; importing
+// it runs that registration before any <Chart> mounts. (This donut deals in
+// VOTES, not rupees, so the rupee formatters from that module aren't used.)
+import '@/lib/chartjs-setup'
+
+import { Chart } from 'primereact/chart'
+import type { ChartData, ChartOptions, TooltipItem } from 'chart.js'
 import type { PollChartSlice } from '@/lib/poll-results'
 
 /**
@@ -26,48 +26,44 @@ export function PollResultsPie({
 }) {
   const totalVotes = slices.reduce((s, x) => s + x.value, 0)
 
-  const config = Object.fromEntries(
-    slices.map((s) => [s.option_id, { label: s.label, color: s.color }]),
-  ) satisfies ChartConfig
+  const chartData: ChartData<'doughnut'> = {
+    labels: slices.map((s) => s.label),
+    datasets: [
+      {
+        data: slices.map((s) => s.value),
+        backgroundColor: slices.map((s) => s.color),
+        borderColor: 'white',
+        borderWidth: 2,
+      },
+    ],
+  }
+
+  const options: ChartOptions<'doughnut'> = {
+    responsive: true,
+    maintainAspectRatio: false,
+    cutout: '62%',
+    plugins: {
+      legend: { display: false },
+      tooltip: {
+        enabled: true,
+        callbacks: {
+          label: (item: TooltipItem<'doughnut'>) => {
+            const n = Number(item.raw ?? 0)
+            const pct = totalVotes > 0 ? (n / totalVotes) * 100 : 0
+            return `${n} ${n === 1 ? 'vote' : 'votes'} · ${Math.round(pct)}%`
+          },
+        },
+      },
+      datalabels: { display: false },
+    },
+  }
 
   return (
     <div className="flex flex-col items-center gap-5">
       <div className="relative">
-        <ChartContainer config={config} className="aspect-square h-44 w-44">
-          <PieChart>
-            <Pie
-              data={slices}
-              dataKey="value"
-              nameKey="label"
-              cx="50%"
-              cy="50%"
-              outerRadius={84}
-              innerRadius={52}
-              paddingAngle={2}
-              stroke="white"
-              strokeWidth={2}
-            >
-              {slices.map((s) => (
-                <Cell key={s.option_id} fill={s.color} />
-              ))}
-            </Pie>
-            <ChartTooltip
-              wrapperStyle={{ zIndex: 50 }}
-              content={
-                <ChartTooltipContent
-                  hideLabel
-                  nameKey="label"
-                  valueFormatter={(v) => {
-                    const n = Number(v ?? 0)
-                    const pct = totalVotes > 0 ? (n / totalVotes) * 100 : 0
-                    return `${n} ${n === 1 ? 'vote' : 'votes'} · ${Math.round(pct)}%`
-                  }}
-                  indicator="dot"
-                />
-              }
-            />
-          </PieChart>
-        </ChartContainer>
+        <div className="aspect-square h-44 w-44">
+          <Chart type="doughnut" data={chartData} options={options} />
+        </div>
         {/* Centre label — overlaid because the shadcn chart wrapper has no
             native donut-centre slot. Kept at z-0 so the tooltip (z-50) paints
             above it instead of hiding behind it. */}
