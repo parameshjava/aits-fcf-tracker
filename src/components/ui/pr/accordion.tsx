@@ -1,7 +1,13 @@
 'use client'
 
-import { Accordion, AccordionTab } from 'primereact/accordion'
-import type { ReactNode } from 'react'
+import { Accordion, AccordionTab, type AccordionTabChangeEvent } from 'primereact/accordion'
+import {
+  Children,
+  isValidElement,
+  useState,
+  type ReactElement,
+  type ReactNode,
+} from 'react'
 import { cn } from '@/lib/utils'
 
 /**
@@ -10,21 +16,43 @@ import { cn } from '@/lib/utils'
  * rounded white card with a clickable header showing a bold title + a muted
  * count/subtitle, content collapsing below a divider).
  *
- * The wrapper renders the same visual language as the previous shadcn/base-ui
- * `<Accordion>` (see git history of `@/components/ui/accordion`) so the two
- * consumers — the members directory's section cards and the EMI schedule panel —
- * keep their exact appearance.
+ * IMPORTANT — why PrAccordionTab is a prop-carrier, not a wrapper component:
+ * PrimeReact's `<Accordion>` only recognises children whose element type is the
+ * literal `AccordionTab`; a custom component that *returns* an AccordionTab is
+ * filtered out and renders NOTHING. So `PrAccordionTab` renders nothing itself —
+ * `PrAccordion` reads its props and emits a real `<AccordionTab>` as a direct
+ * child of `<Accordion>`. Consumers still write the familiar
+ * `<PrAccordion><PrAccordionTab .../></PrAccordion>` JSX.
  *
  * Open state:
- * - Default-open is expressed via `defaultActiveIndex` (uncontrolled) — pass the
- *   indexes that should start expanded (e.g. `[0]` for a single default-open tab,
- *   `[]` for a default-closed one).
+ * - `defaultActiveIndex` seeds an UNCONTROLLED accordion (the wrapper keeps its
+ *   own state so headers toggle on click — PrimeReact's Accordion is otherwise
+ *   controlled-only via `activeIndex`, which without an `onTabChange` would lock
+ *   the panels). Pass `[0]` to start the first tab open, `[]` for all closed.
  * - For fully controlled behavior pass `activeIndex` + `onTabChange`.
  *
  * PrimeReact's Lara theme lives in a cascade layer, so the Tailwind utilities we
  * inject via `pt` win without `!important` fights for layout — a few chrome
  * resets keep `!` prefixes to override Lara's own colors/padding.
  */
+
+type PrAccordionTabProps = {
+  /** Bold section title. */
+  header: ReactNode
+  /** Muted subtitle under the title (e.g. a count). */
+  subtitle?: ReactNode
+  /** Extra classes for the header row. */
+  headerClassName?: string
+  /** Extra classes for the content body. */
+  contentClassName?: string
+  children: ReactNode
+}
+
+// Prop-carrier only — never rendered directly (see the IMPORTANT note above).
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+export function PrAccordionTab(_props: PrAccordionTabProps): null {
+  return null
+}
 
 type PrAccordionProps = {
   /** Allow multiple tabs open at once. Defaults to true so each section toggles
@@ -48,16 +76,30 @@ export function PrAccordion({
   className,
   children,
 }: PrAccordionProps) {
-  // `activeIndex` is only forwarded when the caller drives it; otherwise we lean
-  // on `defaultActiveIndex` so the component stays uncontrolled.
   const controlled = activeIndex !== undefined
+  // Uncontrolled: own the open state so clicks toggle. PrimeReact's Accordion is
+  // controlled-only, so we seed from defaultActiveIndex and update on change.
+  const [internalIndex, setInternalIndex] = useState<number | number[] | null>(
+    defaultActiveIndex ?? (multiple ? [] : null),
+  )
+  const current = controlled ? activeIndex : internalIndex
+
+  function handleChange(e: AccordionTabChangeEvent) {
+    if (!controlled) setInternalIndex(e.index)
+    onTabChange?.(e.index)
+  }
+
+  // Read each PrAccordionTab's props and emit a REAL <AccordionTab> so the
+  // Accordion recognises them as tabs.
+  const tabs = Children.toArray(children).filter(isValidElement) as ReactElement<
+    PrAccordionTabProps
+  >[]
+
   return (
     <Accordion
       multiple={multiple}
-      {...(controlled
-        ? { activeIndex }
-        : { activeIndex: defaultActiveIndex ?? null })}
-      onTabChange={onTabChange ? (e) => onTabChange(e.index) : undefined}
+      activeIndex={current ?? null}
+      onTabChange={handleChange}
       className={cn(className)}
       pt={{
         root: { className: 'flex flex-col gap-3' },
@@ -66,57 +108,43 @@ export function PrAccordion({
         },
       }}
     >
-      {children}
+      {tabs.map((tab, i) => {
+        const { header, subtitle, headerClassName, contentClassName, children: content } =
+          tab.props
+        return (
+          <AccordionTab
+            key={tab.key ?? i}
+            header={
+              <span className="flex flex-1 flex-col items-start text-left">
+                <span className="text-sm font-semibold text-gray-900">{header}</span>
+                {subtitle != null && (
+                  <span className="mt-0.5 text-xs font-normal text-gray-500">{subtitle}</span>
+                )}
+              </span>
+            }
+            pt={{
+              header: { className: 'border-0' },
+              headerAction: {
+                className: cn(
+                  '!flex !w-full !items-center !justify-between !gap-3 !rounded-none !border-0 ' +
+                    '!bg-white !px-5 !py-3.5 !text-gray-900 !no-underline ' +
+                    'hover:!bg-gray-50/60 focus-visible:!ring-2 focus-visible:!ring-blue-400',
+                  headerClassName,
+                ),
+              },
+              content: {
+                className: cn(
+                  '!border-t !border-gray-200 !bg-white !px-5 !py-4',
+                  contentClassName,
+                ),
+              },
+              toggleableContent: { className: '!bg-white' },
+            }}
+          >
+            {content}
+          </AccordionTab>
+        )
+      })}
     </Accordion>
-  )
-}
-
-type PrAccordionTabProps = {
-  /** Bold section title. */
-  header: ReactNode
-  /** Muted subtitle under the title (e.g. a count). */
-  subtitle?: ReactNode
-  /** Extra classes for the header row. */
-  headerClassName?: string
-  /** Extra classes for the content body. */
-  contentClassName?: string
-  children: ReactNode
-}
-
-export function PrAccordionTab({
-  header,
-  subtitle,
-  headerClassName,
-  contentClassName,
-  children,
-}: PrAccordionTabProps) {
-  return (
-    <AccordionTab
-      header={
-        <span className="flex flex-1 flex-col items-start text-left">
-          <span className="text-sm font-semibold text-gray-900">{header}</span>
-          {subtitle != null && (
-            <span className="mt-0.5 text-xs font-normal text-gray-500">{subtitle}</span>
-          )}
-        </span>
-      }
-      pt={{
-        header: { className: 'border-0' },
-        headerAction: {
-          className: cn(
-            '!flex !w-full !items-center !justify-between !gap-3 !rounded-none !border-0 ' +
-              '!bg-white !px-5 !py-3.5 !text-gray-900 !no-underline ' +
-              'hover:!bg-gray-50/60 focus-visible:!ring-2 focus-visible:!ring-blue-400',
-            headerClassName,
-          ),
-        },
-        content: {
-          className: cn('!border-t !border-gray-200 !bg-white !px-5 !py-4', contentClassName),
-        },
-        toggleableContent: { className: '!bg-white' },
-      }}
-    >
-      {children}
-    </AccordionTab>
   )
 }
