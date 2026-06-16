@@ -54,6 +54,35 @@
     display: inline-flex;
     gap: 0.4rem;
   }
+
+  /* Compact the date-picker panel — Lara's default cell sizing/padding makes
+     the popup large. Tighten cells, header, and the button bar. */
+  .p-datepicker {
+    padding: 0.5rem;
+    font-size: 0.8125rem;
+  }
+  .p-datepicker .p-datepicker-header {
+    padding: 0.25rem 0.25rem 0.5rem;
+  }
+  .p-datepicker table {
+    margin: 0.25rem 0;
+    font-size: 0.8125rem;
+  }
+  .p-datepicker table th,
+  .p-datepicker table td {
+    padding: 0.05rem;
+  }
+  .p-datepicker table td > span {
+    width: 2rem;
+    height: 2rem;
+  }
+  .p-datepicker .p-datepicker-buttonbar {
+    padding: 0.5rem 0 0;
+  }
+  .p-datepicker .p-datepicker-buttonbar .p-button {
+    padding: 0.25rem 0.5rem;
+    font-size: 0.8125rem;
+  }
 }
 
 /* @uiw/react-md-editor's split/read preview pane has its own renderer and
