@@ -15,6 +15,7 @@ import { overdueParts, formatDueLabel } from '@/lib/due'
 import { recomputeAfterPrepayment } from '@/lib/emi-math'
 import { Accordion } from '@/components/ui/accordion'
 import { PrDialog } from '@/components/ui/pr/dialog'
+import { PrDatePicker } from '@/components/ui/pr/date-picker'
 
 const TRIGGER_BTN =
   'rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50'
@@ -94,6 +95,7 @@ function PayEmiForm({
   const lateFee = Number(row.late_fee_charged)
   const hasLateFee = lateFee > 0 && !row.late_fee_waived
   const [waive, setWaive] = useState(false)
+  const [paidDate, setPaidDate] = useState(todayISO())
   const effectiveTotal = amountDue + (hasLateFee && !waive ? lateFee : 0)
 
   return (
@@ -123,7 +125,15 @@ function PayEmiForm({
 
       <label className="block text-xs text-gray-500">
         Paid date
-        <input type="date" name="paid_date" defaultValue={todayISO()} max={todayISO()} required className={FIELD} />
+        <PrDatePicker
+          name="paid_date"
+          value={paidDate}
+          max={todayISO()}
+          required
+          onChange={setPaidDate}
+          className="mt-1"
+          placeholder="dd/mm/yyyy"
+        />
       </label>
       <label className="block text-xs text-gray-500">
         Bank transaction ID
@@ -211,6 +221,7 @@ function PrepayForm({
     async (_prev, formData) => prepayLoan(formData),
     null,
   )
+  const [paidDate, setPaidDate] = useState(todayISO())
   useEffect(() => {
     if (state?.ok) {
       toast.success(state.message ?? 'Prepayment applied')
@@ -258,13 +269,14 @@ function PrepayForm({
       </fieldset>
       <label className="flex flex-col text-xs">
         <span className="text-gray-500">Paid date</span>
-        <input
-          type="date"
+        <PrDatePicker
           name="paid_date"
-          defaultValue={todayISO()}
+          value={paidDate}
           max={todayISO()}
           required
-          className="mt-1 rounded-md border border-gray-300 px-2 py-1 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+          onChange={setPaidDate}
+          className="mt-1"
+          placeholder="dd/mm/yyyy"
         />
       </label>
       <label className="flex flex-col text-xs">

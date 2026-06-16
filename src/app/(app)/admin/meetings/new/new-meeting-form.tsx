@@ -4,6 +4,7 @@ import { useActionState, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { createMeeting } from '@/lib/actions/meetings'
+import { PrDatePicker } from '@/components/ui/pr/date-picker'
 import { MarkdownEditor } from '@/components/markdown-editor'
 import { MEETING_TIMEZONES } from '@/lib/timezones'
 
@@ -24,6 +25,7 @@ export function NewMeetingForm({ polls, defaultDate, defaultTime, defaultEndTime
     null,
   )
   const [agendaMd, setAgendaMd] = useState('')
+  const [meetingDate, setMeetingDate] = useState(defaultDate)
 
   useEffect(() => {
     if (state?.ok) {
@@ -55,10 +57,13 @@ export function NewMeetingForm({ polls, defaultDate, defaultTime, defaultEndTime
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <div>
           <label htmlFor="meeting_date" className="mb-1 block text-xs font-semibold text-gray-700">Meeting date</label>
-          <input
-            id="meeting_date" name="meeting_date" type="date" required
-            defaultValue={defaultDate}
-            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+          <PrDatePicker
+            id="meeting_date"
+            name="meeting_date"
+            required
+            value={meetingDate}
+            onChange={setMeetingDate}
+            placeholder="dd/mm/yyyy"
           />
           {errFor('meeting_date') && <p className="mt-1 text-xs text-red-600">{errFor('meeting_date')}</p>}
         </div>

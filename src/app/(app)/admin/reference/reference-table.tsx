@@ -16,6 +16,7 @@ import {
   REFERENCE_DATATYPE_LABELS,
   type ReferenceDatatype,
 } from '@/lib/reference-format'
+import { PrDatePicker } from '@/components/ui/pr/date-picker'
 
 const SEEDED_KEYS = new Set(['bank_balance', 'interest_per_lakh'])
 const NEW_KEY = '__new__'
@@ -337,15 +338,13 @@ function EditableRow({
             </select>
             {datatype === 'date' ? (
               // Stored as a YYYYMMDD integer; edit as a real date and convert back.
-              <input
-                type="date"
+              <PrDatePicker
                 value={ymdIntToInputDate(Number(value))}
-                onChange={(e) => {
-                  const ymd = inputDateToYmdInt(e.target.value)
+                onChange={(iso) => {
+                  const ymd = inputDateToYmdInt(iso)
                   setValue(Number.isNaN(ymd) ? '' : String(ymd))
                 }}
-                onKeyDown={onKeyDown}
-                className={inputCls}
+                placeholder="dd/mm/yyyy"
               />
             ) : (
               <div className="relative">

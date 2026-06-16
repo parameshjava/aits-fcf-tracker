@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react'
 import { buildSchedule, computeEmiAmount } from '@/lib/emi-math'
 import { formatRupees, todayISO } from '@/lib/format'
 import { InfoTooltip } from '@/components/ui/info-tooltip'
+import { PrDatePicker } from '@/components/ui/pr/date-picker'
 
 const FIELD =
   'mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500'
@@ -138,12 +139,12 @@ export function LoanCalculator({
             <label htmlFor="calc_start" className="block text-sm font-medium text-gray-700">
               Start date
             </label>
-            <input
+            <PrDatePicker
               id="calc_start"
-              type="date"
               value={startDate}
-              onChange={(e) => setStartDate(e.target.value)}
-              className={FIELD}
+              onChange={setStartDate}
+              className="mt-1"
+              placeholder="dd/mm/yyyy"
             />
           </div>
 

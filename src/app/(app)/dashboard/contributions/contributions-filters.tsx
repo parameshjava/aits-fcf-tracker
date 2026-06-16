@@ -5,6 +5,7 @@ import { useRouter, usePathname } from 'next/navigation'
 import { todayISO } from '@/lib/format'
 import { PrMultiSelect } from '@/components/ui/pr/multiselect'
 import type { SelectOption } from '@/components/ui/pr/dropdown'
+import { PrDatePicker } from '@/components/ui/pr/date-picker'
 import { Field } from '@/components/ui/pr/field'
 import { Button } from '@/components/ui/pr/button'
 
@@ -100,24 +101,22 @@ export function ContributionsFilters({
         </Field>
 
         <Field label="From" htmlFor="contrib-filter-from">
-          <input
+          <PrDatePicker
             id="contrib-filter-from"
-            type="date"
             value={from}
             max={todayISO()}
-            onChange={(e) => setFrom(e.target.value)}
-            className="block w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            onChange={setFrom}
+            placeholder="dd/mm/yyyy"
           />
         </Field>
 
         <Field label="To" htmlFor="contrib-filter-to">
-          <input
+          <PrDatePicker
             id="contrib-filter-to"
-            type="date"
             value={to}
             max={todayISO()}
-            onChange={(e) => setTo(e.target.value)}
-            className="block w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            onChange={setTo}
+            placeholder="dd/mm/yyyy"
           />
         </Field>
 

@@ -10,6 +10,7 @@ import { todayISO } from '@/lib/format'
 import { numberToIndianWords } from '@/lib/number-to-words'
 import { PrDropdown, type SelectOption } from '@/components/ui/pr/dropdown'
 import { PrAmountInput } from '@/components/ui/pr/amount-input'
+import { PrDatePicker } from '@/components/ui/pr/date-picker'
 import { Field } from '@/components/ui/pr/field'
 import { Button } from '@/components/ui/pr/button'
 import { buildPollPickerOptions } from '@/lib/loan-poll-picker'
@@ -39,6 +40,7 @@ export function EditLoanForm({
   const [loanType, setLoanType] = useState<LoanType>(initialLoanType)
   const [pollId, setPollId] = useState<string>(initialPollId ?? '')
   const [principalValue, setPrincipalValue] = useState<number | null>(principal)
+  const [startDateValue, setStartDateValue] = useState<string>(startDate)
   // Initial value mirrors what's on the loan. Switching loan type after
   // open snaps the waiver to the type's default (6 for medical, 0 for
   // personal); the admin can still override manually.
@@ -142,13 +144,13 @@ export function EditLoanForm({
         </Field>
 
         <Field label="Start date" htmlFor="start_date">
-          <input
+          <PrDatePicker
             id="start_date"
             name="start_date"
-            type="date"
-            defaultValue={startDate}
+            value={startDateValue}
             max={todayISO()}
-            className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            onChange={setStartDateValue}
+            placeholder="dd/mm/yyyy"
           />
         </Field>
 
