@@ -7,7 +7,7 @@ import { ExpandToggle } from '@/components/ui/expand-toggle'
 import { RefreshButton } from '@/components/ui/refresh-button'
 import { MarkdownEditor, type MarkdownEditorMode } from '@/components/markdown-editor'
 import { MarkdownView } from '@/components/markdown-view'
-import { Button } from '@/components/ui/button'
+import { Button } from '@/components/ui/pr/button'
 import { refreshAttendeeNotes, reshuffleAttendees, saveAttendeeNotes, setAttendance, updateAgenda } from '@/lib/actions/meetings'
 import type { MeetingDetail } from '@/lib/actions/meetings-reads'
 

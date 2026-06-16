@@ -2,7 +2,7 @@
 
 import { useState, useTransition, type MouseEvent } from 'react'
 import { toast } from 'sonner'
-import { Button } from '@/components/ui/button'
+import { Button } from '@/components/ui/pr/button'
 import { MarkdownView } from '@/components/markdown-view'
 import { ActionItemsEditor, type MentionOption } from '@/components/action-items-editor'
 import { countActionItems, canToggleActionItems } from '@/lib/action-items'

@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react'
 import { toast } from 'sonner'
-import { Button } from '@/components/ui/button'
+import { Button } from '@/components/ui/pr/button'
 import { MarkdownView } from '@/components/markdown-view'
 import { ExpandToggle } from '@/components/ui/expand-toggle'
 import { PrTabStrip } from '@/components/ui/pr/tabs'
