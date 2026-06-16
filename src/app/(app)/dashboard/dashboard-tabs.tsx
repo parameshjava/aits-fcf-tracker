@@ -2,8 +2,16 @@
 
 import { useState, type ReactNode } from 'react'
 import { RefreshButton } from '@/components/ui/refresh-button'
+import { PrTabStrip } from '@/components/ui/pr/tabs'
 
 type Tab = 'inflow' | 'matrix' | 'members' | 'eligibility'
+
+const DASHBOARD_TABS: { value: Tab; label: string }[] = [
+  { value: 'inflow', label: 'Monthly Inflow' },
+  { value: 'matrix', label: 'Member × Month' },
+  { value: 'members', label: 'Total Contributions' },
+  { value: 'eligibility', label: 'Donation Eligibility' },
+]
 
 /**
  * Client-side tab switcher. All panels are pre-rendered by the server in the
@@ -72,26 +80,19 @@ export function DashboardTabs({
   return (
     <>
       <section className="rounded-2xl border border-gray-200/80 bg-white p-5">
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-3 border-b border-gray-200">
-          <nav className="-mb-px flex gap-6 self-end overflow-x-auto" aria-label="Dashboard chart tabs">
-            <TabButton active={tab === 'inflow'} onClick={() => switchTab('inflow')}>
-              Monthly Inflow
-            </TabButton>
-            <TabButton active={tab === 'matrix'} onClick={() => switchTab('matrix')}>
-              Member × Month
-            </TabButton>
-            <TabButton active={tab === 'members'} onClick={() => switchTab('members')}>
-              Total Contributions
-            </TabButton>
-            <TabButton active={tab === 'eligibility'} onClick={() => switchTab('eligibility')}>
-              Donation Eligibility
-            </TabButton>
-          </nav>
-          <div className="flex items-center gap-2">
-            <div hidden={!yearScoped}>{yearPicker}</div>
-            <RefreshButton label="Refresh dashboard" />
-          </div>
-        </div>
+        <PrTabStrip
+          className="mb-4"
+          ariaLabel="Dashboard chart tabs"
+          tabs={DASHBOARD_TABS}
+          value={tab}
+          onValueChange={(next) => switchTab(next as Tab)}
+          trailing={
+            <>
+              <div hidden={!yearScoped}>{yearPicker}</div>
+              <RefreshButton label="Refresh dashboard" />
+            </>
+          }
+        />
         <div hidden={tab !== 'inflow'}>{mounted.has('inflow') ? inflowChart : null}</div>
         <div hidden={tab !== 'matrix'}>{mounted.has('matrix') ? matrixChart : null}</div>
         <div hidden={tab !== 'members'}>{mounted.has('members') ? membersChart : null}</div>
@@ -106,31 +107,5 @@ export function DashboardTabs({
         {footer && <div>{footer}</div>}
       </section>
     </>
-  )
-}
-
-function TabButton({
-  active,
-  onClick,
-  children,
-}: {
-  active: boolean
-  onClick: () => void
-  children: ReactNode
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-current={active ? 'page' : undefined}
-      className={
-        'whitespace-nowrap ' +
-        (active
-          ? 'border-b-2 border-blue-600 px-1 py-2 text-sm font-semibold text-blue-700'
-          : 'border-b-2 border-transparent px-1 py-2 text-sm font-medium text-gray-500 hover:border-gray-300 hover:text-gray-700')
-      }
-    >
-      {children}
-    </button>
   )
 }
