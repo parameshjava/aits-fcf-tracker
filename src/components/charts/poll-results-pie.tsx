@@ -64,9 +64,9 @@ export function PollResultsPie({
         <div className="aspect-square h-44 w-44">
           <Chart type="doughnut" data={chartData} options={options} />
         </div>
-        {/* Centre label — overlaid because the shadcn chart wrapper has no
-            native donut-centre slot. Kept at z-0 so the tooltip (z-50) paints
-            above it instead of hiding behind it. */}
+        {/* Centre label — overlaid because Chart.js doughnuts have no native
+            centre slot. pointer-events-none so it never intercepts hover, letting
+            the donut's own canvas tooltip surface above it. */}
         <div className="pointer-events-none absolute inset-0 z-0 flex flex-col items-center justify-center">
           <span className="text-2xl font-semibold text-gray-900">{totalVoters}</span>
           <span className="text-xs text-gray-500">
