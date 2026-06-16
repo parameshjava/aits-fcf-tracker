@@ -9,8 +9,11 @@ import {
 } from '@/lib/actions/transactions'
 import { TRANSACTION_TYPES, type TransactionType } from '@/lib/constants'
 import { todayISO } from '@/lib/format'
-import { SearchableSelect } from '@/components/searchable-select'
-import { AmountInput } from '@/components/amount-input'
+import { numberToIndianWords } from '@/lib/number-to-words'
+import { PrDropdown, type SelectOption } from '@/components/ui/pr/dropdown'
+import { PrAmountInput } from '@/components/ui/pr/amount-input'
+import { Field } from '@/components/ui/pr/field'
+import { Button } from '@/components/ui/pr/button'
 import { buildPollPickerOptions } from '@/lib/loan-poll-picker'
 
 type Member = { id: string; name: string }
@@ -39,6 +42,11 @@ type Txn = {
 
 const TYPES_NEEDING_LOAN = new Set(['loan_repayment', 'penalty'])
 
+const TYPE_OPTIONS: SelectOption[] = TRANSACTION_TYPES.map((t) => ({
+  value: t,
+  label: t.replace(/_/g, ' '),
+}))
+
 export function EditTransactionForm({
   txn,
   members,
@@ -61,8 +69,17 @@ export function EditTransactionForm({
     txn.interest_source === 'bank' ? 'bank' : 'loans',
   )
   const [memberId, setMemberId] = useState<string>(txn.member_id ?? '')
+  const [loanId, setLoanId] = useState<string>(txn.loan_id ?? '')
   const [pollId, setPollId] = useState<string>(txn.poll_id ?? '')
-  const pollOptions = buildPollPickerOptions(polls)
+  const [amount, setAmount] = useState<number | null>(txn.amount)
+  const pollOptions: SelectOption[] = buildPollPickerOptions(polls).map((p) => ({
+    value: p.id,
+    label: p.name,
+  }))
+  const memberOptions: SelectOption[] = members.map((m) => ({
+    value: m.id,
+    label: m.name,
+  }))
   const isDonation = type === 'donation'
 
   useEffect(() => {
@@ -81,7 +98,15 @@ export function EditTransactionForm({
     ? loans.filter((l) => l.member_id === memberId)
     : loans
 
+  const loanOptions: SelectOption[] = visibleLoans.map((l) => ({
+    value: l.id,
+    label:
+      `${l.loan_number} · ${l.member_name} · ₹${l.principal_amount.toLocaleString('en-IN')}` +
+      (l.status !== 'active' ? ` · ${l.status}` : ''),
+  }))
+
   const dateOnly = txn.transaction_date.slice(0, 10)
+  const amountWords = numberToIndianWords(amount)
 
   return (
     <form action={action} className="space-y-4 rounded-2xl border border-gray-200/80 bg-white p-5">
@@ -93,10 +118,7 @@ export function EditTransactionForm({
       </div>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <div>
-          <label htmlFor="transaction_date" className="block text-xs font-medium text-gray-700">
-            Date
-          </label>
+        <Field label="Date" htmlFor="transaction_date" required>
           <input
             id="transaction_date"
             name="transaction_date"
@@ -106,69 +128,54 @@ export function EditTransactionForm({
             max={todayISO()}
             className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
           />
-        </div>
+        </Field>
 
-        <div>
-          <label htmlFor="amount" className="block text-xs font-medium text-gray-700">
-            Amount
-          </label>
-          <AmountInput
+        <Field label="Amount" htmlFor="amount" required hint={amountWords || undefined}>
+          <PrAmountInput
             id="amount"
             name="amount"
-            step="0.01"
-            min="0"
             required
-            defaultValue={txn.amount}
-            className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            value={amount}
+            onChange={setAmount}
           />
-        </div>
+        </Field>
 
-        <div>
-          <label htmlFor="transaction_type" className="block text-xs font-medium text-gray-700">
-            Type
-          </label>
-          <select
+        <Field label="Type" htmlFor="transaction_type" required>
+          <PrDropdown
             id="transaction_type"
             name="transaction_type"
+            options={TYPE_OPTIONS}
+            value={type || null}
+            onChange={(v) => setType((v ?? '') as TransactionType)}
             required
-            value={type}
-            onChange={(e) => setType(e.target.value as TransactionType)}
-            className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-          >
-            {TRANSACTION_TYPES.map((t) => (
-              <option key={t} value={t}>
-                {t.replace(/_/g, ' ')}
-              </option>
-            ))}
-          </select>
-        </div>
+            placeholder="Select type"
+          />
+        </Field>
 
-        <div>
-          <label className="block text-xs font-medium text-gray-700">
-            {isDonation ? 'Referred by' : 'Member'}{' '}
-            <span className="font-normal text-gray-400">
-              {isDonation ? '(optional · referring fund member)' : '(optional)'}
-            </span>
-          </label>
-          <div className="mt-1">
-            <SearchableSelect
-              name="member_id"
-              options={members}
-              value={memberId}
-              onChange={setMemberId}
-              emptyOption={isDonation ? '— No referrer —' : '— No member —'}
-              placeholder="Search members…"
-            />
-          </div>
-        </div>
+        <Field
+          label={isDonation ? 'Referred by' : 'Member'}
+          htmlFor="member_id"
+          hint={isDonation ? 'optional · referring fund member' : 'optional'}
+        >
+          <PrDropdown
+            id="member_id"
+            name="member_id"
+            options={memberOptions}
+            value={memberId || null}
+            onChange={(v) => setMemberId(v ?? '')}
+            showClear
+            placeholder={isDonation ? '— No referrer —' : '— No member —'}
+          />
+        </Field>
 
         {isDonation && (
           <>
-            <div className="sm:col-span-2">
-              <label htmlFor="beneficiary_name" className="block text-xs font-medium text-gray-700">
-                Beneficiary{' '}
-                <span className="font-normal text-gray-400">(optional · who receives this donation)</span>
-              </label>
+            <Field
+              label="Beneficiary"
+              htmlFor="beneficiary_name"
+              hint="optional · who receives this donation"
+              className="sm:col-span-2"
+            >
               <input
                 id="beneficiary_name"
                 name="beneficiary_name"
@@ -177,24 +184,24 @@ export function EditTransactionForm({
                 className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                 placeholder="e.g. Naidruva"
               />
-            </div>
+            </Field>
 
-            <div className="sm:col-span-2">
-              <label className="block text-xs font-medium text-gray-700">
-                Approval poll{' '}
-                <span className="font-normal text-gray-400">(optional · authorising poll)</span>
-              </label>
-              <div className="mt-1">
-                <SearchableSelect
-                  name="poll_id"
-                  options={pollOptions}
-                  value={pollId}
-                  onChange={setPollId}
-                  placeholder="No poll attached"
-                  emptyOption="No poll attached"
-                />
-              </div>
-            </div>
+            <Field
+              label="Approval poll"
+              htmlFor="poll_id"
+              hint="optional · authorising poll"
+              className="sm:col-span-2"
+            >
+              <PrDropdown
+                id="poll_id"
+                name="poll_id"
+                options={pollOptions}
+                value={pollId || null}
+                onChange={(v) => setPollId(v ?? '')}
+                showClear
+                placeholder="No poll attached"
+              />
+            </Field>
           </>
         )}
 
@@ -227,39 +234,31 @@ export function EditTransactionForm({
         )}
 
         {needsLoan && (
-          <div className="sm:col-span-2">
-            <label htmlFor="loan_id" className="block text-xs font-medium text-gray-700">
-              Loan
-              <span className="ml-1 font-normal text-gray-400">
-                (showing {memberId ? "this member's loans" : 'all loans'})
-              </span>
-            </label>
-            <select
+          <Field
+            label="Loan"
+            htmlFor="loan_id"
+            required
+            hint={`showing ${memberId ? "this member's loans" : 'all loans'}`}
+            className="sm:col-span-2"
+          >
+            <PrDropdown
               id="loan_id"
               name="loan_id"
+              options={loanOptions}
+              value={loanId || null}
+              onChange={(v) => setLoanId(v ?? '')}
               required
-              defaultValue={txn.loan_id ?? ''}
-              key={memberId}
-              className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-            >
-              <option value="">
-                {visibleLoans.length === 0 ? 'No loans match' : 'Select loan'}
-              </option>
-              {visibleLoans.map((l) => (
-                <option key={l.id} value={l.id}>
-                  {l.loan_number} · {l.member_name} · ₹{l.principal_amount.toLocaleString('en-IN')}
-                  {l.status !== 'active' ? ` · ${l.status}` : ''}
-                </option>
-              ))}
-            </select>
-          </div>
+              placeholder={visibleLoans.length === 0 ? 'No loans match' : 'Select loan'}
+            />
+          </Field>
         )}
 
-        <div className="sm:col-span-2">
-          <label htmlFor="bank_transaction_id" className="block text-xs font-medium text-gray-700">
-            Bank Transaction ID{' '}
-            <span className="font-normal text-gray-400">(optional · UPI/NEFT/cheque reference)</span>
-          </label>
+        <Field
+          label="Bank Transaction ID"
+          htmlFor="bank_transaction_id"
+          hint="optional · UPI/NEFT/cheque reference"
+          className="sm:col-span-2"
+        >
           <input
             id="bank_transaction_id"
             name="bank_transaction_id"
@@ -268,12 +267,9 @@ export function EditTransactionForm({
             className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
             placeholder="e.g. UPI ref / NEFT UTR"
           />
-        </div>
+        </Field>
 
-        <div className="sm:col-span-2">
-          <label htmlFor="description" className="block text-xs font-medium text-gray-700">
-            Description
-          </label>
+        <Field label="Description" htmlFor="description" className="sm:col-span-2">
           <textarea
             id="description"
             name="description"
@@ -281,7 +277,7 @@ export function EditTransactionForm({
             defaultValue={txn.description ?? ''}
             className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
           />
-        </div>
+        </Field>
       </div>
 
       {state && !state.ok && (
@@ -298,13 +294,9 @@ export function EditTransactionForm({
         >
           Cancel
         </Link>
-        <button
-          type="submit"
-          disabled={pending}
-          className="rounded-md bg-blue-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
-        >
+        <Button type="submit" disabled={pending}>
           {pending ? 'Saving…' : 'Save changes'}
-        </button>
+        </Button>
       </div>
     </form>
   )
