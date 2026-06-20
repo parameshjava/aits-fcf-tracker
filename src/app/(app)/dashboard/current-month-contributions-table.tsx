@@ -120,6 +120,10 @@ export function CurrentMonthContributionsTable({
       field: 'latest_transaction_id',
       header: 'Transaction ID',
       sortable: true,
+      // width:100% makes this last column absorb the table's slack, so the
+      // columns before it size to their content (no big gap between Person
+      // name and Contribution) while the rows still span the full card width.
+      style: { width: '100%' },
       bodyClassName: 'whitespace-nowrap font-mono text-xs text-gray-500',
       body: (r) =>
         r.latest_transaction_id ? (
@@ -161,7 +165,6 @@ export function CurrentMonthContributionsTable({
         value={augmented}
         columns={columns}
         dataKey="member_id"
-        fitContent
         emptyMessage={
           searchQuery ? `No matches for "${searchQuery}"` : 'No active members'
         }
