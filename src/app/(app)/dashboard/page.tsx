@@ -19,6 +19,7 @@ import {
   getDashboardMemberTotals,
   getDashboardMemberMonthMatrix,
   getDashboardTransactions,
+  getCurrentMonthContributions,
   getDashboardEligibilitySummary,
   getDashboardEligibilityLedger,
   type DashboardTxn,
@@ -30,6 +31,7 @@ import { getTotalPendingPrincipal } from '@/lib/actions/loans'
 import { Admonition } from '@/components/ui/admonition'
 import { SubmitPaymentForm } from './submit-payment-form'
 import { DashboardTabs } from './dashboard-tabs'
+import { CurrentMonthContributionsTable } from './current-month-contributions-table'
 import { EligibilityMonthlyChart } from './eligibility-monthly-chart'
 import { getSocialContributionReserve } from '@/lib/actions/exits'
 
@@ -50,7 +52,7 @@ const MONTH_LABELS = [
   'Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec',
 ]
 
-type TabKey = 'inflow' | 'matrix' | 'members' | 'eligibility'
+type TabKey = 'inflow' | 'matrix' | 'members' | 'eligibility' | 'thismonth'
 
 export default async function DashboardPage({
   searchParams,
@@ -75,6 +77,8 @@ export default async function DashboardPage({
       ? 'matrix'
       : tabParam === 'eligibility'
       ? 'eligibility'
+      : tabParam === 'thismonth'
+      ? 'thismonth'
       : 'inflow'
 
   const supabase = await createClient()
@@ -157,6 +161,15 @@ export default async function DashboardPage({
   const todayIST = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }))
   const currentYear = todayIST.getFullYear()
   const currentMonthIdx = todayIST.getMonth() // 0-indexed
+
+  // "This Month" tab — every contribution made this calendar month (IST) by an
+  // active member. The month key is computed here (not inside the cached read)
+  // because Cache Components forbids reading the clock in a `'use cache'` scope.
+  const currentMonthIso = `${currentYear}-${String(currentMonthIdx + 1).padStart(2, '0')}`
+  const currentMonthLabel = `${MONTH_LABELS_LONG[currentMonthIdx]} ${currentYear}`
+  const currentMonthRows = (await getCurrentMonthContributions(currentMonthIso)).map(toTxnRow)
+  const currentMonthTotal = currentMonthRows.reduce((s, r) => s + Number(r.amount || 0), 0)
+
   const eligibilityMonthlyData = buildEligibilityMonthlyData(
     rowsByMonth,
     eligibilityLedger,
@@ -304,6 +317,18 @@ export default async function DashboardPage({
             </div>
           </div>
         }
+        thisMonthChart={
+          <div>
+            <h2 className="text-base font-semibold text-gray-900">
+              Contributions · {currentMonthLabel}
+            </h2>
+            <p className="text-xs text-gray-500">
+              {currentMonthRows.length}{' '}
+              {currentMonthRows.length === 1 ? 'contribution' : 'contributions'} from active
+              members this month · {formatRupees(currentMonthTotal)}
+            </p>
+          </div>
+        }
         matrixSection={null}
         inflowSection={
           <div>
@@ -334,6 +359,7 @@ export default async function DashboardPage({
           </div>
         }
         eligibilitySection={<DonationEligibilityLedger years={eligibilityYears} />}
+        thisMonthSection={<CurrentMonthContributionsTable rows={currentMonthRows} />}
         membersSection={
           <div>
             <div className="mb-3 flex items-start justify-between gap-3">

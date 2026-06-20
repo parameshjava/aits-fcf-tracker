@@ -284,6 +284,59 @@ export async function getDashboardTransactions(opts?: {
 }
 
 /**
+ * Every `contribution` transaction in the given calendar month (YYYY-MM),
+ * restricted to members whose status is `active`. Used by the dashboard's
+ * "This Month" tab. Ordered newest-first.
+ *
+ * `monthIso` is passed in (not derived from `new Date()`) so this stays a
+ * pure function of its argument — Cache Components forbids reading the clock
+ * inside a `'use cache'` scope, and the cache key already keys on the month.
+ */
+export async function getCurrentMonthContributions(
+  monthIso: string,
+): Promise<DashboardTxn[]> {
+  'use cache'
+  cacheLife('hours')
+  cacheTag('dashboard')
+
+  if (!/^\d{4}-\d{2}$/.test(monthIso)) return []
+
+  const supabase = createAdminClient()
+
+  // Active-member allowlist — exclude any contribution attributed to an
+  // inactive/archived member.
+  const { data: members, error: memErr } = await supabase
+    .from('members')
+    .select('id')
+    .eq('status', 'active')
+  if (memErr) throw new Error(memErr.message)
+  const activeIds = new Set((members ?? []).map((m) => (m as { id: string }).id))
+
+  const [yStr, mStr] = monthIso.split('-')
+  const y = Number(yStr)
+  const m = Number(mStr)
+  // Inclusive first-of-month, exclusive first-of-next-month.
+  const start = `${yStr}-${mStr}-01`
+  const nextY = m === 12 ? y + 1 : y
+  const nextM = m === 12 ? 1 : m + 1
+  const end = `${nextY}-${String(nextM).padStart(2, '0')}-01`
+
+  const { data, error } = await supabase
+    .from('dashboard_transactions')
+    .select('*')
+    .eq('transaction_type', 'contribution')
+    .gte('transaction_date', start)
+    .lt('transaction_date', end)
+    .order('transaction_date', { ascending: false })
+    .order('created_at', { ascending: false })
+  if (error) throw new Error(error.message)
+
+  return ((data ?? []) as DashboardTxn[]).filter(
+    (t) => t.member_id != null && activeIds.has(t.member_id),
+  )
+}
+
+/**
  * Donation-eligibility tile data — single row from the
  * `donation_eligibility_summary` view (see migration 012).
  *

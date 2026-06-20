@@ -109,6 +109,67 @@ type PrDataTableProps<T extends Record<string, unknown>> = {
   paginatorRight?: ReactNode
 }
 
+/**
+ * Sort indicator: two stacked rounded chevrons, both shown faded by default,
+ * with the active direction highlighted in the brand blue and slightly bolder
+ * stroke. Replaces PrimeReact's default single-glyph sort icon (a double
+ * up/down arrow that swaps to one arrow when active).
+ *
+ * Rendered via the DataTable `sortIcon` render prop — which hands us
+ * `{ sortOrder, sorted }` — so we own the markup and style it directly with
+ * Tailwind, sidestepping the unlayered primeicons font (its `::before` glyph
+ * can't be overridden from the `components` cascade layer).
+ */
+function SortIcon({
+  sortOrder,
+  sorted,
+}: {
+  sortOrder?: number | null
+  sorted?: boolean
+}) {
+  const asc = sorted && sortOrder === 1
+  const desc = sorted && sortOrder === -1
+  return (
+    <span
+      aria-hidden="true"
+      className="p-sortable-column-icon ml-1.5 inline-flex flex-col items-center justify-center gap-[1px] leading-none transition-colors"
+    >
+      <svg
+        width="9"
+        height="6"
+        viewBox="0 0 10 6"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth={asc ? 2.25 : 1.75}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        className={
+          'transition-all duration-150 ' +
+          (asc ? 'text-blue-600' : 'text-gray-300')
+        }
+      >
+        <path d="M1.5 4.75 5 1.25 8.5 4.75" />
+      </svg>
+      <svg
+        width="9"
+        height="6"
+        viewBox="0 0 10 6"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth={desc ? 2.25 : 1.75}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        className={
+          'transition-all duration-150 ' +
+          (desc ? 'text-blue-600' : 'text-gray-300')
+        }
+      >
+        <path d="M1.5 1.25 5 4.75 8.5 1.25" />
+      </svg>
+    </span>
+  )
+}
+
 /** Pick a sensible default match mode when a column enables filtering. */
 function defaultMatchMode(col: PrColumn<unknown>): FilterMatchMode {
   if (col.filterMatchMode) return col.filterMatchMode
@@ -244,6 +305,10 @@ export function PrDataTable<T extends Record<string, unknown>>({
       currentPageReportTemplate="{first}–{last} of {totalRecords}"
       paginatorLeft={paginatorLeft}
       paginatorRight={paginatorRight}
+      // DataTables.net-style stacked-triangle sort indicator (see SortIcon).
+      sortIcon={(options) => (
+        <SortIcon sortOrder={options.sortOrder} sorted={options.sorted} />
+      )}
       // Third click on a sorted column clears the sort (asc → desc → none).
       removableSort
       // Compact density — Lara's default cell/header padding is large; `small`

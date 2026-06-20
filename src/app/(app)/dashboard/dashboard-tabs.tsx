@@ -4,13 +4,14 @@ import { useState, type ReactNode } from 'react'
 import { RefreshButton } from '@/components/ui/refresh-button'
 import { PrTabStrip } from '@/components/ui/pr/tabs'
 
-type Tab = 'inflow' | 'matrix' | 'members' | 'eligibility'
+type Tab = 'inflow' | 'matrix' | 'members' | 'eligibility' | 'thismonth'
 
 const DASHBOARD_TABS: { value: Tab; label: string }[] = [
   { value: 'inflow', label: 'Monthly Inflow' },
   { value: 'matrix', label: 'Member × Month' },
   { value: 'members', label: 'Total Contributions' },
   { value: 'eligibility', label: 'Donation Eligibility' },
+  { value: 'thismonth', label: 'This Month' },
 ]
 
 /**
@@ -37,10 +38,12 @@ export function DashboardTabs({
   matrixChart,
   membersChart,
   eligibilityChart,
+  thisMonthChart,
   inflowSection,
   matrixSection,
   membersSection,
   eligibilitySection,
+  thisMonthSection,
   footer,
 }: {
   initialTab: Tab
@@ -49,10 +52,12 @@ export function DashboardTabs({
   matrixChart: ReactNode
   membersChart: ReactNode
   eligibilityChart: ReactNode
+  thisMonthChart: ReactNode
   inflowSection: ReactNode
   matrixSection: ReactNode
   membersSection: ReactNode
   eligibilitySection: ReactNode
+  thisMonthSection: ReactNode
   footer?: ReactNode
 }) {
   const [tab, setTab] = useState<Tab>(initialTab)
@@ -97,6 +102,7 @@ export function DashboardTabs({
         <div hidden={tab !== 'matrix'}>{mounted.has('matrix') ? matrixChart : null}</div>
         <div hidden={tab !== 'members'}>{mounted.has('members') ? membersChart : null}</div>
         <div hidden={tab !== 'eligibility'}>{mounted.has('eligibility') ? eligibilityChart : null}</div>
+        <div hidden={tab !== 'thismonth'}>{mounted.has('thismonth') ? thisMonthChart : null}</div>
       </section>
 
       <section>
@@ -104,6 +110,7 @@ export function DashboardTabs({
         <div hidden={tab !== 'matrix'}>{mounted.has('matrix') ? matrixSection : null}</div>
         <div hidden={tab !== 'members'}>{mounted.has('members') ? membersSection : null}</div>
         <div hidden={tab !== 'eligibility'}>{mounted.has('eligibility') ? eligibilitySection : null}</div>
+        <div hidden={tab !== 'thismonth'}>{mounted.has('thismonth') ? thisMonthSection : null}</div>
         {footer && <div>{footer}</div>}
       </section>
     </>
