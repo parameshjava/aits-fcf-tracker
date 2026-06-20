@@ -283,10 +283,29 @@ export async function getDashboardTransactions(opts?: {
   return (data ?? []) as DashboardTxn[]
 }
 
+/** One row per active member with their summed contributions for a month. */
+export type MonthlyMemberContribution = {
+  member_id: string
+  member_name: string
+  /** Sum of all contribution amounts this month. 0 if the member didn't contribute. */
+  total: number
+  /** Number of contribution transactions this month. */
+  count: number
+  /** Latest contribution's date this month (ISO), or null if none. */
+  latest_date: string | null
+  /** Latest contribution's transaction_id this month, or null if none. */
+  latest_transaction_id: string | null
+  /** Latest contribution's bank reference this month, or null. */
+  latest_bank_transaction_id: string | null
+}
+
 /**
- * Every `contribution` transaction in the given calendar month (YYYY-MM),
- * restricted to members whose status is `active`. Used by the dashboard's
- * "This Month" tab. Ordered newest-first.
+ * Per-member contribution roster for the given calendar month (YYYY-MM):
+ * ONE row for EVERY active member, with their contributions summed. Members
+ * who didn't contribute this month appear with `total: 0` (and null
+ * date/transaction id). Where a member has multiple transactions, the
+ * date/transaction-id reflect the most recent one and `count` is > 1.
+ * Sorted by total descending, then name. Used by the "This Month" tab.
  *
  * `monthIso` is passed in (not derived from `new Date()`) so this stays a
  * pure function of its argument — Cache Components forbids reading the clock
@@ -294,7 +313,7 @@ export async function getDashboardTransactions(opts?: {
  */
 export async function getCurrentMonthContributions(
   monthIso: string,
-): Promise<DashboardTxn[]> {
+): Promise<MonthlyMemberContribution[]> {
   'use cache'
   cacheLife('hours')
   cacheTag('dashboard')
@@ -303,14 +322,16 @@ export async function getCurrentMonthContributions(
 
   const supabase = createAdminClient()
 
-  // Active-member allowlist — exclude any contribution attributed to an
-  // inactive/archived member.
+  // Every active member — the roster's row set. Zero-contribution members
+  // still get a row.
   const { data: members, error: memErr } = await supabase
     .from('members')
-    .select('id')
+    .select('id, name')
     .eq('status', 'active')
+    .order('name', { ascending: true })
   if (memErr) throw new Error(memErr.message)
-  const activeIds = new Set((members ?? []).map((m) => (m as { id: string }).id))
+  const activeMembers = (members ?? []) as { id: string; name: string }[]
+  const activeIds = new Set(activeMembers.map((m) => m.id))
 
   const [yStr, mStr] = monthIso.split('-')
   const y = Number(yStr)
@@ -331,8 +352,36 @@ export async function getCurrentMonthContributions(
     .order('created_at', { ascending: false })
   if (error) throw new Error(error.message)
 
-  return ((data ?? []) as DashboardTxn[]).filter(
-    (t) => t.member_id != null && activeIds.has(t.member_id),
+  // Seed one accumulator per active member (so non-contributors are present).
+  const byMember = new Map<string, MonthlyMemberContribution>()
+  for (const mem of activeMembers) {
+    byMember.set(mem.id, {
+      member_id: mem.id,
+      member_name: mem.name,
+      total: 0,
+      count: 0,
+      latest_date: null,
+      latest_transaction_id: null,
+      latest_bank_transaction_id: null,
+    })
+  }
+
+  // Fold each contribution into its member's row. Rows arrive newest-first, so
+  // the FIRST transaction seen for a member is the latest one.
+  for (const t of (data ?? []) as DashboardTxn[]) {
+    if (t.member_id == null || !activeIds.has(t.member_id)) continue
+    const row = byMember.get(t.member_id)!
+    row.total += Number(t.amount) || 0
+    row.count += 1
+    if (row.latest_transaction_id == null) {
+      row.latest_date = t.transaction_date
+      row.latest_transaction_id = t.transaction_id
+      row.latest_bank_transaction_id = t.bank_transaction_id ?? null
+    }
+  }
+
+  return Array.from(byMember.values()).sort(
+    (a, b) => b.total - a.total || a.member_name.localeCompare(b.member_name),
   )
 }
 
