@@ -107,6 +107,11 @@ type PrDataTableProps<T extends Record<string, unknown>> = {
   paginatorLeft?: ReactNode
   /** Content pinned to the RIGHT end of the paginator bar (e.g. a total). */
   paginatorRight?: ReactNode
+  /** Size the table to its content instead of stretching to fill the
+   *  container. Use for narrow tables (few short columns) where the default
+   *  `min-width: 100%` leaves large gaps between columns. The table is
+   *  left-aligned and capped at the container width. */
+  fitContent?: boolean
 }
 
 /**
@@ -200,6 +205,7 @@ export function PrDataTable<T extends Record<string, unknown>>({
   rows = 10,
   paginatorLeft,
   paginatorRight,
+  fitContent = false,
 }: PrDataTableProps<T>) {
   const hasGlobal = !!globalFilterFields && globalFilterFields.length > 0
   const hasColumnFilters = columns.some((c) => c.filter)
@@ -315,7 +321,10 @@ export function PrDataTable<T extends Record<string, unknown>>({
       // plus the `.p-datatable-sm` overrides in globals.css restore the prior
       // tight, scannable rows + small uppercase headers this app used.
       size="small"
-      tableStyle={{ minWidth: '100%' }}
+      // `fitContent` shrinks the table to its columns (left-aligned, capped at
+      // the container) so narrow tables don't spread short columns across the
+      // full width. Default keeps the table stretched to fill its container.
+      tableStyle={fitContent ? { width: 'auto', maxWidth: '100%' } : { minWidth: '100%' }}
     >
       {columns.map((c) => (
         <Column

@@ -161,6 +161,7 @@ export function CurrentMonthContributionsTable({
         value={augmented}
         columns={columns}
         dataKey="member_id"
+        fitContent
         emptyMessage={
           searchQuery ? `No matches for "${searchQuery}"` : 'No active members'
         }
