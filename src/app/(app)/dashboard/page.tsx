@@ -167,8 +167,9 @@ export default async function DashboardPage({
   // because Cache Components forbids reading the clock in a `'use cache'` scope.
   const currentMonthIso = `${currentYear}-${String(currentMonthIdx + 1).padStart(2, '0')}`
   const currentMonthLabel = `${MONTH_LABELS_LONG[currentMonthIdx]} ${currentYear}`
-  const currentMonthRows = (await getCurrentMonthContributions(currentMonthIso)).map(toTxnRow)
-  const currentMonthTotal = currentMonthRows.reduce((s, r) => s + Number(r.amount || 0), 0)
+  const currentMonthRows = await getCurrentMonthContributions(currentMonthIso)
+  const currentMonthTotal = currentMonthRows.reduce((s, r) => s + r.total, 0)
+  const currentMonthContributors = currentMonthRows.filter((r) => r.count > 0).length
 
   const eligibilityMonthlyData = buildEligibilityMonthlyData(
     rowsByMonth,
@@ -323,9 +324,9 @@ export default async function DashboardPage({
               Contributions · {currentMonthLabel}
             </h2>
             <p className="text-xs text-gray-500">
-              {currentMonthRows.length}{' '}
-              {currentMonthRows.length === 1 ? 'contribution' : 'contributions'} from active
-              members this month · {formatRupees(currentMonthTotal)}
+              {currentMonthContributors} of {currentMonthRows.length}{' '}
+              {currentMonthRows.length === 1 ? 'active member' : 'active members'} contributed
+              this month · {formatRupees(currentMonthTotal)}
             </p>
           </div>
         }
