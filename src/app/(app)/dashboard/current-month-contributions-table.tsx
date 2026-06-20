@@ -90,7 +90,8 @@ export function CurrentMonthContributionsTable({
       header: 'Person name',
       sortable: true,
       dataType: 'text',
-      bodyClassName: 'font-medium text-gray-900',
+      headerClassName: 'whitespace-nowrap',
+      bodyClassName: 'whitespace-nowrap font-medium text-gray-900',
       body: (r) => r.member_name,
     },
     {
