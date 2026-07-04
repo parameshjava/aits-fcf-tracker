@@ -118,6 +118,17 @@
     padding: 0.25rem 0.5rem;
     font-size: 0.8125rem;
   }
+
+  /* InputNumber with stepper buttons (PrNumberInput/PrAmountInput). The root is
+     forced to `display:flex` and can be width-capped (e.g. w-32). PrimeReact's
+     injected structure lays out [input][button-group] as flex siblings but never
+     tells the input to shrink — so at its ~175px intrinsic width it overflows a
+     narrow container and pushes the stepper buttons out over the next element.
+     Let the input flex to fill and shrink to 0 so the buttons stay inside. */
+  .p-inputnumber .p-inputnumber-input {
+    flex: 1 1 0;
+    min-width: 0;
+  }
 }
 
 /* @uiw/react-md-editor's split/read preview pane has its own renderer and
