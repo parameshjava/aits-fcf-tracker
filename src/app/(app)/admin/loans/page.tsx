@@ -6,6 +6,7 @@ import { LoansListTable, type LoansListRow } from '@/components/loans-list-table
 import { LoansTabs, type LoansTabKey } from '@/components/loans-tabs'
 import { computeLoanFinancials, type LoanTxnInput } from '@/lib/loan-math'
 import { UNPAID_EMI_STATUSES } from '@/lib/constants'
+import { endOfMonth } from '@/lib/due'
 
 export default async function AdminLoansListPage({
   searchParams,
@@ -32,6 +33,8 @@ export default async function AdminLoansListPage({
 
   const loanIds = loans.map((l) => l.id)
   const emiLoanIds = loans.filter((l) => l.repayment_model === 'emi').map((l) => l.id)
+  const todayIso = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date())
+  const currentMonthEnd = endOfMonth(todayIso)
   type EmiBalRow = {
     loan_id: string
     next_due_date: string | null
@@ -51,15 +54,17 @@ export default async function AdminLoansListPage({
           .select('loan_id, next_due_date, past_due_count, oldest_past_due_date')
           .in('loan_id', emiLoanIds)
       : Promise.resolve({ data: [] as EmiBalRow[] }),
-    // Unpaid installments left on each schedule. `loan_emi_balances` exposes
-    // overdue/past-due counts but not the remaining-term count, so tally the
-    // schedule rows directly.
+    // Installments payable as of this month: unpaid rows due on or before the
+    // current month's end. Counts anything carried over from earlier months
+    // plus this month's installment, whether or not its 10th has passed —
+    // NOT the whole remaining term.
     emiLoanIds.length
       ? supabase
           .from('loan_emi_schedule')
           .select('loan_id')
           .in('loan_id', emiLoanIds)
           .in('status', UNPAID_EMI_STATUSES)
+          .lte('due_date', currentMonthEnd)
       : Promise.resolve({ data: [] as { loan_id: string }[] }),
   ])
 
@@ -115,7 +120,6 @@ export default async function AdminLoansListPage({
 
   const activeRows = tableRows.filter((r) => r.status === 'active')
   const pastRows = tableRows.filter((r) => r.status !== 'active')
-  const todayIso = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date())
 
   const emptyMessage = (
     <>

@@ -32,6 +32,18 @@ export function overdueParts(dueIso: string, todayIso: string): OverdueParts | n
   return { months, days }
 }
 
+/**
+ * Last calendar day of `isoDate`'s month, as 'YYYY-MM-DD'. Used as the cut-off
+ * for "payable as of this month": an installment due on the 10th counts from
+ * the 1st, not only once the 10th has passed.
+ */
+export function endOfMonth(isoDate: string): string {
+  const [y, m] = isoDate.split('-').map(Number)
+  if (!y || !m) return isoDate
+  const last = new Date(Date.UTC(y, m, 0)).getUTCDate()
+  return `${y}-${String(m).padStart(2, '0')}-${String(last).padStart(2, '0')}`
+}
+
 /** Compact label like "Due (2M 4D)" or "Due (4D)" (months omitted when zero). */
 export function formatDueLabel(parts: OverdueParts): string {
   const monthPart = parts.months > 0 ? `${parts.months}M ` : ''
