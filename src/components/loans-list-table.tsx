@@ -31,6 +31,9 @@ export type LoansListRow = {
   oldest_overdue_date?: string | null
   /** Monthly installment for EMI loans; null for accrual-model loans. */
   emi_amount?: number | null
+  /** Unpaid installments left on the schedule (scheduled + partially paid +
+   *  overdue). Null for accrual-model loans. */
+  pending_emi_count?: number | null
   balance: number
   detail_href: string
 }
@@ -41,6 +44,7 @@ type LoansListRowAug = LoansListRow & {
   _start_ts: number
   _end_ts: number
   _emi: number
+  _pending_emi: number
   _type_label: string
   _search_blob: string
 }
@@ -94,6 +98,7 @@ export function LoansListTable({
           _start_ts: new Date(l.start_date).getTime(),
           _end_ts: l.end_date ? new Date(l.end_date).getTime() : 0,
           _emi: emi,
+          _pending_emi: Number(l.pending_emi_count ?? 0),
           _type_label: typeLabel,
           _search_blob: [
             l.loan_number,
@@ -120,7 +125,7 @@ export function LoansListTable({
 
   // --- Export (reflects the current filter + sort) -------------------------
   const exportColumns = [
-    'Loan #', 'Member', 'Type', 'Principal (₹)', 'EMI (₹)', 'Start date',
+    'Loan #', 'Member', 'Type', 'Principal (₹)', 'EMI (₹)', 'Pending EMI', 'Start date',
     ...(showEndDate ? ['End date'] : []),
     'Outstanding (₹)',
   ]
@@ -130,6 +135,7 @@ export function LoansListTable({
     l._type_label,
     l.principal_amount,
     l._emi > 0 ? l._emi : '',
+    l.repayment_model === 'emi' ? l._pending_emi : '',
     formatDate(l.start_date),
     ...(showEndDate ? [formatDate(l.end_date ?? null)] : []),
     l.balance,
@@ -304,6 +310,21 @@ export function LoansListTable({
       // Accrual-model loans have no installment — show a dash rather than ₹0.
       body: (l) =>
         l._emi > 0 ? formatRupees(l._emi) : <span className="text-gray-400">—</span>,
+    },
+    {
+      field: '_pending_emi',
+      header: 'Pending EMI',
+      sortable: true,
+      align: 'right',
+      dataType: 'numeric',
+      bodyClassName: 'whitespace-nowrap px-3 py-2.5 text-right tabular-nums text-gray-700',
+      // A plain count of unpaid installments — not a rupee value.
+      body: (l) =>
+        l.repayment_model === 'emi' ? (
+          l._pending_emi
+        ) : (
+          <span className="text-gray-400">—</span>
+        ),
     },
     {
       field: '_start_ts',
