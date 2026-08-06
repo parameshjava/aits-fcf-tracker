@@ -5,7 +5,8 @@ import { createClient } from '@/lib/supabase/server'
 import { getCurrentUser } from './auth'
 import { getReference, applyBalanceDelta } from './reference'
 import { actionError, actionOk, runAction, type ActionResult } from './action-result'
-import { recomputeAfterPrepayment } from '@/lib/emi-math'
+import { recomputeAfterPrepayment, tenthOfMonth } from '@/lib/emi-math'
+import { cutoverYmdToIso, isCutoverFloored } from '@/lib/emi-anchor'
 
 export type EmiScheduleRow = {
   id: string
@@ -252,14 +253,41 @@ export async function prepayLoan(formData: FormData): Promise<ActionResult> {
         .select('id', { count: 'exact', head: true })
         .eq('loan_id', loanId)
         .in('status', ['scheduled', 'overdue'])
+
+      // The rebuilt tail starts on the 10th of the month AFTER the prepayment
+      // date — never at `next_due_date`, which is the earliest UNPAID due date
+      // and can sit in the past (a genuinely missed month, or a schedule that a
+      // bad regeneration back-dated; see migration 051). Anchoring there
+      // regenerated the tail into the past and compounded the damage on every
+      // subsequent prepayment. Any unpaid earlier installments are dropped
+      // below and their principal re-amortizes across this new tail — it is
+      // already inside `newOutstanding`, so nothing is written off.
+      const firstDueDate = tenthOfMonth(paidDate, 1)
+
       const rows = recomputeAfterPrepayment({
         outstanding: newOutstanding,
         annualRatePct: Number(bal.interest_rate_pct),
         remainingTerm: count ?? 1,
         currentEmi: Number(bal.emi_amount),
-        firstDueDate: String(bal.next_due_date),
+        firstDueDate,
         mode,
       })
+
+      // Late fees already charged on the rows we are about to drop are real
+      // receivables — each has a matching penalty transaction. Carry the
+      // unwaived total onto the first row of the new tail so it stays
+      // collectable; without this the delete below silently forgave it.
+      const { data: feeRows, error: feeErr } = await supabase
+        .from('loan_emi_schedule')
+        .select('late_fee_charged, late_fee_waived')
+        .eq('loan_id', loanId)
+        .in('status', ['scheduled', 'overdue'])
+      if (feeErr) return actionError(feeErr.message)
+      const carriedLateFee = (feeRows ?? []).reduce(
+        (sum, r) => (r.late_fee_waived ? sum : sum + (Number(r.late_fee_charged) || 0)),
+        0,
+      )
+
       // Replace unpaid rows with the recomputed schedule (delete + reinsert).
       const { error: delErr } = await supabase
         .from('loan_emi_schedule')
@@ -277,7 +305,7 @@ export async function prepayLoan(formData: FormData): Promise<ActionResult> {
         .limit(1)
         .maybeSingle()
       let n = maxRow?.installment_no ?? 0
-      const insertRows = rows.map((r) => ({
+      const insertRows = rows.map((r, idx) => ({
         loan_id: loanId,
         installment_no: ++n,
         due_date: r.dueDate,
@@ -286,6 +314,11 @@ export async function prepayLoan(formData: FormData): Promise<ActionResult> {
         principal_due: r.principalDue,
         interest_due: r.interestDue,
         closing_balance: r.closingBalance,
+        // Outstanding fees from the dropped rows ride on the first new
+        // installment. `late_fee_txn_id` stays null — it is a single FK and the
+        // carried total may span several penalty transactions, which remain in
+        // `transactions` as the audit trail.
+        late_fee_charged: idx === 0 ? carriedLateFee : 0,
       }))
       if (insertRows.length > 0) {
         const { error } = await supabase.from('loan_emi_schedule').insert(insertRows)
@@ -327,9 +360,29 @@ export async function recalculateSchedule(formData: FormData): Promise<ActionRes
       .single()
     if (!loan?.term_months) return actionError('Loan has no term')
     const ratePct = await getReference('loan_interest_rate_pct').catch(() => 8)
+
+    // A loan that predates the cutover was CONVERTED to EMI, so its schedule
+    // amortizes what is still outstanding — passing principal_amount here was
+    // the second half of the back-dating incident (migration 051): it rebuilt
+    // the schedule against the full amount originally lent, ignoring every
+    // repayment made under the accrual model. The generator floors the START
+    // date itself; only the principal is the caller's job.
+    const cutoverIso = cutoverYmdToIso(await getReference('emi_cutover_date').catch(() => 0))
+    let principal = Number(loan.principal_amount)
+    if (isCutoverFloored(loan.start_date, cutoverIso)) {
+      const { data: lb } = await supabase
+        .from('loans_balances')
+        .select('pending_principal')
+        .eq('loan_id', loanId)
+        .single()
+      if (!lb) return actionError('Cannot read outstanding principal for this loan')
+      principal = Number(lb.pending_principal)
+    }
+    if (!(principal > 0)) return actionError('Loan has no outstanding principal to schedule')
+
     const { error } = await supabase.rpc('fn_generate_emi_schedule', {
       p_loan_id: loanId,
-      p_principal: loan.principal_amount,
+      p_principal: principal,
       p_start: loan.start_date,
       p_term: loan.term_months,
       p_waiver_months: loan.interest_waiver_months,
@@ -369,8 +422,8 @@ export async function convertToEmi(formData: FormData): Promise<ActionResult> {
       .single()
     if (!lb) return actionError('Loan not found')
     // emi_cutover_date is stored as a YYYYMMDD integer (reference.value is numeric).
-    const cutoverYmd = await getReference('emi_cutover_date')
-    const cutover = `${String(cutoverYmd).slice(0, 4)}-${String(cutoverYmd).slice(4, 6)}-${String(cutoverYmd).slice(6, 8)}`
+    const cutover = cutoverYmdToIso(await getReference('emi_cutover_date'))
+    if (!cutover) return actionError('emi_cutover_date is not configured')
     const ratePct = await getReference('loan_interest_rate_pct').catch(() => 8)
 
     // NOTE (spec §10): legacy accrued interest is PRESERVED — do NOT waive or roll it.
