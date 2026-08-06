@@ -41,6 +41,7 @@ export default async function AdminTransactionsListPage() {
       <TransactionsTable
         rows={rows}
         emptyLabel="No transactions recorded yet"
+        enableRowDelete
       />
     </div>
   )

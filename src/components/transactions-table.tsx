@@ -5,6 +5,7 @@ import { Dropdown } from 'primereact/dropdown'
 import { formatRupees } from '@/lib/format'
 import { PollModal } from '@/components/poll-modal'
 import { TableExportMenu } from '@/components/table-export'
+import { TransactionRowActions } from '@/components/transaction-row-actions'
 import { PrDataTable, type PrColumn } from '@/components/ui/pr/data-table'
 import type { Cell, ExportCriterion } from '@/lib/table-export'
 
@@ -76,6 +77,7 @@ export function TransactionsTable({
   enableSearch = true,
   memberColumnLabel = 'Member',
   showDonationColumns = false,
+  enableRowDelete = false,
   exportName = 'transactions',
   exportTitle = 'Transactions',
   exportCriteria = [],
@@ -100,6 +102,9 @@ export function TransactionsTable({
    *  "Beneficiary" (from `beneficiary_name`) and "Poll" (from `poll`).
    *  Used by the /dashboard/donations section view. */
   showDonationColumns?: boolean
+  /** Admin-only: render Delete beside Edit in the Actions column, confirmed by
+   *  a dialog. Read-only surfaces (dashboard sections) leave this off. */
+  enableRowDelete?: boolean
 }) {
   const showActions = rows.some((r) => !!r.manage_href)
 
@@ -297,7 +302,13 @@ export function TransactionsTable({
         <div>
           <div>{t.transaction_id}</div>
           {t.bank_transaction_id && (
-            <div className="text-[11px] text-gray-400" title="Bank reference">
+            // Bank references run long (full NEFT/UPI narrations). Capped and
+            // truncated — uncapped, this one cell widened the table past the
+            // viewport and pushed the Actions column out of reach.
+            <div
+              className="max-w-[220px] truncate text-[11px] text-gray-400"
+              title={t.bank_transaction_id}
+            >
               {t.bank_transaction_id}
             </div>
           )}
@@ -320,15 +331,21 @@ export function TransactionsTable({
             align: 'right',
             bodyClassName: 'whitespace-nowrap text-right',
             body: (t: TxnRowAug) =>
-              t.manage_href ? (
+              !t.manage_href ? (
+                <span className="text-xs text-gray-300">—</span>
+              ) : enableRowDelete ? (
+                <TransactionRowActions
+                  id={t.id}
+                  transactionId={t.transaction_id}
+                  editHref={t.manage_href}
+                />
+              ) : (
                 <a
                   href={t.manage_href}
                   className="text-xs font-medium text-blue-600 hover:underline"
                 >
                   Manage →
                 </a>
-              ) : (
-                <span className="text-xs text-gray-300">—</span>
               ),
           },
         ] as PrColumn<TxnRowAug>[])
@@ -349,7 +366,10 @@ export function TransactionsTable({
   )
 
   return (
-    <div className="overflow-clip rounded-2xl border border-gray-200 bg-white">
+    // `overflow-x-auto` rather than `overflow-clip`: on a narrow viewport the
+    // rightmost columns (Description, Actions) exceed the container, and clip
+    // would silently make them unreachable instead of offering a scrollbar.
+    <div className="overflow-x-auto rounded-2xl border border-gray-200 bg-white">
       <PrDataTable<TxnRowAug>
         value={augmented}
         columns={columns}
