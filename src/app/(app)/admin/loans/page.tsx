@@ -5,6 +5,7 @@ import { getLoans, getInterestPerLakh } from '@/lib/actions/loans'
 import { LoansListTable, type LoansListRow } from '@/components/loans-list-table'
 import { LoansTabs, type LoansTabKey } from '@/components/loans-tabs'
 import { computeLoanFinancials, type LoanTxnInput } from '@/lib/loan-math'
+import { UNPAID_EMI_STATUSES } from '@/lib/constants'
 
 export default async function AdminLoansListPage({
   searchParams,
@@ -37,7 +38,7 @@ export default async function AdminLoansListPage({
     past_due_count: number | null
     oldest_past_due_date: string | null
   }
-  const [{ data: txnsRaw }, { data: emiBalRaw }] = await Promise.all([
+  const [{ data: txnsRaw }, { data: emiBalRaw }, { data: emiPendingRaw }] = await Promise.all([
     loanIds.length
       ? supabase
           .from('transactions')
@@ -50,6 +51,16 @@ export default async function AdminLoansListPage({
           .select('loan_id, next_due_date, past_due_count, oldest_past_due_date')
           .in('loan_id', emiLoanIds)
       : Promise.resolve({ data: [] as EmiBalRow[] }),
+    // Unpaid installments left on each schedule. `loan_emi_balances` exposes
+    // overdue/past-due counts but not the remaining-term count, so tally the
+    // schedule rows directly.
+    emiLoanIds.length
+      ? supabase
+          .from('loan_emi_schedule')
+          .select('loan_id')
+          .in('loan_id', emiLoanIds)
+          .in('status', UNPAID_EMI_STATUSES)
+      : Promise.resolve({ data: [] as { loan_id: string }[] }),
   ])
 
   const nextDueByLoan = new Map<string, string | null>()
@@ -60,6 +71,11 @@ export default async function AdminLoansListPage({
       count: Number(b.past_due_count ?? 0),
       oldest: b.oldest_past_due_date,
     })
+  }
+
+  const pendingEmiByLoan = new Map<string, number>()
+  for (const r of (emiPendingRaw ?? []) as { loan_id: string }[]) {
+    pendingEmiByLoan.set(r.loan_id, (pendingEmiByLoan.get(r.loan_id) ?? 0) + 1)
   }
 
   type TxnAgg = LoanTxnInput & { loan_id: string }
@@ -90,6 +106,8 @@ export default async function AdminLoansListPage({
       oldest_overdue_date:
         l.repayment_model === 'emi' ? overdueByLoan.get(l.id)?.oldest ?? null : null,
       emi_amount: l.repayment_model === 'emi' ? l.emi_amount : null,
+      pending_emi_count:
+        l.repayment_model === 'emi' ? pendingEmiByLoan.get(l.id) ?? 0 : null,
       balance: f.balance,
       detail_href: `/admin/loans/${encodeURIComponent(l.loan_number)}`,
     }
