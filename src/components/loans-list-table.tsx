@@ -31,8 +31,10 @@ export type LoansListRow = {
   oldest_overdue_date?: string | null
   /** Monthly installment for EMI loans; null for accrual-model loans. */
   emi_amount?: number | null
-  /** Unpaid installments left on the schedule (scheduled + partially paid +
-   *  overdue). Null for accrual-model loans. */
+  /** Installments payable as of the current month: unpaid rows (scheduled +
+   *  partially paid + overdue) due on or before this month's end — carry-over
+   *  from earlier months plus this month's. NOT the remaining term.
+   *  Null for accrual-model loans. */
   pending_emi_count?: number | null
   balance: number
   detail_href: string
@@ -318,12 +320,22 @@ export function LoansListTable({
       align: 'right',
       dataType: 'numeric',
       bodyClassName: 'whitespace-nowrap px-3 py-2.5 text-right tabular-nums text-gray-700',
-      // A plain count of unpaid installments — not a rupee value.
+      // A plain count of installments due as of this month — not a rupee value.
+      // More than one means earlier months are still unpaid.
       body: (l) =>
-        l.repayment_model === 'emi' ? (
-          l._pending_emi
-        ) : (
+        l.repayment_model !== 'emi' ? (
           <span className="text-gray-400">—</span>
+        ) : (
+          <span
+            title={
+              l._pending_emi === 0
+                ? 'Nothing due this month'
+                : `${l._pending_emi} installment${l._pending_emi === 1 ? '' : 's'} payable as of this month`
+            }
+            className={l._pending_emi > 1 ? 'font-medium text-amber-700' : undefined}
+          >
+            {l._pending_emi}
+          </span>
         ),
     },
     {

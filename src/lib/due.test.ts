@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { overdueParts, formatDueLabel, formatOverdueDuration } from './due'
+import { overdueParts, formatDueLabel, formatOverdueDuration, endOfMonth } from './due'
 
 describe('overdueParts', () => {
   it('returns null when not yet due', () => {
@@ -36,5 +36,23 @@ describe('formatOverdueDuration', () => {
   it('formats bare duration', () => {
     expect(formatOverdueDuration({ months: 0, days: 4 })).toBe('4D')
     expect(formatOverdueDuration({ months: 1, days: 25 })).toBe('1M 25D')
+  })
+})
+
+describe('endOfMonth', () => {
+  it('returns the last day of a 31-day month', () => {
+    expect(endOfMonth('2026-08-06')).toBe('2026-08-31')
+  })
+  it('returns the last day of a 30-day month', () => {
+    expect(endOfMonth('2026-04-01')).toBe('2026-04-30')
+  })
+  it('handles February in a non-leap year', () => {
+    expect(endOfMonth('2026-02-14')).toBe('2026-02-28')
+  })
+  it('handles February in a leap year', () => {
+    expect(endOfMonth('2028-02-14')).toBe('2028-02-29')
+  })
+  it('is idempotent on a date already at month end', () => {
+    expect(endOfMonth('2026-12-31')).toBe('2026-12-31')
   })
 })
