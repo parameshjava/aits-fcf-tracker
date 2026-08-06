@@ -4,9 +4,8 @@ import { getLoans, getInterestPerLakh } from '@/lib/actions/loans'
 import { LoansListTable, type LoansListRow } from '@/components/loans-list-table'
 import { LoansTabs, type LoansTabKey } from '@/components/loans-tabs'
 import { computeLoanFinancials, type LoanTxnInput } from '@/lib/loan-math'
-import { UNPAID_EMI_STATUSES } from '@/lib/constants'
 import { endOfMonth } from '@/lib/due'
-import { tallyPendingEmi, type PendingEmiScheduleRow as EmiPendingRow } from '@/lib/emi-due'
+import { tallyEmiSchedule, pctPending, type EmiScheduleRow } from '@/lib/emi-due'
 import { RefreshButton } from '@/components/ui/refresh-button'
 import { LoansFilters } from './loans-filters'
 
@@ -50,7 +49,7 @@ export default async function LoansListPage({
   const emiLoanIds = loans.filter((l) => l.repayment_model === 'emi').map((l) => l.id)
   const todayIso = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date())
   const currentMonthEnd = endOfMonth(todayIso)
-  const [{ data: txnsRaw }, { data: emiBalRaw }, { data: emiPendingRaw }] = await Promise.all([
+  const [{ data: txnsRaw }, { data: emiBalRaw }, { data: emiScheduleRaw }] = await Promise.all([
     loanIds.length
       ? supabase
           .from('transactions')
@@ -63,19 +62,17 @@ export default async function LoansListPage({
           .select('loan_id, next_due_date, past_due_count, oldest_past_due_date')
           .in('loan_id', emiLoanIds)
       : Promise.resolve({ data: [] as EmiBalRow[] }),
-    // Installments payable as of this month: unpaid rows due on or before the
-    // current month's end. Counts anything carried over from earlier months
-    // plus this month's installment, whether or not its 10th has passed —
-    // NOT the whole remaining term. The due/paid columns come along so the
-    // same rows yield both the count and the rupee amount owed.
+    // The full schedule — `tallyEmiSchedule` derives all three EMI columns
+    // from it in one pass: settled/total (Total EMI), installments payable as
+    // of this month (Pending EMI), and the rupees they owe (Due EMI).
     emiLoanIds.length
       ? supabase
           .from('loan_emi_schedule')
-          .select('loan_id, principal_due, interest_due, principal_paid, interest_paid')
+          .select(
+            'loan_id, status, due_date, principal_due, interest_due, principal_paid, interest_paid',
+          )
           .in('loan_id', emiLoanIds)
-          .in('status', UNPAID_EMI_STATUSES)
-          .lte('due_date', currentMonthEnd)
-      : Promise.resolve({ data: [] as EmiPendingRow[] }),
+      : Promise.resolve({ data: [] as EmiScheduleRow[] }),
   ])
 
   const nextDueByLoan = new Map<string, string | null>()
@@ -88,7 +85,10 @@ export default async function LoansListPage({
     })
   }
 
-  const pendingEmiByLoan = tallyPendingEmi((emiPendingRaw ?? []) as EmiPendingRow[])
+  const emiByLoan = tallyEmiSchedule(
+    (emiScheduleRaw ?? []) as EmiScheduleRow[],
+    currentMonthEnd,
+  )
 
   type TxnAgg = LoanTxnInput & { loan_id: string }
   const txns = (txnsRaw ?? []) as TxnAgg[]
@@ -103,6 +103,7 @@ export default async function LoansListPage({
 
   const tableRows: LoansListRow[] = loans.map((l) => {
     const f = computeLoanFinancials(l, txnsByLoan.get(l.id) ?? [], interestPerLakh)
+    const emi = l.repayment_model === 'emi' ? emiByLoan.get(l.id) : undefined
     return {
       id: l.id,
       loan_number: l.loan_number,
@@ -118,10 +119,11 @@ export default async function LoansListPage({
       oldest_overdue_date:
         l.repayment_model === 'emi' ? overdueByLoan.get(l.id)?.oldest ?? null : null,
       emi_amount: l.repayment_model === 'emi' ? l.emi_amount : null,
-      pending_emi_count:
-        l.repayment_model === 'emi' ? pendingEmiByLoan.get(l.id)?.count ?? 0 : null,
-      pending_emi_due:
-        l.repayment_model === 'emi' ? pendingEmiByLoan.get(l.id)?.due ?? 0 : null,
+      pending_emi_count: emi ? emi.pendingCount : null,
+      pending_emi_due: emi ? emi.pendingDue : null,
+      settled_emi_count: emi ? emi.settledCount : null,
+      total_emi_count: emi ? emi.totalCount : null,
+      pct_emi_pending: emi ? pctPending(emi) : null,
       balance: f.balance,
       detail_href: `/dashboard/loans/${encodeURIComponent(l.loan_number)}`,
     }

@@ -39,6 +39,13 @@ export type LoansListRow = {
   /** Rupees still owed across those same installments (unpaid principal +
    *  unpaid interest, late fees excluded). Null for accrual-model loans. */
   pending_emi_due?: number | null
+  /** Installments no longer owing — paid outright or waived. */
+  settled_emi_count?: number | null
+  /** Installments on the schedule, whatever their status (the loan's term). */
+  total_emi_count?: number | null
+  /** Share of the schedule still to settle, 0–100. Null when there's no
+   *  schedule (accrual-model loans, or an EMI loan not yet generated). */
+  pct_emi_pending?: number | null
   balance: number
   detail_href: string
 }
@@ -51,6 +58,10 @@ type LoansListRowAug = LoansListRow & {
   _emi: number
   _pending_emi: number
   _pending_emi_due: number
+  _settled_emi: number
+  _total_emi: number
+  /** -1 when there's no schedule, so those rows sort below every real pct. */
+  _pct_pending: number
   _type_label: string
   _search_blob: string
 }
@@ -106,6 +117,9 @@ export function LoansListTable({
           _emi: emi,
           _pending_emi: Number(l.pending_emi_count ?? 0),
           _pending_emi_due: Number(l.pending_emi_due ?? 0),
+          _settled_emi: Number(l.settled_emi_count ?? 0),
+          _total_emi: Number(l.total_emi_count ?? 0),
+          _pct_pending: l.pct_emi_pending ?? -1,
           _type_label: typeLabel,
           _search_blob: [
             l.loan_number,
@@ -133,8 +147,8 @@ export function LoansListTable({
 
   // --- Export (reflects the current filter + sort) -------------------------
   const exportColumns = [
-    'Loan #', 'Member', 'Type', 'Principal (₹)', 'EMI (₹)', 'Pending EMI', 'Due EMI (₹)',
-    'Start date',
+    'Loan #', 'Member', 'Type', 'Principal (₹)', 'EMI (₹)', 'Settled / Total EMIs',
+    '% Pending', 'Pending EMI', 'Due EMI (₹)', 'Start date',
     ...(showEndDate ? ['End date'] : []),
     'Outstanding (₹)',
   ]
@@ -144,6 +158,8 @@ export function LoansListTable({
     l._type_label,
     l.principal_amount,
     l._emi > 0 ? l._emi : '',
+    l.repayment_model === 'emi' && l._total_emi > 0 ? `${l._settled_emi} / ${l._total_emi}` : '',
+    l.repayment_model === 'emi' && l._total_emi > 0 ? `${l._pct_pending}%` : '',
     l.repayment_model === 'emi' ? l._pending_emi : '',
     l.repayment_model === 'emi' ? l._pending_emi_due : '',
     formatDate(l.start_date),
@@ -326,6 +342,32 @@ export function LoansListTable({
       // Accrual-model loans have no installment — show a dash rather than ₹0.
       body: (l) =>
         l._emi > 0 ? formatRupees(l._emi) : <span className="text-gray-400">—</span>,
+    },
+    {
+      field: '_pct_pending',
+      header: 'Total EMI',
+      sortable: true,
+      align: 'right',
+      dataType: 'numeric',
+      bodyClassName: 'whitespace-nowrap px-3 py-2.5 text-right tabular-nums',
+      // Settled / total installments across the whole schedule, with the share
+      // still to go underneath. Sorts on % pending — the number you'd scan for.
+      // Unlike Pending EMI (payable *this month*) this spans the full term.
+      body: (l) =>
+        l.repayment_model !== 'emi' || l._total_emi === 0 ? (
+          <span className="text-gray-400">—</span>
+        ) : (
+          <span
+            title={`${l._settled_emi} of ${l._total_emi} installments settled`}
+            className="inline-block"
+          >
+            <span className="text-gray-900">{l._settled_emi}</span>
+            <span className="text-gray-400"> / {l._total_emi}</span>
+            <span className="mt-0.5 block text-[11px] text-gray-400">
+              {l._pct_pending}% pending
+            </span>
+          </span>
+        ),
     },
     {
       field: '_pending_emi',
