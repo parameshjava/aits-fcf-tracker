@@ -88,16 +88,22 @@ order by l.loan_number;
 
 
 -- ----------------------------------------------------------------------------
--- STEP 2 — Repair one loan. Set :loan_number, run, check the NOTICEs, COMMIT.
+-- STEP 2 — Repair one loan. Set the loan number ONCE below, run the whole
+-- block, check the NOTICE, then COMMIT (or ROLLBACK).
 --
--- Replace '202509-001' below with a loan_number from step 1. Do them one at a
--- time so each result can be checked against the loan page before committing.
+-- Do the loans one at a time so each result can be checked against the loan
+-- page before committing.
 -- ----------------------------------------------------------------------------
 begin;
 
+-- >>> THE ONLY LINE TO EDIT. Both the repair and the verification query below
+--     read the target from here, so there is no second copy to forget.
+create temp table _repair_target on commit drop as
+  select '202503-003'::text as loan_number;
+
 do $$
 declare
-  v_loan_number   text := '202509-001';   -- <<< SET THIS
+  v_loan_number   text := (select loan_number from _repair_target);
   v_loan          record;
   v_cutover       date;
   v_first_legit   date;
@@ -217,7 +223,10 @@ end $$;
 select installment_no, due_date, opening_balance, emi_amount,
        principal_due, interest_due, closing_balance, status, late_fee_charged
   from public.loan_emi_schedule
- where loan_id = (select id from public.loans where loan_number = '202509-001')  -- <<< SAME LOAN
+ where loan_id = (
+   select id from public.loans
+    where loan_number = (select loan_number from _repair_target)
+ )
  order by installment_no;
 
 -- Happy with it?  COMMIT;      Not happy?  ROLLBACK;
