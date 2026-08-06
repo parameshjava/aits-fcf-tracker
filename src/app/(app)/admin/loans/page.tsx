@@ -7,6 +7,7 @@ import { LoansTabs, type LoansTabKey } from '@/components/loans-tabs'
 import { computeLoanFinancials, type LoanTxnInput } from '@/lib/loan-math'
 import { UNPAID_EMI_STATUSES } from '@/lib/constants'
 import { endOfMonth } from '@/lib/due'
+import { tallyPendingEmi, type PendingEmiScheduleRow as EmiPendingRow } from '@/lib/emi-due'
 
 export default async function AdminLoansListPage({
   searchParams,
@@ -57,15 +58,16 @@ export default async function AdminLoansListPage({
     // Installments payable as of this month: unpaid rows due on or before the
     // current month's end. Counts anything carried over from earlier months
     // plus this month's installment, whether or not its 10th has passed —
-    // NOT the whole remaining term.
+    // NOT the whole remaining term. The due/paid columns come along so the
+    // same rows yield both the count and the rupee amount owed.
     emiLoanIds.length
       ? supabase
           .from('loan_emi_schedule')
-          .select('loan_id')
+          .select('loan_id, principal_due, interest_due, principal_paid, interest_paid')
           .in('loan_id', emiLoanIds)
           .in('status', UNPAID_EMI_STATUSES)
           .lte('due_date', currentMonthEnd)
-      : Promise.resolve({ data: [] as { loan_id: string }[] }),
+      : Promise.resolve({ data: [] as EmiPendingRow[] }),
   ])
 
   const nextDueByLoan = new Map<string, string | null>()
@@ -78,10 +80,7 @@ export default async function AdminLoansListPage({
     })
   }
 
-  const pendingEmiByLoan = new Map<string, number>()
-  for (const r of (emiPendingRaw ?? []) as { loan_id: string }[]) {
-    pendingEmiByLoan.set(r.loan_id, (pendingEmiByLoan.get(r.loan_id) ?? 0) + 1)
-  }
+  const pendingEmiByLoan = tallyPendingEmi((emiPendingRaw ?? []) as EmiPendingRow[])
 
   type TxnAgg = LoanTxnInput & { loan_id: string }
   const txns = (txnsRaw ?? []) as TxnAgg[]
@@ -112,7 +111,9 @@ export default async function AdminLoansListPage({
         l.repayment_model === 'emi' ? overdueByLoan.get(l.id)?.oldest ?? null : null,
       emi_amount: l.repayment_model === 'emi' ? l.emi_amount : null,
       pending_emi_count:
-        l.repayment_model === 'emi' ? pendingEmiByLoan.get(l.id) ?? 0 : null,
+        l.repayment_model === 'emi' ? pendingEmiByLoan.get(l.id)?.count ?? 0 : null,
+      pending_emi_due:
+        l.repayment_model === 'emi' ? pendingEmiByLoan.get(l.id)?.due ?? 0 : null,
       balance: f.balance,
       detail_href: `/admin/loans/${encodeURIComponent(l.loan_number)}`,
     }

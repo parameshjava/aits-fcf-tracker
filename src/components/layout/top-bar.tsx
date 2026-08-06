@@ -28,8 +28,11 @@ export function TopBar({ fullName, email, avatarUrl }: Props) {
     return () => document.removeEventListener('mousedown', onClick)
   }, [menuOpen])
 
+  // No `overflow-hidden` on the sticky wrapper — it would clip the account
+  // dropdown, which renders below the bar's box. The banner image has its own
+  // clipping wrapper below.
   return (
-    <div className="sticky top-0 z-20 w-full overflow-hidden border-b border-gray-200/80 bg-white/90 backdrop-blur">
+    <div className="sticky top-0 z-20 w-full border-b border-gray-200/80 bg-white/90 backdrop-blur">
       {/* Row 1 — banner row: edge-to-edge logo + nav controls.
           Title + breadcrumb now live in Row 2 below, so the logo can
           occupy the full middle slot without anything competing for
@@ -86,7 +89,7 @@ export function TopBar({ fullName, email, avatarUrl }: Props) {
           {menuOpen && (
             <div
               role="menu"
-              className="absolute right-0 mt-2 w-56 origin-top-right overflow-hidden rounded-xl border border-gray-200/80 bg-white shadow-lg ring-1 ring-black/5"
+              className="absolute right-0 z-30 mt-2 w-56 origin-top-right overflow-hidden rounded-xl border border-gray-200/80 bg-white shadow-lg ring-1 ring-black/5"
             >
               <form action={signOut}>
                 <button
