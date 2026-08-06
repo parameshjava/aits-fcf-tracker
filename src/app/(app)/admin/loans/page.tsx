@@ -1,11 +1,7 @@
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
-import {
-  getLoans,
-  getInterestPerLakh,
-  getPendingInterestByLoan,
-} from '@/lib/actions/loans'
+import { getLoans, getInterestPerLakh } from '@/lib/actions/loans'
 import { LoansListTable, type LoansListRow } from '@/components/loans-list-table'
 import { LoansTabs, type LoansTabKey } from '@/components/loans-tabs'
 import { computeLoanFinancials, type LoanTxnInput } from '@/lib/loan-math'
@@ -41,14 +37,13 @@ export default async function AdminLoansListPage({
     past_due_count: number | null
     oldest_past_due_date: string | null
   }
-  const [{ data: txnsRaw }, pendingInterestByLoan, { data: emiBalRaw }] = await Promise.all([
+  const [{ data: txnsRaw }, { data: emiBalRaw }] = await Promise.all([
     loanIds.length
       ? supabase
           .from('transactions')
           .select('loan_id, amount, transaction_type, interest_source, transaction_date')
           .in('loan_id', loanIds)
       : Promise.resolve({ data: [] as unknown[] }),
-    getPendingInterestByLoan(loanIds),
     emiLoanIds.length
       ? supabase
           .from('loan_emi_balances')
@@ -80,7 +75,6 @@ export default async function AdminLoansListPage({
 
   const tableRows: LoansListRow[] = loans.map((l) => {
     const f = computeLoanFinancials(l, txnsByLoan.get(l.id) ?? [], interestPerLakh)
-    const accrualPending = pendingInterestByLoan.get(l.id) ?? 0
     return {
       id: l.id,
       loan_number: l.loan_number,
@@ -95,11 +89,7 @@ export default async function AdminLoansListPage({
       overdue_count: l.repayment_model === 'emi' ? overdueByLoan.get(l.id)?.count ?? 0 : 0,
       oldest_overdue_date:
         l.repayment_model === 'emi' ? overdueByLoan.get(l.id)?.oldest ?? null : null,
-      paid_interest: f.paidInterestTotal,
-      // Interest due reflects the accrual ledger (loan_interest_accruals),
-      // not legacy on-the-fly math — keeps the list in lockstep with the
-      // Pending-interest panel on the detail page.
-      interest_due: f.isClosed ? 0 : accrualPending,
+      emi_amount: l.repayment_model === 'emi' ? l.emi_amount : null,
       balance: f.balance,
       detail_href: `/admin/loans/${encodeURIComponent(l.loan_number)}`,
     }

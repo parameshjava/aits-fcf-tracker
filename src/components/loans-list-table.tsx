@@ -2,7 +2,6 @@
 
 import { useCallback, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
-import { Dropdown } from 'primereact/dropdown'
 import { formatRupees } from '@/lib/format'
 import { overdueParts, formatOverdueDuration } from '@/lib/due'
 import { getLoanDetail, type LoanDetailData } from '@/lib/actions/loans'
@@ -30,8 +29,8 @@ export type LoansListRow = {
   overdue_count?: number
   /** Earliest past-due installment's due date (drives the overdue duration). */
   oldest_overdue_date?: string | null
-  paid_interest: number
-  interest_due: number
+  /** Monthly installment for EMI loans; null for accrual-model loans. */
+  emi_amount?: number | null
   balance: number
   detail_href: string
 }
@@ -41,27 +40,11 @@ export type LoansListRow = {
 type LoansListRowAug = LoansListRow & {
   _start_ts: number
   _end_ts: number
-  _status_label: string
-  _status_rank: number
+  _emi: number
   _type_label: string
   _search_blob: string
 }
 
-const STATUS_PILL: Record<string, string> = {
-  active:    'bg-blue-50 text-blue-700 ring-blue-200',
-  paid:      'bg-emerald-50 text-emerald-700 ring-emerald-200',
-  write_off: 'bg-rose-50 text-rose-700 ring-rose-200',
-}
-const STATUS_LABEL: Record<string, string> = {
-  active:    'Active',
-  paid:      'Paid',
-  write_off: 'Write off',
-}
-const STATUS_RANK: Record<string, number> = {
-  active:    0, // surface active first when sorted asc
-  paid:      1,
-  write_off: 2,
-}
 const TYPE_PILL: Record<string, string> = {
   personal: 'bg-gray-50 text-gray-700 ring-gray-200',
   medical:  'bg-violet-50 text-violet-700 ring-violet-200',
@@ -104,36 +87,27 @@ export function LoansListTable({
   const augmented = useMemo<LoansListRowAug[]>(
     () =>
       loans.map((l) => {
-        const statusLabel = STATUS_LABEL[l.status] ?? l.status
         const typeLabel = TYPE_LABEL[l.loan_type] ?? l.loan_type
+        const emi = Number(l.emi_amount ?? 0)
         return {
           ...l,
           _start_ts: new Date(l.start_date).getTime(),
           _end_ts: l.end_date ? new Date(l.end_date).getTime() : 0,
-          _status_label: statusLabel,
-          _status_rank: STATUS_RANK[l.status] ?? 99,
+          _emi: emi,
           _type_label: typeLabel,
           _search_blob: [
             l.loan_number,
             l.member_name ?? '',
             String(l.principal_amount),
+            emi ? String(emi) : '',
             formatDate(l.start_date),
-            statusLabel,
             typeLabel,
+            l.status === 'write_off' ? 'Write off' : '',
           ].join(' '),
         }
       }),
     [loans],
   )
-
-  // Distinct status labels present → drives the Status dropdown filter.
-  const statusOptions = useMemo(() => {
-    const seen = new Map<string, string>()
-    for (const l of augmented) seen.set(l._status_label, l._status_label)
-    return Array.from(seen.values())
-      .sort((a, b) => a.localeCompare(b))
-      .map((label) => ({ label, value: label }))
-  }, [augmented])
 
   // The DataTable reports its current filtered+sorted rows here; export, the
   // count strip and the totals footer all derive from these so they reflect
@@ -146,20 +120,18 @@ export function LoansListTable({
 
   // --- Export (reflects the current filter + sort) -------------------------
   const exportColumns = [
-    'Loan #', 'Member', 'Type', 'Principal (₹)', 'Start date',
+    'Loan #', 'Member', 'Type', 'Principal (₹)', 'EMI (₹)', 'Start date',
     ...(showEndDate ? ['End date'] : []),
-    'Status', 'Interest paid (₹)', 'Interest due (₹)', 'Outstanding (₹)',
+    'Outstanding (₹)',
   ]
   const exportRows: Cell[][] = visible.map((l) => [
     l.loan_number,
     l.member_name ?? '',
     l._type_label,
     l.principal_amount,
+    l._emi > 0 ? l._emi : '',
     formatDate(l.start_date),
     ...(showEndDate ? [formatDate(l.end_date ?? null)] : []),
-    l._status_label,
-    l.paid_interest,
-    l.status === 'paid' || l.status === 'write_off' ? '' : l.interest_due,
     l.balance,
   ])
   const exportFooter: Cell[] = exportColumns.map((c, i) =>
@@ -274,6 +246,16 @@ export function LoansListTable({
                 </span>
               )
             })()}
+          {/* The Status column is gone, so the Past tab would otherwise show
+              paid and written-off loans identically — mark the write-offs. */}
+          {l.status === 'write_off' && (
+            <span
+              title="Written off as bad debt"
+              className="whitespace-nowrap rounded-full bg-rose-50 px-2 py-0.5 font-sans text-[11px] font-medium text-rose-700 ring-1 ring-rose-200"
+            >
+              Write off
+            </span>
+          )}
         </span>
       ),
       footer: 'Total',
@@ -293,21 +275,14 @@ export function LoansListTable({
       sortable: true,
       bodyClassName: 'whitespace-nowrap px-3 py-2.5',
       body: (l) => (
-        <div className="flex items-center gap-1.5">
-          <span
-            className={
-              'rounded-full px-2 py-0.5 text-xs font-medium ring-1 ' +
-              (TYPE_PILL[l.loan_type] ?? TYPE_PILL.personal)
-            }
-          >
-            {l._type_label}
-          </span>
-          {l.repayment_model === 'emi' && (
-            <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-xs font-medium text-indigo-700 ring-1 ring-indigo-200">
-              EMI
-            </span>
-          )}
-        </div>
+        <span
+          className={
+            'inline-block rounded-full px-2 py-0.5 text-xs font-medium ring-1 ' +
+            (TYPE_PILL[l.loan_type] ?? TYPE_PILL.personal)
+          }
+        >
+          {l._type_label}
+        </span>
       ),
     },
     {
@@ -318,6 +293,17 @@ export function LoansListTable({
       dataType: 'numeric',
       bodyClassName: 'whitespace-nowrap px-3 py-2.5 text-right tabular-nums text-gray-700',
       body: (l) => formatRupees(l.principal_amount),
+    },
+    {
+      field: '_emi',
+      header: 'EMI',
+      sortable: true,
+      align: 'right',
+      dataType: 'numeric',
+      bodyClassName: 'whitespace-nowrap px-3 py-2.5 text-right tabular-nums text-gray-700',
+      // Accrual-model loans have no installment — show a dash rather than ₹0.
+      body: (l) =>
+        l._emi > 0 ? formatRupees(l._emi) : <span className="text-gray-400">—</span>,
     },
     {
       field: '_start_ts',
@@ -348,69 +334,6 @@ export function LoansListTable({
           },
         ] as PrColumn<LoansListRowAug>[])
       : []),
-    {
-      field: '_status_label',
-      header: 'Status',
-      sortable: true,
-      sortField: '_status_rank',
-      filter: true,
-      filterField: '_status_label',
-      filterElement: ({ value, filterApplyCallback }) => (
-        <Dropdown
-          value={(value as string) ?? null}
-          options={statusOptions}
-          onChange={(e) => filterApplyCallback(e.value)}
-          placeholder="Any status"
-          showClear
-          className="w-full"
-        />
-      ),
-      bodyClassName: 'whitespace-nowrap px-3 py-2.5',
-      body: (l) => (
-        <span
-          className={
-            'inline-block whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium ring-1 ' +
-            (STATUS_PILL[l.status] ?? STATUS_PILL.active)
-          }
-        >
-          {l._status_label}
-        </span>
-      ),
-    },
-    {
-      field: 'paid_interest',
-      header: 'Interest paid',
-      sortable: true,
-      align: 'right',
-      dataType: 'numeric',
-      bodyClassName: 'whitespace-nowrap px-3 py-2.5 text-right tabular-nums text-gray-700',
-      body: (l) => formatRupees(l.paid_interest),
-    },
-    {
-      field: 'interest_due',
-      header: 'Interest due',
-      sortable: true,
-      align: 'right',
-      dataType: 'numeric',
-      body: (l) => {
-        const isClosedLoan = l.status === 'paid' || l.status === 'write_off'
-        return (
-          <span
-            className={
-              'whitespace-nowrap text-right tabular-nums ' +
-              (isClosedLoan
-                ? 'text-gray-400'
-                : l.interest_due > 0
-                ? 'font-medium text-amber-700'
-                : 'text-gray-500')
-            }
-          >
-            {isClosedLoan ? '—' : formatRupees(l.interest_due)}
-          </span>
-        )
-      },
-      bodyClassName: 'whitespace-nowrap px-3 py-2.5 text-right',
-    },
     {
       field: 'balance',
       header: 'Outstanding',
@@ -473,7 +396,7 @@ export function LoansListTable({
         dataKey="id"
         emptyMessage={emptyMessage ?? 'No loans yet.'}
         globalFilterFields={loans.length > 0 ? ['_search_blob'] : undefined}
-        globalSearchPlaceholder="Search by loan #, member, status…"
+        globalSearchPlaceholder="Search by loan #, member, type…"
         header={loans.length > 0 ? exportMenu : undefined}
         onValueChange={setProcessed}
         onGlobalFilterChange={setSearchQuery}
