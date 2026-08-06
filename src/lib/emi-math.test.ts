@@ -138,4 +138,27 @@ describe('recomputeAfterPrepayment', () => {
     expect(r).toHaveLength(1)
     expect(r[0].closingBalance).toBe(0)
   })
+
+  // prepayLoan passes `tenthOfMonth(paidDate, 1)` as firstDueDate so the tail
+  // always starts on the 10th of the month AFTER the payment — it used to pass
+  // `next_due_date`, which could be in the past and regenerated the schedule
+  // backwards. These pin the anchor the action relies on.
+  it('anchors the tail on the 10th of the month after the prepayment date', () => {
+    expect(tenthOfMonth('2026-08-06', 1)).toBe('2026-09-10')
+    expect(tenthOfMonth('2026-08-20', 1)).toBe('2026-09-10')
+  })
+
+  it('never emits a past-dated installment when anchored off the payment date', () => {
+    const paidDate = '2026-08-06'
+    const r = recomputeAfterPrepayment({
+      outstanding: 50000, annualRatePct: 8, remainingTerm: 10,
+      currentEmi: 5914, firstDueDate: tenthOfMonth(paidDate, 1), mode: 'reduce_tenure',
+    })
+    expect(r[0].dueDate).toBe('2026-09-10')
+    for (const row of r) expect(row.dueDate > paidDate).toBe(true)
+  })
+
+  it('rolls into the next year when the prepayment lands in December', () => {
+    expect(tenthOfMonth('2026-12-28', 1)).toBe('2027-01-10')
+  })
 })

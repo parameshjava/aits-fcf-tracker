@@ -9,6 +9,7 @@ import {
   type BalanceDirection,
 } from '@/lib/balance-direction'
 import { computeLoanFinancials, type LoanFinancials } from '@/lib/loan-math'
+import { cutoverYmdToIso, isCutoverFloored } from '@/lib/emi-anchor'
 import {
   actionError,
   actionOk,
@@ -713,6 +714,16 @@ export async function updateLoan(formData: FormData): Promise<ActionResult> {
       patch.poll_id = pollIdRaw === '' ? null : pollIdRaw
     }
 
+    // Snapshot the schedule-shaping fields before the patch lands, so the
+    // regeneration guard below can tell an actual reshape from a notes-only
+    // edit (which must never touch the schedule).
+    const { data: before, error: beforeErr } = await supabase
+      .from('loans')
+      .select('principal_amount, start_date, interest_waiver_months, term_months')
+      .eq('id', loanId)
+      .single()
+    if (beforeErr || !before) return actionError(beforeErr?.message ?? 'Loan not found')
+
     const { error } = await supabase.from('loans').update(patch).eq('id', loanId)
     if (error) {
       if (isPollAlreadyLinkedError(error)) {
@@ -724,9 +735,20 @@ export async function updateLoan(formData: FormData): Promise<ActionResult> {
       return actionError(error.message)
     }
 
-    // Regenerate the EMI schedule for EMI loans so principal/start/waiver/term
-    // edits take effect. The generator preserves paid/partially_paid/waived
-    // rows, so re-running is safe. Accrual-model loans are left untouched.
+    // Regenerate the EMI schedule ONLY when an edit actually reshapes it.
+    //
+    // This block used to run on EVERY edit of an EMI loan — including a
+    // notes-only change — rebuilding from `principal_amount` and `start_date`.
+    // For a loan CONVERTED from the accrual model both are wrong: its schedule
+    // is anchored at the EMI cutover and covers the principal still
+    // outstanding, not the original disbursement. Because the generator upserts
+    // in place (migration 044), each such call rewrote every unsettled row's
+    // due date to a back-dated one. See migration 051.
+    //
+    // Now: the generator floors the start date at the cutover itself, this only
+    // fires when a shaping field changed, and it refuses to run once any
+    // installment is settled (reshaping a part-repaid schedule is what
+    // prepayment is for).
     const { data: updatedLoan, error: fetchErr } = await supabase
       .from('loans')
       .select('repayment_model, principal_amount, start_date, interest_waiver_months, term_months')
@@ -739,17 +761,56 @@ export async function updateLoan(formData: FormData): Promise<ActionResult> {
         termRaw == null || String(termRaw).trim() === ''
           ? Number(updatedLoan.term_months)
           : Number(termRaw)
-      if (Number.isInteger(termMonths) && termMonths >= 1) {
-        const ratePct = await getReference('loan_interest_rate_pct').then(Number).catch(() => 8)
-        const { error: schedErr } = await supabase.rpc('fn_generate_emi_schedule', {
-          p_loan_id: loanId,
-          p_principal: Number(updatedLoan.principal_amount),
-          p_start: updatedLoan.start_date,
-          p_term: termMonths,
-          p_waiver_months: Number(updatedLoan.interest_waiver_months) || 0,
-          p_rate_pct: ratePct,
-        })
-        if (schedErr) return actionError(schedErr.message)
+
+      const shapeChanged =
+        (principalRaw !== '' && principal !== Number(before.principal_amount)) ||
+        (startDate != null && startDate !== before.start_date) ||
+        (waiverMonthsInput != null &&
+          waiverMonthsInput !== Number(before.interest_waiver_months ?? 0)) ||
+        (Number.isInteger(termMonths) && termMonths !== Number(before.term_months))
+
+      if (shapeChanged && Number.isInteger(termMonths) && termMonths >= 1) {
+        const { count: settledCount } = await supabase
+          .from('loan_emi_schedule')
+          .select('id', { count: 'exact', head: true })
+          .eq('loan_id', loanId)
+          .in('status', ['paid', 'partially_paid', 'waived'])
+        if ((settledCount ?? 0) > 0) {
+          return actionError(
+            'This loan has settled EMI installments — editing principal, start date, waiver or term would rebuild the schedule underneath them. Use Prepay on the loan page instead.',
+            'principal_amount',
+          )
+        }
+
+        // A pre-cutover loan is a converted one: schedule the OUTSTANDING
+        // principal, not the amount originally lent. The generator floors the
+        // start date, so `start_date` is safe to pass through as-is.
+        const cutoverIso = cutoverYmdToIso(
+          await getReference('emi_cutover_date').then(Number).catch(() => 0),
+        )
+        let schedulePrincipal = Number(updatedLoan.principal_amount)
+        if (isCutoverFloored(updatedLoan.start_date, cutoverIso)) {
+          const { data: lb } = await supabase
+            .from('loans_balances')
+            .select('pending_principal')
+            .eq('loan_id', loanId)
+            .single()
+          if (!lb) return actionError('Cannot read outstanding principal for this loan')
+          schedulePrincipal = Number(lb.pending_principal)
+        }
+
+        if (schedulePrincipal > 0) {
+          const ratePct = await getReference('loan_interest_rate_pct').then(Number).catch(() => 8)
+          const { error: schedErr } = await supabase.rpc('fn_generate_emi_schedule', {
+            p_loan_id: loanId,
+            p_principal: schedulePrincipal,
+            p_start: updatedLoan.start_date,
+            p_term: termMonths,
+            p_waiver_months: Number(updatedLoan.interest_waiver_months) || 0,
+            p_rate_pct: ratePct,
+          })
+          if (schedErr) return actionError(schedErr.message)
+        }
       }
     }
 
