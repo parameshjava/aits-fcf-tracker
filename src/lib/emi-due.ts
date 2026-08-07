@@ -99,21 +99,58 @@ export function pctPending(tallies: Pick<EmiTallies, 'settledCount' | 'totalCoun
   return Math.round((remaining / tallies.totalCount) * 100)
 }
 
+/** How many days before its due date an installment becomes payable. */
+export const PAY_WINDOW_DAYS = 15
+
+/** The 1st of the month an installment falls due in. */
+function firstOfDueMonth(dueDateIso: string): string {
+  return `${dueDateIso.slice(0, 7)}-01`
+}
+
+/** `dueDateIso` minus `days`, as YYYY-MM-DD. */
+function daysBefore(dueDateIso: string, days: number): string {
+  const [y, m, d] = dueDateIso.split('-').map(Number)
+  const t = new Date(Date.UTC(y, m - 1, d - days))
+  return `${t.getUTCFullYear()}-${String(t.getUTCMonth() + 1).padStart(2, '0')}-${String(t.getUTCDate()).padStart(2, '0')}`
+}
+
+/**
+ * The date an installment starts being collectable: **15 days before it falls
+ * due, or the 1st of the month it falls due in — whichever comes first.**
+ *
+ * Both halves are the same intent stated two ways. The 15-day window is the
+ * general rule; the month clause keeps an installment dated late in a month
+ * collectable from the start of that month rather than only in its last
+ * fortnight.
+ *
+ * Anything already past its due date is trivially inside the window, so arrears
+ * stay collectable — the window bounds how far AHEAD an EMI can be settled, not
+ * how far behind.
+ *
+ * Paying earlier than this saves the member nothing: `payEmi` charges exactly
+ * what the installment says, so settling it early moves cash without touching
+ * the interest. Money offered ahead of the window belongs in a prepayment,
+ * which reduces the principal and does cut the interest.
+ */
+export function payWindowOpensOn(dueDateIso: string): string {
+  const fifteenDaysBefore = daysBefore(dueDateIso, PAY_WINDOW_DAYS)
+  const monthStart = firstOfDueMonth(dueDateIso)
+  return fifteenDaysBefore < monthStart ? fifteenDaysBefore : monthStart
+}
+
 /**
  * The installment "Pay EMI" is offered on — at most one.
  *
  * Two rules combine:
  *
  *   1. **Earliest first.** Only the oldest unpaid installment can be paid.
- *      Offering every started cycle at once let an admin settle #2 while #1 was
- *      still outstanding, which strands a paid row between unpaid ones: the
+ *      Offering every open installment at once let an admin settle #2 while #1
+ *      was still outstanding, which strands a paid row between unpaid ones: the
  *      schedule reads out of order, re-pricing has to skip around it, and the
- *      date-shift repair refuses outright once anything is settled. Paying
- *      genuinely ahead of schedule is what Prepay is for.
+ *      date-shift repair refuses outright once anything is settled.
  *
- *   2. **Its cycle must have begun.** An installment accrues in the month
- *      before its 10th-of-following-month due date, so it becomes payable on
- *      the 1st of that accrual month — never earlier.
+ *   2. **Inside its pay window** — see `payWindowOpensOn`. Not yet collectable
+ *      means no button; paying further ahead than that is a prepayment.
  *
  * Returns an array rather than a single id so callers keep a set-membership
  * check and stay indifferent to the cardinality of the rule.
@@ -136,12 +173,5 @@ export function payableInstallmentIds({
           : 1,
     )[0]
   if (!earliest) return []
-  return todayIso >= accrualMonthStart(earliest.due_date) ? [earliest.id] : []
-}
-
-/** The 1st of the month an installment accrues in — the month before it falls due. */
-export function accrualMonthStart(dueDateIso: string): string {
-  const [y, m] = dueDateIso.split('-').map(Number)
-  const d = new Date(Date.UTC(y, m - 2, 1))
-  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-01`
+  return todayIso >= payWindowOpensOn(earliest.due_date) ? [earliest.id] : []
 }

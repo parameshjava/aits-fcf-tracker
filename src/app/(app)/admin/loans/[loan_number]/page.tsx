@@ -86,8 +86,9 @@ export default async function AdminLoanManagePage({
   )
   const atOrAfterCutover = Number(cutoverYmd) > 0 && todayYmd >= Number(cutoverYmd)
 
-  // Pay EMI is offered on the EARLIEST unpaid installment, and only once its
-  // accrual month has begun — see `payableInstallmentIds`. Resolved server-side.
+  // Pay EMI is offered on the EARLIEST unpaid installment, and only inside its
+  // pay window — 15 days before it falls due, or the start of its due month.
+  // See `payableInstallmentIds`. Resolved server-side.
   const todayIst = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(now) // YYYY-MM-DD
   const payableIds = payableInstallmentIds({ rows: schedule, todayIso: todayIst })
 

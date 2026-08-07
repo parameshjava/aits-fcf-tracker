@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { payableInstallmentIds, accrualMonthStart } from './emi-due'
+import { payableInstallmentIds, payWindowOpensOn, PAY_WINDOW_DAYS } from './emi-due'
 
 const row = (
   n: number,
@@ -13,47 +13,57 @@ const row = (
 })
 
 /** The reported schedule: #1 due 10 Aug 2026, #2 10 Sep, #3 10 Oct. */
-const SCHEDULE = [
-  row(1, '2026-08-10'),
-  row(2, '2026-09-10'),
-  row(3, '2026-10-10'),
-]
+const SCHEDULE = [row(1, '2026-08-10'), row(2, '2026-09-10'), row(3, '2026-10-10')]
 
-describe('accrualMonthStart', () => {
-  it('is the 1st of the month before the due date', () => {
-    expect(accrualMonthStart('2026-08-10')).toBe('2026-07-01')
-    expect(accrualMonthStart('2026-09-10')).toBe('2026-08-01')
+describe('payWindowOpensOn', () => {
+  it('opens 15 days before the due date', () => {
+    expect(PAY_WINDOW_DAYS).toBe(15)
+    expect(payWindowOpensOn('2026-09-10')).toBe('2026-08-26')
+    expect(payWindowOpensOn('2026-08-10')).toBe('2026-07-26')
   })
 
-  it('rolls back across a year boundary', () => {
-    expect(accrualMonthStart('2027-01-10')).toBe('2026-12-01')
+  it('opens at the start of the due month when that comes first', () => {
+    // Dated late in the month, so the whole month is inside the window.
+    expect(payWindowOpensOn('2026-08-28')).toBe('2026-08-01')
+    expect(payWindowOpensOn('2026-08-20')).toBe('2026-08-01')
+  })
+
+  it('rolls back across month and year boundaries', () => {
+    expect(payWindowOpensOn('2027-01-10')).toBe('2026-12-26')
+    expect(payWindowOpensOn('2026-03-10')).toBe('2026-02-23')
   })
 })
 
 describe('payableInstallmentIds', () => {
-  it('offers only the earliest unpaid installment', () => {
-    // On 7 Aug both #1 (accrues Jul) and #2 (accrues Aug) have started their
-    // cycles. Offering both let an admin settle #2 before #1.
+  it('offers nothing while the next installment is further off than the window', () => {
+    // #1 is due 10 Aug; on 20 Jul it is 21 days away.
+    expect(payableInstallmentIds({ rows: SCHEDULE, todayIso: '2026-07-20' })).toEqual([])
+  })
+
+  it('offers it from the day the window opens', () => {
+    expect(payableInstallmentIds({ rows: SCHEDULE, todayIso: '2026-07-26' })).toEqual(['s1'])
+  })
+
+  it('offers the current month’s installment', () => {
     expect(payableInstallmentIds({ rows: SCHEDULE, todayIso: '2026-08-07' })).toEqual(['s1'])
+  })
+
+  it('offers only the earliest, even when a later one is inside its own window', () => {
+    // On 30 Aug, #2 (due 10 Sep) is 11 days off — but #1 is still unpaid.
+    expect(payableInstallmentIds({ rows: SCHEDULE, todayIso: '2026-08-30' })).toEqual(['s1'])
   })
 
   it('moves to the next one once the earliest is paid', () => {
     const rows = SCHEDULE.map((r) => (r.installment_no === 1 ? { ...r, status: 'paid' } : r))
-    expect(payableInstallmentIds({ rows, todayIso: '2026-08-07' })).toEqual(['s2'])
+    // 20 Aug: #2 is due 10 Sep, 21 days off — outside the window, so nothing yet.
+    expect(payableInstallmentIds({ rows, todayIso: '2026-08-20' })).toEqual([])
+    expect(payableInstallmentIds({ rows, todayIso: '2026-08-26' })).toEqual(['s2'])
   })
 
-  it('offers nothing before the earliest installment’s cycle begins', () => {
-    // #1 accrues in July, so nothing is payable in June.
-    expect(payableInstallmentIds({ rows: SCHEDULE, todayIso: '2026-06-30' })).toEqual([])
-  })
-
-  it('offers it from the first day of its accrual month', () => {
-    expect(payableInstallmentIds({ rows: SCHEDULE, todayIso: '2026-07-01' })).toEqual(['s1'])
-  })
-
-  it('still offers an overdue installment', () => {
+  it('keeps arrears collectable however old', () => {
+    // The window bounds how far ahead an EMI can be settled, not how far behind.
     const rows = [row(1, '2026-08-10', 'overdue'), ...SCHEDULE.slice(1)]
-    expect(payableInstallmentIds({ rows, todayIso: '2026-11-20' })).toEqual(['s1'])
+    expect(payableInstallmentIds({ rows, todayIso: '2027-05-01' })).toEqual(['s1'])
   })
 
   it('offers a part-paid installment so the remainder can be collected', () => {
@@ -67,7 +77,7 @@ describe('payableInstallmentIds', () => {
       row(2, '2026-09-10', 'waived'),
       row(3, '2026-10-10'),
     ]
-    expect(payableInstallmentIds({ rows, todayIso: '2026-09-05' })).toEqual(['s3'])
+    expect(payableInstallmentIds({ rows, todayIso: '2026-09-26' })).toEqual(['s3'])
   })
 
   it('offers nothing when every installment is settled', () => {
