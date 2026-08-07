@@ -138,8 +138,18 @@ export async function deleteLoanPenalty(formData: FormData): Promise<ActionResul
       }
     }
 
-    const { error: delErr } = await supabase.from('transactions').delete().eq('id', id)
+    // `.select()` on the delete so we can tell "deleted" from "filtered away":
+    // PostgREST returns no error when RLS reduces a delete to zero rows, which
+    // would otherwise report success while the penalty is still there.
+    const { data: deleted, error: delErr } = await supabase
+      .from('transactions')
+      .delete()
+      .eq('id', id)
+      .select('id')
     if (delErr) return actionError(delErr.message)
+    if (!deleted || deleted.length === 0) {
+      return actionError('Penalty was not deleted — you may not have permission to remove it')
+    }
 
     if (scheduleId && schedule) {
       const { data: remaining, error: remErr } = await supabase

@@ -352,8 +352,19 @@ export async function deleteTransaction(formData: FormData): Promise<ActionResul
     const id = (formData.get('id') as string | null)?.trim()
     if (!id) return actionError('Missing transaction id')
 
-    const { error } = await supabase.from('transactions').delete().eq('id', id)
+    // `.select()` on the delete so we can tell "deleted" from "filtered away":
+    // PostgREST returns no error when RLS reduces a delete to zero rows, which
+    // would otherwise report success — and redirect away — while the row is
+    // still there.
+    const { data: deleted, error } = await supabase
+      .from('transactions')
+      .delete()
+      .eq('id', id)
+      .select('id')
     if (error) return actionError(error.message)
+    if (!deleted || deleted.length === 0) {
+      return actionError('Transaction was not deleted — you may not have permission to remove it')
+    }
 
     revalidatePath('/admin')
     revalidatePath('/admin/transactions')
