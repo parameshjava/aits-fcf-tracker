@@ -3,10 +3,12 @@
 import { useActionState, useCallback, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
-import { recomputeEmiSchedule } from '@/lib/actions/emi'
+import { recomputeEmiSchedule, shiftEmiSchedule } from '@/lib/actions/emi'
 import type { ActionResult } from '@/lib/actions/action-result'
 import type { EmiRecomputePlan, RecomputedRow } from '@/lib/emi-recompute'
 import type { AnchorDrift } from '@/lib/emi-anchor'
+import type { ScheduleShiftPlan } from '@/lib/emi-schedule-shift'
+import { scheduleShiftErrorMessage } from '@/lib/emi-schedule-shift'
 import { emiRecomputeErrorMessage } from '@/lib/emi-recompute'
 import { formatRupees } from '@/lib/format'
 import { PrDialog } from '@/components/ui/pr/dialog'
@@ -66,9 +68,34 @@ function Stat({ label, children }: { label: string; children: React.ReactNode })
  * it never moves a due date — so say so rather than reporting "no changes"
  * and leaving the admin to wonder.
  */
-function AnchorWarning({ anchor }: { anchor: AnchorDrift }) {
+function AnchorWarning({
+  loanId,
+  anchor,
+  shift,
+  onDone,
+}: {
+  loanId: string
+  anchor: AnchorDrift
+  shift: ScheduleShiftPlan | null
+  onDone: () => void
+}) {
+  const router = useRouter()
+  const [state, action, pending] = useActionState<ActionResult | null, FormData>(
+    async (_prev, formData) => shiftEmiSchedule(formData),
+    null,
+  )
+  useEffect(() => {
+    if (state?.ok) {
+      toast.success(state.message ?? 'Schedule moved')
+      router.refresh()
+      onDone()
+    }
+  }, [state, router, onDone])
+
   const late = anchor.monthsOff > 0
   const months = Math.abs(anchor.monthsOff)
+  const canFix = shift !== null && shift.error === null
+
   return (
     <div className="rounded-lg bg-amber-50 px-4 py-3 ring-1 ring-amber-200">
       <p className="text-sm font-medium text-amber-800">
@@ -76,10 +103,47 @@ function AnchorWarning({ anchor }: { anchor: AnchorDrift }) {
       </p>
       <p className="mt-1 text-sm text-amber-700">
         The first installment is dated {formatDate(anchor.actualFirstDue!)}, but this loan should be
-        scheduled from {formatDate(anchor.expectedFirstDue)}. Re-pricing will not correct it —
-        it only changes interest, never a due date. Regenerating the schedule is what moves the
-        dates.
+        scheduled from {formatDate(anchor.expectedFirstDue)}.
       </p>
+
+      {canFix ? (
+        <>
+          <p className="mt-2 text-sm text-amber-700">
+            Moving it re-dates all {shift.rows.length} installments {months} month
+            {months === 1 ? '' : 's'} {late ? 'earlier' : 'later'} — the first becomes{' '}
+            <span className="font-medium">{formatDate(shift.firstDueAfter!)}</span> and the last{' '}
+            <span className="font-medium">
+              {formatDate(shift.rows[shift.rows.length - 1].to)}
+            </span>
+            . Amounts and installment numbers do not change.
+          </p>
+          {shift.becomingDue > 0 && (
+            <p className="mt-2 text-sm font-medium text-amber-800">
+              {shift.becomingDue} installment{shift.becomingDue === 1 ? '' : 's'} will fall on or
+              before today once moved, so {shift.becomingDue === 1 ? 'it becomes' : 'they become'}{' '}
+              immediately due and may attract a late fee.
+            </p>
+          )}
+          {state && !state.ok && <p className="mt-2 text-sm text-red-600">{state.error}</p>}
+          <form action={action} className="mt-3">
+            <input type="hidden" name="loan_id" value={loanId} />
+            <input type="hidden" name="plan_fingerprint" value={shift.fingerprint} />
+            <button
+              type="submit"
+              disabled={pending}
+              className="rounded-md bg-amber-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-700 disabled:opacity-50"
+            >
+              {pending
+                ? 'Moving…'
+                : `Move the schedule to start ${formatDate(shift.firstDueAfter!)}`}
+            </button>
+          </form>
+        </>
+      ) : (
+        <p className="mt-2 text-sm text-amber-700">
+          {shift ? scheduleShiftErrorMessage(shift) : 'Re-pricing will not correct it — it only changes interest, never a due date.'}
+        </p>
+      )}
     </div>
   )
 }
@@ -105,12 +169,14 @@ function RecomputeBody({
   plan,
   ratePct,
   anchor,
+  shift,
   onDone,
 }: {
   loanId: string
   plan: EmiRecomputePlan
   ratePct: number
   anchor: AnchorDrift | null
+  shift: ScheduleShiftPlan | null
   onDone: () => void
 }) {
   const router = useRouter()
@@ -146,7 +212,7 @@ function RecomputeBody({
       <>
         {anchor?.drifted && (
           <div className="mb-3">
-            <AnchorWarning anchor={anchor} />
+            <AnchorWarning loanId={loanId} anchor={anchor} shift={shift} onDone={onDone} />
           </div>
         )}
         <NothingToDo
@@ -166,7 +232,7 @@ function RecomputeBody({
     <>
       {anchor?.drifted && (
         <div className="mb-3">
-          <AnchorWarning anchor={anchor} />
+          <AnchorWarning loanId={loanId} anchor={anchor} shift={shift} onDone={onDone} />
         </div>
       )}
       {/* Interest is what a rate change actually moves — principal does not. */}
@@ -306,11 +372,13 @@ export function RecomputeEmiPanel({
   plan,
   ratePct,
   anchor,
+  shift,
 }: {
   loanId: string
   plan: EmiRecomputePlan
   ratePct: number
   anchor: AnchorDrift | null
+  shift: ScheduleShiftPlan | null
 }) {
   const [open, setOpen] = useState(false)
   // Remount the body on each open so useActionState resets.
@@ -370,16 +438,20 @@ export function RecomputeEmiPanel({
             )}
           </p>
         </div>
-        {!plan.error && (
+        {(!plan.error || anchor?.drifted) && (
           <Button
-            variant={plan.hasChanges ? 'default' : 'outline'}
+            variant={plan.hasChanges || anchor?.drifted ? 'default' : 'outline'}
             size="sm"
             onClick={() => {
               setOpenKey((k) => k + 1)
               setOpen(true)
             }}
           >
-            {plan.hasChanges ? 'Review new EMI' : 'Recompute EMI'}
+            {anchor?.drifted
+              ? 'Fix schedule dates'
+              : plan.hasChanges
+                ? 'Review new EMI'
+                : 'Recompute EMI'}
           </Button>
         )}
       </div>
@@ -395,6 +467,7 @@ export function RecomputeEmiPanel({
           plan={plan}
           ratePct={ratePct}
           anchor={anchor}
+          shift={shift}
           onDone={close}
         />
       </PrDialog>

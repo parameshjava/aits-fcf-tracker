@@ -188,6 +188,7 @@ export default async function AdminLoanManagePage({
           plan={recomputePlan}
           ratePct={ratePct}
           anchor={recomputePlan.anchor}
+          shift={recomputePlan.shift}
         />
       ) : (
         /* Accrual-model loans keep their own repair tool. It is deliberately NOT
