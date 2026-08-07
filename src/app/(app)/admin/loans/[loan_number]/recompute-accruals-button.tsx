@@ -6,12 +6,16 @@ import { ConfirmDialog } from '@/components/ui/pr/confirm-dialog'
 import { Button } from '@/components/ui/pr/button'
 
 /**
- * Admin-only "Recompute accruals" button. Calls the per-loan recompute RPC,
- * which idempotently rebuilds every EOM accrual row from start_date through
- * today, preserving prior payments (status is recomputed from paid_amount).
+ * Admin-only "Recompute accruals" button. Rebuilds every EOM accrual row from
+ * start_date through today, preserving prior payments (status is recomputed
+ * from paid_amount). Useful after editing principal, start_date, or
+ * interest_waiver_months.
  *
- * Useful after editing principal, start_date, or interest_waiver_months on
- * a loan. Skips opening-balance rows and closure-waived rows.
+ * Only rendered for loans still on the ACCRUAL model. On an EMI loan it would
+ * be actively harmful: `fn_recompute_loan_accruals` has no repayment_model
+ * guard, so it would rewrite a converted loan's frozen pre-cutover backlog and
+ * mint accrual rows for months the EMI schedule already charges interest for —
+ * which is exactly why the monthly cron filters `repayment_model = 'accrual'`.
  */
 export function RecomputeAccrualsButton({ loanId }: { loanId: string }) {
   const router = useRouter()

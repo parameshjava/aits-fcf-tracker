@@ -7,11 +7,12 @@ import { EditLoanForm } from './edit-loan-form'
 import { LoanTimelineSection } from '@/components/loan-timeline-section'
 import { CloseLoanForm } from './close-loan-form'
 import { PendingInterestPanel } from './pending-interest-panel'
+import { RecomputeEmiPanel } from './recompute-emi-panel'
 import { RecomputeAccrualsButton } from './recompute-accruals-button'
 import { EmiSchedulePanel } from './emi-schedule-panel'
 import { ConvertToEmiForm } from './convert-to-emi-form'
 import { PenaltiesPanel } from './penalties-panel'
-import { getEmiSchedule } from '@/lib/actions/emi'
+import { getEmiSchedule, getEmiRecomputePreview } from '@/lib/actions/emi'
 import { getLoanPenalties } from '@/lib/actions/penalties'
 import { getReference } from '@/lib/actions/reference'
 
@@ -59,14 +60,17 @@ export default async function AdminLoanManagePage({
   const { loan_number } = await params
   const loan = await getLoanByNumber(decodeURIComponent(loan_number))
   if (!loan) notFound()
-  const [detail, polls, schedule, penalties, cutoverYmd, maxTerm] = await Promise.all([
-    getLoanDetail(loan.id),
-    getPollsForLoanPicker({ excludeLoanId: loan.id }),
-    getEmiSchedule(loan.id),
-    getLoanPenalties(loan.id),
-    getReference('emi_cutover_date').catch(() => 0),
-    getReference('loan_max_term_months').then(Number).catch(() => 30),
-  ])
+  const [detail, polls, schedule, penalties, cutoverYmd, maxTerm, ratePct, recomputePlan] =
+    await Promise.all([
+      getLoanDetail(loan.id),
+      getPollsForLoanPicker({ excludeLoanId: loan.id }),
+      getEmiSchedule(loan.id),
+      getLoanPenalties(loan.id),
+      getReference('emi_cutover_date').catch(() => 0),
+      getReference('loan_max_term_months').then(Number).catch(() => 30),
+      getReference('loan_interest_rate_pct').then(Number).catch(() => 8),
+      getEmiRecomputePreview(loan.id),
+    ])
   const pendingPrincipal = detail?.financials.balance ?? 0
   const pendingInterest = detail?.financials.interestDue ?? 0
 
@@ -178,16 +182,25 @@ export default async function AdminLoanManagePage({
         polls={polls}
       />
 
-      <div className="rounded-2xl border border-gray-200/80 bg-white p-5">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <p className="text-sm text-gray-600">
-            Rebuild this loan&rsquo;s EOM accruals from <span className="font-mono">start_date</span> to today.
-            Existing payments are preserved; amount due and status are recomputed. Run this after
-            editing principal, start date, or interest waiver.
-          </p>
-          <RecomputeAccrualsButton loanId={loan.id} />
+      {isEmi ? (
+        <RecomputeEmiPanel loanId={loan.id} plan={recomputePlan} ratePct={ratePct} />
+      ) : (
+        /* Accrual-model loans keep their own repair tool. It is deliberately NOT
+           offered on EMI loans — fn_recompute_loan_accruals has no
+           repayment_model guard and would mint accrual rows for months the EMI
+           schedule already charges interest for. */
+        <div className="rounded-2xl border border-gray-200/80 bg-white p-5">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <p className="text-sm text-gray-600">
+              Rebuild this loan&rsquo;s EOM accruals from{' '}
+              <span className="font-mono">start_date</span> to today. Existing payments are
+              preserved; amount due and status are recomputed. Run this after editing principal,
+              start date, or interest waiver.
+            </p>
+            <RecomputeAccrualsButton loanId={loan.id} />
+          </div>
         </div>
-      </div>
+      )}
 
       {isEmi ? (
         <>
