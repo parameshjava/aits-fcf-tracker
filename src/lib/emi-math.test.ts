@@ -4,6 +4,7 @@ import {
   buildSchedule,
   recomputeAfterPrepayment,
   tenthOfMonth,
+  prepaymentAnchorDate,
 } from './emi-math'
 
 describe('computeEmiAmount', () => {
@@ -139,26 +140,50 @@ describe('recomputeAfterPrepayment', () => {
     expect(r[0].closingBalance).toBe(0)
   })
 
-  // prepayLoan passes `tenthOfMonth(paidDate, 1)` as firstDueDate so the tail
-  // always starts on the 10th of the month AFTER the payment — it used to pass
-  // `next_due_date`, which could be in the past and regenerated the schedule
-  // backwards. These pin the anchor the action relies on.
-  it('anchors the tail on the 10th of the month after the prepayment date', () => {
-    expect(tenthOfMonth('2026-08-06', 1)).toBe('2026-09-10')
-    expect(tenthOfMonth('2026-08-20', 1)).toBe('2026-09-10')
-  })
-
   it('never emits a past-dated installment when anchored off the payment date', () => {
-    const paidDate = '2026-08-06'
+    const paidDate = '2026-08-20'
     const r = recomputeAfterPrepayment({
       outstanding: 50000, annualRatePct: 8, remainingTerm: 10,
-      currentEmi: 5914, firstDueDate: tenthOfMonth(paidDate, 1), mode: 'reduce_tenure',
+      currentEmi: 5914, firstDueDate: prepaymentAnchorDate(paidDate, '2026-08-10'), mode: 'reduce_tenure',
     })
     expect(r[0].dueDate).toBe('2026-09-10')
     for (const row of r) expect(row.dueDate > paidDate).toBe(true)
   })
+})
 
-  it('rolls into the next year when the prepayment lands in December', () => {
-    expect(tenthOfMonth('2026-12-28', 1)).toBe('2027-01-10')
+describe('prepaymentAnchorDate', () => {
+  it('keeps the current month when its installment is still ahead of the payment', () => {
+    // Paid 7 Aug with the 10 Aug installment unpaid: August must keep its EMI.
+    // Anchoring on the month AFTER the payment skipped it entirely, so the
+    // member owed nothing in August and the fund lost a month of interest.
+    expect(prepaymentAnchorDate('2026-08-07', '2026-08-10')).toBe('2026-08-10')
+  })
+
+  it('anchors on the payment-month 10th itself when paid on the 10th', () => {
+    expect(prepaymentAnchorDate('2026-08-10', '2026-08-10')).toBe('2026-08-10')
+  })
+
+  it('moves to the next month once the 10th has gone by', () => {
+    expect(prepaymentAnchorDate('2026-08-20', '2026-08-10')).toBe('2026-09-10')
+  })
+
+  it('never regenerates into the past when the unpaid due date is stale', () => {
+    // A genuinely missed month, and a schedule a bad regeneration back-dated.
+    expect(prepaymentAnchorDate('2026-08-07', '2026-07-10')).toBe('2026-08-10')
+    expect(prepaymentAnchorDate('2026-08-20', '2019-01-10')).toBe('2026-09-10')
+  })
+
+  it('honours a future-dated schedule ahead of the payment', () => {
+    // Still inside an interest waiver: the first installment is months out.
+    expect(prepaymentAnchorDate('2026-08-07', '2026-12-10')).toBe('2026-12-10')
+  })
+
+  it('falls back to the next unpassed 10th when there is nothing to replace', () => {
+    expect(prepaymentAnchorDate('2026-08-07', null)).toBe('2026-08-10')
+    expect(prepaymentAnchorDate('2026-08-20', null)).toBe('2026-09-10')
+  })
+
+  it('rolls into the next year when the payment lands late in December', () => {
+    expect(prepaymentAnchorDate('2026-12-28', '2026-12-10')).toBe('2027-01-10')
   })
 })

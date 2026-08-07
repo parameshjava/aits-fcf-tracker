@@ -31,6 +31,7 @@ type Call = {
 type ScheduleRow = {
   id: string
   installment_no: number
+  due_date: string
   status: 'scheduled' | 'paid' | 'partially_paid' | 'overdue' | 'waived'
   principal_due: number
   principal_paid: number
@@ -118,6 +119,7 @@ function makeSupabase(opts: {
 
 const scheduleRow = (o: Partial<ScheduleRow> & { installment_no: number }): ScheduleRow => ({
   id: `s${o.installment_no}`,
+  due_date: `2026-${String(o.installment_no).padStart(2, '0')}-10`,
   status: 'scheduled',
   principal_due: 1000,
   principal_paid: 0,
@@ -130,13 +132,17 @@ const ADMIN = {
   profile: { role: 'admin', full_name: null },
 } as never
 
-function prepayForm(amount: number, mode: 'reduce_tenure' | 'reduce_emi' = 'reduce_tenure') {
+function prepayForm(
+  amount: number,
+  mode: 'reduce_tenure' | 'reduce_emi' = 'reduce_tenure',
+  paidDate = '2026-06-14',
+) {
   const fd = new FormData()
   fd.set('loan_id', 'loan-1')
   fd.set('member_id', 'member-1')
   fd.set('amount', String(amount))
   fd.set('mode', mode)
-  fd.set('paid_date', '2026-06-14')
+  fd.set('paid_date', paidDate)
   return fd
 }
 
@@ -266,5 +272,52 @@ describe('prepayLoan — partial prepayment with an unpaid installment', () => {
     const r = await prepayLoan(prepayForm(2601))
     expect(r.ok).toBe(false)
     expect(r.ok === false && r.error).toMatch(/exceeds outstanding principal/i)
+  })
+})
+
+describe('prepayLoan — where the rebuilt schedule resumes', () => {
+  const AUG_ONWARDS = [
+    scheduleRow({ installment_no: 8, due_date: '2026-08-10' }),
+    scheduleRow({ installment_no: 9, due_date: '2026-09-10' }),
+    scheduleRow({ installment_no: 10, due_date: '2026-10-10' }),
+  ]
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(getCurrentUser).mockResolvedValue(ADMIN)
+  })
+
+  const firstDueDate = (calls: Array<{ table: string; op: string | null; payload: unknown }>) => {
+    const insert = calls.find((c) => c.table === 'loan_emi_schedule' && c.op === 'insert')
+    return (insert?.payload as Array<{ due_date: string }>)[0].due_date
+  }
+
+  it('keeps the current month when its installment is still ahead of the payment', async () => {
+    const { client, calls } = makeSupabase({ balance: BALANCE, scheduleRows: AUG_ONWARDS })
+    vi.mocked(createClient).mockResolvedValue(client)
+
+    // Paid 7 Aug with the 10 Aug installment unpaid — August keeps an EMI
+    // instead of the schedule jumping to 10 Sep and leaving the month empty.
+    await prepayLoan(prepayForm(500, 'reduce_tenure', '2026-08-07'))
+    expect(firstDueDate(calls)).toBe('2026-08-10')
+  })
+
+  it('moves to the next month once the due date has gone by', async () => {
+    const { client, calls } = makeSupabase({ balance: BALANCE, scheduleRows: AUG_ONWARDS })
+    vi.mocked(createClient).mockResolvedValue(client)
+
+    await prepayLoan(prepayForm(500, 'reduce_tenure', '2026-08-20'))
+    expect(firstDueDate(calls)).toBe('2026-09-10')
+  })
+
+  it('never regenerates into the past when the schedule is back-dated', async () => {
+    const { client, calls } = makeSupabase({
+      balance: BALANCE,
+      scheduleRows: [scheduleRow({ installment_no: 1, due_date: '2019-01-10' })],
+    })
+    vi.mocked(createClient).mockResolvedValue(client)
+
+    await prepayLoan(prepayForm(500, 'reduce_tenure', '2026-08-20'))
+    expect(firstDueDate(calls)).toBe('2026-09-10')
   })
 })

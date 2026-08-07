@@ -20,6 +20,7 @@
 export type PrepayScheduleRow = {
   id: string
   installment_no: number
+  due_date: string
   status: 'scheduled' | 'paid' | 'partially_paid' | 'overdue' | 'waived'
   principal_due: number
   principal_paid: number
@@ -48,6 +49,12 @@ export type PrepayPlan = {
   tailPrincipal: number
   /** Installments the rebuild replaces (scheduled + overdue). */
   remainingTerm: number
+  /**
+   * Earliest due date among those replaced installments — feed it to
+   * `prepaymentAnchorDate` so the rebuilt tail keeps the current month's slot
+   * instead of skipping to the next one.
+   */
+  earliestUnpaidDueDate: string | null
   /** The advance clears every rupee of pending principal. */
   fullPayoff: boolean
   /** Non-null when the plan can't be applied; callers must check this first. */
@@ -74,11 +81,14 @@ export function planPrepayment({
     .filter((r) => r.status === 'partially_paid' && owed(r) > 0)
     .sort((a, b) => a.installment_no - b.installment_no)
   const arrearsPrincipal = r2(arrearRows.reduce((s, r) => s + owed(r), 0))
-  const remainingTerm = rows.filter(
-    (r) => r.status === 'scheduled' || r.status === 'overdue',
-  ).length
+  const replaced = rows.filter((r) => r.status === 'scheduled' || r.status === 'overdue')
+  const remainingTerm = replaced.length
+  const earliestUnpaidDueDate = replaced.reduce<string | null>(
+    (min, r) => (min === null || r.due_date < min ? r.due_date : min),
+    null,
+  )
 
-  const base = { pendingPrincipal, arrearsPrincipal, remainingTerm }
+  const base = { pendingPrincipal, arrearsPrincipal, remainingTerm, earliestUnpaidDueDate }
 
   if (r2(amount - pendingPrincipal) > 0) {
     return {

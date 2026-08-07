@@ -51,6 +51,39 @@ export function tenthOfMonth(baseIso: string, monthOffset: number): string {
   return `${target.getUTCFullYear()}-${String(target.getUTCMonth() + 1).padStart(2, '0')}-10`
 }
 
+/**
+ * Where the schedule rebuilt by a prepayment resumes.
+ *
+ * The rule: **the earliest unpaid due date, but never a date that has already
+ * passed as of the payment.**
+ *
+ * Both halves matter. Anchoring purely on the earliest unpaid due date
+ * regenerated the whole tail into the past when that date was stale — a
+ * genuinely missed month, or a schedule a bad regeneration had back-dated (see
+ * migration 051). Anchoring purely on "the 10th of the month after the payment"
+ * fixed that but skipped a month: a payment on 7 Aug, with the 10 Aug
+ * installment still unpaid, deleted that installment and restarted at 10 Sep,
+ * so August had no EMI at all and the fund lost a month of interest.
+ *
+ * Taking the later of the two keeps the current month's installment when it is
+ * still ahead of the payment, and still refuses to write the tail into the past.
+ *
+ * @param paidDate              when the advance was received (YYYY-MM-DD)
+ * @param earliestUnpaidDueDate earliest due date among the installments being
+ *                              replaced, or null when there are none
+ */
+export function prepaymentAnchorDate(
+  paidDate: string,
+  earliestUnpaidDueDate: string | null,
+): string {
+  const { d } = parseYmd(paidDate)
+  // The first 10th that has not gone by on the payment date.
+  const nextTenth = d <= 10 ? tenthOfMonth(paidDate, 0) : tenthOfMonth(paidDate, 1)
+  if (!earliestUnpaidDueDate) return nextTenth
+  // ISO dates compare lexicographically, so this is a chronological max.
+  return earliestUnpaidDueDate > nextTenth ? earliestUnpaidDueDate : nextTenth
+}
+
 export function computeEmiAmount(principal: number, annualRatePct: number, termMonths: number): number {
   if (termMonths <= 0) throw new Error('termMonths must be > 0')
   const r = annualRatePct / 100 / 12

@@ -3,6 +3,8 @@ import { planPrepayment, type PrepayScheduleRow } from './prepay-plan'
 
 const row = (o: Partial<PrepayScheduleRow> & { installment_no: number }): PrepayScheduleRow => ({
   id: `s${o.installment_no}`,
+  // #1 is due 2026-01-10, #2 2026-02-10, and so on.
+  due_date: `2026-${String(o.installment_no).padStart(2, '0')}-10`,
   status: 'scheduled',
   principal_due: 1000,
   principal_paid: 0,
@@ -79,6 +81,27 @@ describe('planPrepayment', () => {
     ]
     expect(planPrepayment({ rows, amount: 1600 }).fullPayoff).toBe(true)
     expect(planPrepayment({ rows, amount: 1599 }).fullPayoff).toBe(false)
+  })
+
+  it('reports the earliest due date among the installments being replaced', () => {
+    const plan = planPrepayment({
+      rows: [
+        // A surviving part-paid row must not anchor the rebuilt tail.
+        row({ installment_no: 1, status: 'partially_paid', principal_paid: 400 }),
+        row({ installment_no: 3, status: 'overdue' }),
+        row({ installment_no: 2 }),
+      ],
+      amount: 100,
+    })
+    expect(plan.earliestUnpaidDueDate).toBe('2026-02-10')
+  })
+
+  it('reports no due date when there is nothing to replace', () => {
+    const plan = planPrepayment({
+      rows: [row({ installment_no: 1, status: 'partially_paid', principal_paid: 400 })],
+      amount: 100,
+    })
+    expect(plan.earliestUnpaidDueDate).toBeNull()
   })
 
   it('ignores waived installments', () => {
