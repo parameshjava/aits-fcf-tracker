@@ -12,7 +12,7 @@ import {
 import type { ActionResult } from '@/lib/actions/action-result'
 import { formatRupees, todayISO } from '@/lib/format'
 import { overdueParts, formatDueLabel } from '@/lib/due'
-import { recomputeAfterPrepayment, tenthOfMonth } from '@/lib/emi-math'
+import { recomputeAfterPrepayment, prepaymentAnchorDate } from '@/lib/emi-math'
 import { planPrepayment } from '@/lib/prepay-plan'
 import { PrAccordion, PrAccordionTab } from '@/components/ui/pr/accordion'
 import { PrDialog } from '@/components/ui/pr/dialog'
@@ -432,7 +432,7 @@ function PrepayForm({
           annualRatePct: Number(loan.interest_rate_pct ?? 0),
           remainingTerm: Math.max(plan.remainingTerm, 1),
           currentEmi,
-          firstDueDate: tenthOfMonth(paidDate, 1),
+          firstDueDate: prepaymentAnchorDate(paidDate, plan.earliestUnpaidDueDate),
           mode,
         })
     const unpaidInterest = (r: EmiScheduleRow) =>
@@ -716,9 +716,6 @@ function PrepaymentWhatIf({
   const unpaid = schedule.filter((r) => UNPAID.has(r.status))
   const nextDue = unpaid[0]
   const currentEmi = Number(emiAmount || nextDue?.emi_amount || 0)
-  // Same anchor the server uses: the rebuilt tail starts on the 10th of the
-  // month after the payment, not at the next unpaid due date.
-  const firstDueDate = tenthOfMonth(todayISO(), 1)
   const currentRemainingInterest = unpaid.reduce(
     (s, r) => s + (Number(r.interest_due) - Number(r.interest_paid)),
     0,
@@ -729,6 +726,8 @@ function PrepaymentWhatIf({
   const plan = useMemo(() => planPrepayment({ rows: schedule, amount: amt }), [schedule, amt])
   const outstanding = plan.pendingPrincipal
   const remainingTerm = plan.remainingTerm
+  // Same anchor the server uses — an estimate for "if I paid today".
+  const firstDueDate = prepaymentAnchorDate(todayISO(), plan.earliestUnpaidDueDate)
 
   const result = useMemo(() => {
     if (!nextDue || !(amt > 0) || !(interestRatePct >= 0)) return null

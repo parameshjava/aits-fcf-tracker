@@ -5,7 +5,7 @@ import { createClient } from '@/lib/supabase/server'
 import { getCurrentUser } from './auth'
 import { getReference, applyBalanceDelta } from './reference'
 import { actionError, actionOk, runAction, type ActionResult } from './action-result'
-import { recomputeAfterPrepayment, tenthOfMonth } from '@/lib/emi-math'
+import { recomputeAfterPrepayment, prepaymentAnchorDate } from '@/lib/emi-math'
 import { planPrepayment, type PrepayScheduleRow } from '@/lib/prepay-plan'
 import { cutoverYmdToIso, isCutoverFloored } from '@/lib/emi-anchor'
 
@@ -201,7 +201,7 @@ export async function prepayLoan(formData: FormData): Promise<ActionResult> {
     // on its own row and again inside the rebuilt tail.
     const { data: scheduleRows, error: schedErr } = await supabase
       .from('loan_emi_schedule')
-      .select('id, installment_no, status, principal_due, principal_paid')
+      .select('id, installment_no, due_date, status, principal_due, principal_paid')
       .eq('loan_id', loanId)
     if (schedErr) return actionError(schedErr.message)
 
@@ -290,15 +290,12 @@ export async function prepayLoan(formData: FormData): Promise<ActionResult> {
         if (error) return actionError(error.message)
       }
 
-      // The rebuilt tail starts on the 10th of the month AFTER the prepayment
-      // date — never at `next_due_date`, which is the earliest UNPAID due date
-      // and can sit in the past (a genuinely missed month, or a schedule that a
-      // bad regeneration back-dated; see migration 051). Anchoring there
-      // regenerated the tail into the past and compounded the damage on every
-      // subsequent prepayment. Scheduled/overdue installments are dropped below
-      // and their principal re-amortizes across this new tail — it is already
-      // inside `plan.tailPrincipal`, so nothing is written off.
-      const firstDueDate = tenthOfMonth(paidDate, 1)
+      // Resume at the earliest unpaid due date, but never at a date already
+      // gone by on the payment date — see `prepaymentAnchorDate`. Scheduled and
+      // overdue installments are dropped below and their principal re-amortizes
+      // across this new tail; it is already inside `plan.tailPrincipal`, so
+      // nothing is written off.
+      const firstDueDate = prepaymentAnchorDate(paidDate, plan.earliestUnpaidDueDate)
 
       const rows = recomputeAfterPrepayment({
         outstanding: plan.tailPrincipal,
