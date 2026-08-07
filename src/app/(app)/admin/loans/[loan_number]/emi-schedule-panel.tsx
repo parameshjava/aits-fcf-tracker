@@ -1,6 +1,6 @@
 'use client'
 
-import { useActionState, useEffect, useMemo, useState } from 'react'
+import { useActionState, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import {
@@ -12,7 +12,8 @@ import {
 import type { ActionResult } from '@/lib/actions/action-result'
 import { formatRupees, todayISO } from '@/lib/format'
 import { overdueParts, formatDueLabel } from '@/lib/due'
-import { recomputeAfterPrepayment } from '@/lib/emi-math'
+import { recomputeAfterPrepayment, tenthOfMonth } from '@/lib/emi-math'
+import { planPrepayment } from '@/lib/prepay-plan'
 import { PrAccordion, PrAccordionTab } from '@/components/ui/pr/accordion'
 import { PrDialog } from '@/components/ui/pr/dialog'
 import { PrDatePicker } from '@/components/ui/pr/date-picker'
@@ -210,11 +211,186 @@ function PayEmiDialog({ row, loan }: { row: EmiScheduleRow; loan: LoanProps }) {
   )
 }
 
+/** One `dt`/`dd` pair in the confirmation summary. */
+function SummaryRow({
+  label,
+  value,
+  tone,
+}: {
+  label: string
+  value: ReactNode
+  tone?: 'emerald' | 'amber'
+}) {
+  return (
+    <>
+      <dt className="text-gray-500">{label}</dt>
+      <dd
+        className={
+          'text-right font-medium ' +
+          (tone === 'emerald' ? 'text-emerald-700' : tone === 'amber' ? 'text-amber-700' : 'text-gray-900')
+        }
+      >
+        {value}
+      </dd>
+    </>
+  )
+}
+
+/**
+ * What the admin approves before anything is written. Built from the SAME
+ * `planPrepayment` + `recomputeAfterPrepayment` pair the server action runs, so
+ * the numbers shown here are the numbers applied.
+ */
+function PrepayReview({
+  preview,
+  amount,
+  mode,
+  currentEmi,
+  applyToBank,
+}: {
+  preview: PrepayComputed
+  amount: number
+  mode: 'reduce_tenure' | 'reduce_emi'
+  currentEmi: number
+  applyToBank: boolean
+}) {
+  const { plan, rows, interestBefore, interestAfter } = preview
+  const outstandingAfter = plan.pendingPrincipal - amount
+
+  return (
+    <div className="space-y-4">
+      <dl className="grid grid-cols-2 gap-x-4 gap-y-1.5 rounded-md bg-gray-50 px-3 py-2.5 text-sm">
+        <SummaryRow label="Advance amount" value={formatRupees(amount)} />
+        {plan.arrearsApplied > 0 && (
+          <SummaryRow
+            label="Settles unpaid installments"
+            value={
+              <span>
+                {formatRupees(plan.arrearsApplied)}
+                <span className="ml-1 text-xs font-normal text-gray-500">
+                  ({plan.arrears.map((a) => `#${a.installmentNo}`).join(', ')})
+                </span>
+              </span>
+            }
+            tone="amber"
+          />
+        )}
+        {plan.arrearsApplied > 0 && (
+          <SummaryRow label="Reduces principal" value={formatRupees(plan.appliedToTail)} />
+        )}
+        <SummaryRow
+          label="Outstanding principal"
+          value={
+            <span>
+              <span className="text-gray-400 line-through">{formatRupees(plan.pendingPrincipal)}</span>{' '}
+              {formatRupees(outstandingAfter)}
+            </span>
+          }
+        />
+        <SummaryRow
+          label="Bank balance"
+          value={applyToBank ? `+${formatRupees(amount)}` : 'Not updated'}
+        />
+      </dl>
+
+      {plan.arrearsApplied > 0 && (
+        <p className="text-xs text-amber-700">
+          Installment{plan.arrears.length > 1 ? 's' : ''}{' '}
+          {plan.arrears.map((a) => `#${a.installmentNo}`).join(', ')} {plan.arrears.length > 1 ? 'are' : 'is'}{' '}
+          partly paid already, so the advance clears {plan.arrears.length > 1 ? 'those' : 'that'} balance
+          first. Only {formatRupees(plan.appliedToTail)} goes towards reducing the remaining schedule.
+        </p>
+      )}
+
+      {plan.fullPayoff ? (
+        <p className="rounded-md bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
+          This advance clears the loan in full. The remaining installments are removed and the loan is
+          marked paid.
+        </p>
+      ) : (
+        <>
+          <div className="grid grid-cols-2 gap-3 text-sm">
+            <Stat
+              label={mode === 'reduce_emi' ? 'New EMI' : 'EMI (unchanged)'}
+              value={
+                mode === 'reduce_emi'
+                  ? `${formatRupees(rows[0]?.emiAmount ?? 0)} (was ${formatRupees(currentEmi)})`
+                  : formatRupees(rows[0]?.emiAmount ?? currentEmi)
+              }
+            />
+            <Stat
+              label="Installments left"
+              value={`${rows.length} (was ${plan.remainingTerm})`}
+            />
+            <Stat label="Final due date" value={formatDate(rows[rows.length - 1]?.dueDate ?? null)} />
+            <Stat
+              label="Interest saved"
+              value={formatRupees(Math.max(interestBefore - interestAfter, 0))}
+              tone="emerald"
+            />
+          </div>
+
+          {rows.length > 0 && (
+            <div className="max-h-56 overflow-auto rounded-md border border-gray-100">
+              <table className="w-full min-w-[26rem] text-sm">
+                <thead className="sticky top-0 bg-white text-left text-[11px] uppercase tracking-wider text-gray-400">
+                  <tr>
+                    <th className="whitespace-nowrap px-3 py-2 text-right">#</th>
+                    <th className="whitespace-nowrap py-2 pr-4">Due date</th>
+                    <th className="whitespace-nowrap py-2 pr-4 text-right">EMI</th>
+                    <th className="whitespace-nowrap py-2 pr-4 text-right">Principal</th>
+                    <th className="whitespace-nowrap py-2 pr-3 text-right">Interest</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((r) => (
+                    <tr key={r.installmentNo} className="border-t border-gray-100">
+                      <td className="whitespace-nowrap px-3 py-1.5 text-right text-gray-500">
+                        {r.installmentNo}
+                      </td>
+                      <td className="whitespace-nowrap py-1.5 pr-4 text-gray-700">{formatDate(r.dueDate)}</td>
+                      <td className="whitespace-nowrap py-1.5 pr-4 text-right text-gray-900">
+                        {formatRupees(r.emiAmount)}
+                      </td>
+                      <td className="whitespace-nowrap py-1.5 pr-4 text-right text-gray-700">
+                        {formatRupees(r.principalDue)}
+                      </td>
+                      <td className="whitespace-nowrap py-1.5 pr-3 text-right text-gray-700">
+                        {formatRupees(r.interestDue)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          <p className="text-xs text-gray-500">
+            The remaining installments are rebuilt from {formatDate(rows[0]?.dueDate ?? null)}; unpaid
+            installments dated before that are replaced.
+          </p>
+        </>
+      )}
+    </div>
+  )
+}
+
+type PrepayComputed = {
+  error?: undefined
+  plan: ReturnType<typeof planPrepayment>
+  rows: ReturnType<typeof recomputeAfterPrepayment>
+  interestBefore: number
+  interestAfter: number
+}
+
+type PrepayPreview = { error: string } | PrepayComputed | null
+
 function PrepayForm({
   loan,
+  schedule,
   onSuccess,
 }: {
   loan: LoanProps
+  schedule: EmiScheduleRow[]
   onSuccess: () => void
 }) {
   const router = useRouter()
@@ -224,6 +400,11 @@ function PrepayForm({
   )
   const [paidDate, setPaidDate] = useState(todayISO())
   const [amount, setAmount] = useState<number | null>(null)
+  const [mode, setMode] = useState<'reduce_tenure' | 'reduce_emi'>('reduce_tenure')
+  const [bankTxnId, setBankTxnId] = useState('')
+  const [applyToBank, setApplyToBank] = useState(true)
+  // Step 2 of the dialog: review the rebuilt schedule before it is written.
+  const [confirming, setConfirming] = useState(false)
   useEffect(() => {
     if (state?.ok) {
       toast.success(state.message ?? 'Prepayment applied')
@@ -232,15 +413,94 @@ function PrepayForm({
     }
   }, [state, router, onSuccess])
 
+  const nextDue = schedule.find((r) => UNPAID.has(r.status))
+  const currentEmi = Number(loan.emi_amount ?? nextDue?.emi_amount ?? 0)
+
+  const preview: PrepayPreview = useMemo(() => {
+    const amt = amount ?? 0
+    if (!(amt > 0) || !paidDate) return null
+    const plan = planPrepayment({ rows: schedule, amount: amt })
+    if (plan.error === 'exceeds_outstanding') {
+      return {
+        error: `Advance exceeds the outstanding principal of ${formatRupees(plan.pendingPrincipal)}.`,
+      }
+    }
+    const rows = plan.fullPayoff
+      ? []
+      : recomputeAfterPrepayment({
+          outstanding: plan.tailPrincipal,
+          annualRatePct: Number(loan.interest_rate_pct ?? 0),
+          remainingTerm: Math.max(plan.remainingTerm, 1),
+          currentEmi,
+          firstDueDate: tenthOfMonth(paidDate, 1),
+          mode,
+        })
+    const unpaidInterest = (r: EmiScheduleRow) =>
+      Math.max(Number(r.interest_due) - Number(r.interest_paid), 0)
+    const interestBefore = schedule
+      .filter((r) => UNPAID.has(r.status))
+      .reduce((s, r) => s + unpaidInterest(r), 0)
+    // Interest owed on partially-paid rows is not rebuilt — those rows survive,
+    // so it stays payable and belongs in the "after" figure. A full payoff closes
+    // the loan outright, leaving nothing.
+    const arrearsInterest = schedule
+      .filter((r) => r.status === 'partially_paid')
+      .reduce((s, r) => s + unpaidInterest(r), 0)
+    const interestAfter = plan.fullPayoff
+      ? 0
+      : rows.reduce((s, r) => s + r.interestDue, 0) + arrearsInterest
+    return { plan, rows, interestBefore, interestAfter }
+  }, [amount, paidDate, mode, schedule, loan.interest_rate_pct, currentEmi])
+
+  const canReview = preview !== null && preview.error === undefined
+
+  if (confirming && preview && preview.error === undefined) {
+    return (
+      <form action={formAction} className="space-y-4">
+        <input type="hidden" name="loan_id" value={loan.id} />
+        <input type="hidden" name="member_id" value={loan.member_id ?? ''} />
+        <input type="hidden" name="amount" value={String(amount ?? '')} />
+        <input type="hidden" name="mode" value={mode} />
+        <input type="hidden" name="paid_date" value={paidDate} />
+        <input type="hidden" name="bank_transaction_id" value={bankTxnId} />
+        {applyToBank && <input type="hidden" name="applyToBankBalance" value="1" />}
+
+        <PrepayReview
+          preview={preview}
+          amount={amount ?? 0}
+          mode={mode}
+          currentEmi={currentEmi}
+          applyToBank={applyToBank}
+        />
+
+        {state && !state.ok && <p className="text-sm text-red-600">{state.error}</p>}
+
+        <div className={FOOTER_ROW}>
+          <button
+            type="button"
+            className={CANCEL_BTN}
+            disabled={isPending}
+            onClick={() => setConfirming(false)}
+          >
+            Back
+          </button>
+          <button
+            type="submit"
+            disabled={isPending}
+            className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+          >
+            {isPending ? 'Applying…' : 'Confirm & apply'}
+          </button>
+        </div>
+      </form>
+    )
+  }
+
   return (
-    <form action={formAction} className="space-y-4">
-      <input type="hidden" name="loan_id" value={loan.id} />
-      <input type="hidden" name="member_id" value={loan.member_id ?? ''} />
+    <div className="space-y-4">
       <label className="flex flex-col text-xs">
         <span className="text-gray-500">Amount</span>
         <PrAmountInput
-          name="amount"
-          required
           value={amount}
           onChange={setAmount}
           step={1000}
@@ -254,9 +514,8 @@ function PrepayForm({
         <label className="flex items-center gap-2 text-gray-700">
           <input
             type="radio"
-            name="mode"
-            value="reduce_tenure"
-            defaultChecked
+            checked={mode === 'reduce_tenure'}
+            onChange={() => setMode('reduce_tenure')}
             className="h-4 w-4 text-blue-600 focus:ring-blue-500"
           />
           Reduce tenure (keep EMI, fewer installments)
@@ -264,8 +523,8 @@ function PrepayForm({
         <label className="flex items-center gap-2 text-gray-700">
           <input
             type="radio"
-            name="mode"
-            value="reduce_emi"
+            checked={mode === 'reduce_emi'}
+            onChange={() => setMode('reduce_emi')}
             className="h-4 w-4 text-blue-600 focus:ring-blue-500"
           />
           Reduce EMI (keep tenure, smaller installments)
@@ -274,10 +533,8 @@ function PrepayForm({
       <label className="flex flex-col text-xs">
         <span className="text-gray-500">Paid date</span>
         <PrDatePicker
-          name="paid_date"
           value={paidDate}
           max={todayISO()}
-          required
           onChange={setPaidDate}
           className="mt-1"
           placeholder="dd/mm/yyyy"
@@ -287,35 +544,40 @@ function PrepayForm({
         <span className="text-gray-500">Bank transaction ID</span>
         <input
           type="text"
-          name="bank_transaction_id"
+          value={bankTxnId}
+          onChange={(e) => setBankTxnId(e.target.value)}
           placeholder="e.g. UPI ref / NEFT UTR"
           className="mt-1 rounded-md border border-gray-300 px-2 py-1 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
         />
       </label>
       <label className="flex items-center gap-2 text-xs text-gray-700">
-        <input type="checkbox" name="applyToBankBalance" value="1" defaultChecked className="h-4 w-4" />
+        <input
+          type="checkbox"
+          checked={applyToBank}
+          onChange={(e) => setApplyToBank(e.target.checked)}
+          className="h-4 w-4"
+        />
         Add this amount to the bank balance
       </label>
-      {state && !state.ok && (
-        <p className="text-sm text-red-600">{state.error}</p>
-      )}
+      {preview?.error && <p className="text-sm text-red-600">{preview.error}</p>}
       <div className={FOOTER_ROW}>
         <button type="button" className={CANCEL_BTN} onClick={onSuccess}>
           Cancel
         </button>
         <button
-          type="submit"
-          disabled={isPending}
+          type="button"
+          disabled={!canReview}
+          onClick={() => setConfirming(true)}
           className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
         >
-          {isPending ? 'Applying…' : 'Apply prepayment'}
+          Review changes
         </button>
       </div>
-    </form>
+    </div>
   )
 }
 
-function PrepayDialog({ loan }: { loan: LoanProps }) {
+function PrepayDialog({ loan, schedule }: { loan: LoanProps; schedule: EmiScheduleRow[] }) {
   const [open, setOpen] = useState(false)
   // openKey increments each time the dialog opens, remounting PrepayForm so
   // useActionState resets to null and prior success/error state is cleared.
@@ -335,12 +597,18 @@ function PrepayDialog({ loan }: { loan: LoanProps }) {
         visible={open}
         onHide={() => handleOpenChange(false)}
         header="Prepay principal"
-        widthClass="sm:!w-[30rem]"
+        widthClass="sm:!w-[32rem]"
       >
         <p className="mb-4 text-sm text-gray-600">
-          Record an advance principal payment and rebuild the remaining schedule.
+          Record an advance principal payment and rebuild the remaining schedule. You will see the
+          adjusted EMIs before anything is saved.
         </p>
-        <PrepayForm key={openKey} loan={loan} onSuccess={() => setOpen(false)} />
+        <PrepayForm
+          key={openKey}
+          loan={loan}
+          schedule={schedule}
+          onSuccess={() => setOpen(false)}
+        />
       </PrDialog>
     </>
   )
@@ -430,7 +698,8 @@ function formatDate(iso: string | null): string {
 /**
  * Read-only "what-if" prepayment calculator. Lets anyone (incl. members) estimate
  * how an advance payment would re-shape the remaining schedule — nothing is saved.
- * Mirrors prepayLoan: outstanding = next unpaid installment's opening balance.
+ * Mirrors prepayLoan: same `planPrepayment` split, same amortization, same
+ * "10th of next month" anchor.
  */
 function PrepaymentWhatIf({
   schedule,
@@ -446,31 +715,46 @@ function PrepaymentWhatIf({
 
   const unpaid = schedule.filter((r) => UNPAID.has(r.status))
   const nextDue = unpaid[0]
-  const outstanding = nextDue ? Number(nextDue.opening_balance) : 0
-  const remainingTerm = unpaid.length
   const currentEmi = Number(emiAmount || nextDue?.emi_amount || 0)
-  const firstDueDate = nextDue?.due_date ?? ''
+  // Same anchor the server uses: the rebuilt tail starts on the 10th of the
+  // month after the payment, not at the next unpaid due date.
+  const firstDueDate = tenthOfMonth(todayISO(), 1)
   const currentRemainingInterest = unpaid.reduce(
     (s, r) => s + (Number(r.interest_due) - Number(r.interest_paid)),
     0,
   )
 
   const amt = amount ?? 0
+  // Mirrors prepayLoan exactly — same planner, same amortization, same anchor.
+  const plan = useMemo(() => planPrepayment({ rows: schedule, amount: amt }), [schedule, amt])
+  const outstanding = plan.pendingPrincipal
+  const remainingTerm = plan.remainingTerm
+
   const result = useMemo(() => {
     if (!nextDue || !(amt > 0) || !(interestRatePct >= 0)) return null
-    const newOutstanding = outstanding - amt
-    if (newOutstanding < 0) return { error: 'Amount exceeds the outstanding principal.' as const }
-    if (newOutstanding === 0) return { rows: [] as ReturnType<typeof recomputeAfterPrepayment>, newInterest: 0, fullPayoff: true }
+    if (plan.error === 'exceeds_outstanding') {
+      return { error: 'Amount exceeds the outstanding principal.' as const }
+    }
+    if (plan.fullPayoff) return { rows: [] as ReturnType<typeof recomputeAfterPrepayment>, newInterest: 0, fullPayoff: true }
     const rows = recomputeAfterPrepayment({
-      outstanding: newOutstanding,
+      outstanding: plan.tailPrincipal,
       annualRatePct: interestRatePct,
-      remainingTerm,
+      remainingTerm: Math.max(remainingTerm, 1),
       currentEmi,
       firstDueDate,
       mode,
     })
-    return { rows, newInterest: rows.reduce((s, r) => s + r.interestDue, 0), fullPayoff: false }
-  }, [nextDue, amt, outstanding, interestRatePct, remainingTerm, currentEmi, firstDueDate, mode])
+    // Partially-paid installments survive the rebuild, so the interest still
+    // owed on them is part of the "after" figure.
+    const arrearsInterest = schedule
+      .filter((r) => r.status === 'partially_paid')
+      .reduce((s, r) => s + Math.max(Number(r.interest_due) - Number(r.interest_paid), 0), 0)
+    return {
+      rows,
+      newInterest: rows.reduce((s, r) => s + r.interestDue, 0) + arrearsInterest,
+      fullPayoff: false,
+    }
+  }, [nextDue, amt, plan, schedule, interestRatePct, remainingTerm, currentEmi, firstDueDate, mode])
 
   if (!nextDue) return null
 
@@ -608,7 +892,7 @@ export function EmiSchedulePanel({
         <h3 className="text-sm font-semibold text-gray-900">EMI schedule</h3>
         {!readOnly && (
           <div className="flex items-center gap-2">
-            <PrepayDialog loan={loan} />
+            <PrepayDialog loan={loan} schedule={schedule} />
             <RecalculateDialog loan={loan} />
           </div>
         )}

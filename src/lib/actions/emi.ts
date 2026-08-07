@@ -6,6 +6,7 @@ import { getCurrentUser } from './auth'
 import { getReference, applyBalanceDelta } from './reference'
 import { actionError, actionOk, runAction, type ActionResult } from './action-result'
 import { recomputeAfterPrepayment, tenthOfMonth } from '@/lib/emi-math'
+import { planPrepayment, type PrepayScheduleRow } from '@/lib/prepay-plan'
 import { cutoverYmdToIso, isCutoverFloored } from '@/lib/emi-anchor'
 
 export type EmiScheduleRow = {
@@ -162,7 +163,13 @@ export async function payEmi(formData: FormData): Promise<ActionResult> {
   })
 }
 
-/** Prepay extra principal; rebuild remaining schedule by tenure or EMI reduction. */
+/**
+ * Prepay extra principal; rebuild remaining schedule by tenure or EMI reduction.
+ *
+ * `planPrepayment` decides how the advance is split: oldest debt first, so it
+ * settles the arrears on partially-paid installments (which survive the rebuild)
+ * before reducing the amortizing tail. See `@/lib/prepay-plan`.
+ */
 export async function prepayLoan(formData: FormData): Promise<ActionResult> {
   return runAction('prepayLoan', async () => {
     const user = await getCurrentUser()
@@ -180,29 +187,49 @@ export async function prepayLoan(formData: FormData): Promise<ActionResult> {
     }
 
     const supabase = await createClient()
-    // Outstanding = pending principal from the EMI balances view minus this advance.
     const { data: bal } = await supabase
       .from('loan_emi_balances')
-      .select('pending_principal, interest_rate_pct, emi_amount, next_due_date')
+      .select('interest_rate_pct, emi_amount')
       .eq('loan_id', loanId)
       .single()
     if (!bal) return actionError('Loan not on EMI model')
-    const newOutstanding = Number(bal.pending_principal) - amount
-    if (newOutstanding < 0) return actionError('Advance exceeds outstanding principal')
+
+    // The whole schedule drives the plan: how much of the advance settles the
+    // arrears on partially-paid installments (rows the rebuild below cannot
+    // touch) and how much principal is left to re-amortize. Deriving both from
+    // the same rows is what stops a partial remainder being owed twice — once
+    // on its own row and again inside the rebuilt tail.
+    const { data: scheduleRows, error: schedErr } = await supabase
+      .from('loan_emi_schedule')
+      .select('id, installment_no, status, principal_due, principal_paid')
+      .eq('loan_id', loanId)
+    if (schedErr) return actionError(schedErr.message)
+
+    const plan = planPrepayment({
+      rows: (scheduleRows ?? []) as PrepayScheduleRow[],
+      amount,
+    })
+    if (plan.error === 'exceeds_outstanding') {
+      return actionError('Advance exceeds outstanding principal')
+    }
 
     // Record the advance as a principal repayment.
-    const { error: txnErr } = await supabase.from('transactions').insert({
-      member_id: memberId || null,
-      loan_id: loanId,
-      transaction_type: 'loan_repayment',
-      amount,
-      transaction_date: paidDate,
-      description: `Advance principal (${mode})`,
-      bank_transaction_id: bankTransactionId,
-      created_by: user.id,
-      verified_by: user.id,
-    })
-    if (txnErr) return actionError(txnErr.message)
+    const { data: advanceTxn, error: txnErr } = await supabase
+      .from('transactions')
+      .insert({
+        member_id: memberId || null,
+        loan_id: loanId,
+        transaction_type: 'loan_repayment',
+        amount,
+        transaction_date: paidDate,
+        description: `Advance principal (${mode})`,
+        bank_transaction_id: bankTransactionId,
+        created_by: user.id,
+        verified_by: user.id,
+      })
+      .select('id')
+      .single()
+    if (txnErr || !advanceTxn) return actionError(txnErr?.message ?? 'Failed to record the advance')
 
     // Cash received → increase the bank balance by the advance amount.
     if (applyToBankBalance) {
@@ -210,7 +237,7 @@ export async function prepayLoan(formData: FormData): Promise<ActionResult> {
       if (!result.ok) console.error('applyBalanceDelta failed for prepayLoan:', result.error)
     }
 
-    if (newOutstanding === 0) {
+    if (plan.fullPayoff) {
       // Fully paid off. The advance covers the entire outstanding principal,
       // which includes the unpaid remainder of any partially-paid installment —
       // complete those rows so they stop reporting a dangling balance, then
@@ -247,27 +274,36 @@ export async function prepayLoan(formData: FormData): Promise<ActionResult> {
         .eq('id', loanId)
       if (closeErr) return actionError(closeErr.message)
     } else {
-      // Count remaining unpaid installments for reduce_emi tenure.
-      const { count } = await supabase
-        .from('loan_emi_schedule')
-        .select('id', { count: 'exact', head: true })
-        .eq('loan_id', loanId)
-        .in('status', ['scheduled', 'overdue'])
+      // Settle the arrears on partially-paid installments through the payments
+      // junction rather than writing principal_paid directly: the schedule row's
+      // paid columns are derived from that junction by
+      // fn_recompute_emi_paid_state, which would overwrite a hand-set value on
+      // the next payment. The trigger also promotes the row to `paid` on its
+      // own — but only once its interest is settled too, so nothing is forgiven.
+      for (const arrear of plan.arrears) {
+        const { error } = await supabase.from('loan_emi_payments').insert({
+          schedule_id: arrear.scheduleId,
+          transaction_id: advanceTxn.id,
+          principal_applied: arrear.applied,
+          interest_applied: 0,
+        })
+        if (error) return actionError(error.message)
+      }
 
       // The rebuilt tail starts on the 10th of the month AFTER the prepayment
       // date — never at `next_due_date`, which is the earliest UNPAID due date
       // and can sit in the past (a genuinely missed month, or a schedule that a
       // bad regeneration back-dated; see migration 051). Anchoring there
       // regenerated the tail into the past and compounded the damage on every
-      // subsequent prepayment. Any unpaid earlier installments are dropped
-      // below and their principal re-amortizes across this new tail — it is
-      // already inside `newOutstanding`, so nothing is written off.
+      // subsequent prepayment. Scheduled/overdue installments are dropped below
+      // and their principal re-amortizes across this new tail — it is already
+      // inside `plan.tailPrincipal`, so nothing is written off.
       const firstDueDate = tenthOfMonth(paidDate, 1)
 
       const rows = recomputeAfterPrepayment({
-        outstanding: newOutstanding,
+        outstanding: plan.tailPrincipal,
         annualRatePct: Number(bal.interest_rate_pct),
-        remainingTerm: count ?? 1,
+        remainingTerm: Math.max(plan.remainingTerm, 1),
         currentEmi: Number(bal.emi_amount),
         firstDueDate,
         mode,
