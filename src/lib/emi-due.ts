@@ -98,3 +98,50 @@ export function pctPending(tallies: Pick<EmiTallies, 'settledCount' | 'totalCoun
   const remaining = Math.max(tallies.totalCount - tallies.settledCount, 0)
   return Math.round((remaining / tallies.totalCount) * 100)
 }
+
+/**
+ * The installment "Pay EMI" is offered on — at most one.
+ *
+ * Two rules combine:
+ *
+ *   1. **Earliest first.** Only the oldest unpaid installment can be paid.
+ *      Offering every started cycle at once let an admin settle #2 while #1 was
+ *      still outstanding, which strands a paid row between unpaid ones: the
+ *      schedule reads out of order, re-pricing has to skip around it, and the
+ *      date-shift repair refuses outright once anything is settled. Paying
+ *      genuinely ahead of schedule is what Prepay is for.
+ *
+ *   2. **Its cycle must have begun.** An installment accrues in the month
+ *      before its 10th-of-following-month due date, so it becomes payable on
+ *      the 1st of that accrual month — never earlier.
+ *
+ * Returns an array rather than a single id so callers keep a set-membership
+ * check and stay indifferent to the cardinality of the rule.
+ */
+export function payableInstallmentIds({
+  rows,
+  todayIso,
+}: {
+  rows: ReadonlyArray<{ id: string; installment_no: number; due_date: string; status: string }>
+  /** Today in IST (YYYY-MM-DD). */
+  todayIso: string
+}): string[] {
+  const earliest = rows
+    .filter((r) => UNPAID.has(r.status))
+    .sort((a, b) =>
+      a.due_date === b.due_date
+        ? a.installment_no - b.installment_no
+        : a.due_date < b.due_date
+          ? -1
+          : 1,
+    )[0]
+  if (!earliest) return []
+  return todayIso >= accrualMonthStart(earliest.due_date) ? [earliest.id] : []
+}
+
+/** The 1st of the month an installment accrues in — the month before it falls due. */
+export function accrualMonthStart(dueDateIso: string): string {
+  const [y, m] = dueDateIso.split('-').map(Number)
+  const d = new Date(Date.UTC(y, m - 2, 1))
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-01`
+}

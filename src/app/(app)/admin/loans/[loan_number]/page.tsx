@@ -15,6 +15,7 @@ import { ConvertToEmiForm } from './convert-to-emi-form'
 import { PenaltiesPanel } from './penalties-panel'
 import { getEmiSchedule, getEmiRecomputePreview } from '@/lib/actions/emi'
 import { getLoanPenalties } from '@/lib/actions/penalties'
+import { payableInstallmentIds } from '@/lib/emi-due'
 import { getReference } from '@/lib/actions/reference'
 
 const STATUS_PILL: Record<string, string> = {
@@ -85,23 +86,10 @@ export default async function AdminLoanManagePage({
   )
   const atOrAfterCutover = Number(cutoverYmd) > 0 && todayYmd >= Number(cutoverYmd)
 
-  // Pay EMI is offered on every unpaid installment whose due cycle has started —
-  // i.e. today (IST) is on/after the 1st of its accrual month (the month before
-  // its 10th-of-following-month due date). Resolved server-side.
+  // Pay EMI is offered on the EARLIEST unpaid installment, and only once its
+  // accrual month has begun — see `payableInstallmentIds`. Resolved server-side.
   const todayIst = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(now) // YYYY-MM-DD
-  const payableFromIso = (dueIso: string) => {
-    const [y, m] = dueIso.split('-').map(Number)
-    const d = new Date(Date.UTC(y, m - 1, 1))
-    d.setUTCMonth(d.getUTCMonth() - 1)
-    return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-01`
-  }
-  const payableInstallmentIds = schedule
-    .filter(
-      (r) =>
-        (r.status === 'scheduled' || r.status === 'partially_paid' || r.status === 'overdue') &&
-        todayIst >= payableFromIso(r.due_date),
-    )
-    .map((r) => r.id)
+  const payableIds = payableInstallmentIds({ rows: schedule, todayIso: todayIst })
 
   return (
     <div className="space-y-6">
@@ -221,7 +209,7 @@ export default async function AdminLoanManagePage({
               interest_rate_pct: loan.interest_rate_pct,
             }}
             schedule={schedule}
-            payableInstallmentIds={payableInstallmentIds}
+            payableInstallmentIds={payableIds}
             todayIso={todayIst}
           />
           {/* Converted loans may still carry a pre-cutoff accrual backlog — keep it visible. */}
