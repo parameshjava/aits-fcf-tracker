@@ -8,6 +8,7 @@ import { LoanTimelineSection } from '@/components/loan-timeline-section'
 import { CloseLoanForm } from './close-loan-form'
 import { PendingInterestPanel } from './pending-interest-panel'
 import { RecomputeEmiPanel } from './recompute-emi-panel'
+import { RecomputeAccrualsButton } from './recompute-accruals-button'
 import { EmiSchedulePanel } from './emi-schedule-panel'
 import { ConvertToEmiForm } from './convert-to-emi-form'
 import { PenaltiesPanel } from './penalties-panel'
@@ -181,8 +182,24 @@ export default async function AdminLoanManagePage({
         polls={polls}
       />
 
-      {isEmi && (
+      {isEmi ? (
         <RecomputeEmiPanel loanId={loan.id} plan={recomputePlan} ratePct={ratePct} />
+      ) : (
+        /* Accrual-model loans keep their own repair tool. It is deliberately NOT
+           offered on EMI loans — fn_recompute_loan_accruals has no
+           repayment_model guard and would mint accrual rows for months the EMI
+           schedule already charges interest for. */
+        <div className="rounded-2xl border border-gray-200/80 bg-white p-5">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <p className="text-sm text-gray-600">
+              Rebuild this loan&rsquo;s EOM accruals from{' '}
+              <span className="font-mono">start_date</span> to today. Existing payments are
+              preserved; amount due and status are recomputed. Run this after editing principal,
+              start date, or interest waiver.
+            </p>
+            <RecomputeAccrualsButton loanId={loan.id} />
+          </div>
+        </div>
       )}
 
       {isEmi ? (

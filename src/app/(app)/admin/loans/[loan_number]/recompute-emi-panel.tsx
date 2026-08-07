@@ -118,39 +118,45 @@ function RecomputeBody({
   if (!plan.hasChanges) {
     return (
       <NothingToDo
-        message={`All ${plan.rows.length} unpaid installment${plan.rows.length === 1 ? ' is' : 's are'} already priced at ${ratePct}% p.a.`}
+        message={`All ${plan.rows.length} not-yet-due installment${plan.rows.length === 1 ? ' is' : 's are'} already priced at ${ratePct}% p.a.`}
         onDone={onDone}
       />
     )
   }
 
-  const emiDelta = plan.newEmi - plan.currentEmi
+  const emiDelta = plan.nextEmiAfter - plan.nextEmiBefore
   const interestDelta = plan.interestAfter - plan.interestBefore
   const visible = showUnchanged ? plan.rows : plan.changed
   const unchangedCount = plan.rows.length - plan.changed.length
 
   return (
     <>
-      {/* The one number the admin is deciding on. */}
+      {/* Interest is what a rate change actually moves — principal does not. */}
       <div className="rounded-lg bg-gray-50 px-4 py-3">
-        <p className="text-[11px] uppercase tracking-wider text-gray-400">Monthly EMI</p>
+        <p className="text-[11px] uppercase tracking-wider text-gray-400">
+          Interest still to pay
+        </p>
         <p className="mt-1 flex flex-wrap items-baseline gap-x-2 text-2xl font-semibold text-gray-900">
           <span className="text-lg font-normal text-gray-400 line-through">
-            {formatRupees(plan.currentEmi)}
+            {formatRupees(plan.interestBefore)}
           </span>
-          {formatRupees(plan.newEmi)}
+          {formatRupees(plan.interestAfter)}
           <span className="text-sm font-semibold">
-            <Signed delta={emiDelta} suffix="a month" />
+            <Signed delta={interestDelta} />
           </span>
         </p>
         <p className="mt-1 text-xs text-gray-500">
-          At {ratePct}% p.a., across installments {range(plan.changed)}.
+          {plan.oldRatePct}% → {ratePct}% p.a., across installments {range(plan.changed)}.
         </p>
       </div>
 
       <div className="mt-3 grid grid-cols-2 gap-3">
-        <Stat label="Total interest">
-          <Signed delta={interestDelta} />
+        <Stat label={`Next EMI (#${plan.rows[0].installmentNo})`}>
+          <span className="text-gray-400 line-through">{formatRupees(plan.nextEmiBefore)}</span>{' '}
+          {formatRupees(plan.nextEmiAfter)}{' '}
+          <span className="text-xs">
+            <Signed delta={emiDelta} />
+          </span>
         </Stat>
         <Stat label="Installments changing">
           {plan.changed.length} of {plan.rows.length}
@@ -190,6 +196,9 @@ function RecomputeBody({
               <th scope="col" className="whitespace-nowrap py-2 pr-3 text-right">
                 Interest
               </th>
+              <th scope="col" className="whitespace-nowrap py-2 pr-3 text-right">
+                Principal
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -207,6 +216,9 @@ function RecomputeBody({
                 <td className="whitespace-nowrap py-1.5 pr-3 text-right">
                   <Delta before={r.before.interestDue} after={r.after.interestDue} />
                 </td>
+                <td className="whitespace-nowrap py-1.5 pr-3 text-right text-gray-500">
+                  {formatRupees(r.principalDue)}
+                </td>
               </tr>
             ))}
           </tbody>
@@ -214,8 +226,8 @@ function RecomputeBody({
       </div>
 
       <p className="mt-3 text-xs text-gray-500">
-        Due dates and installment numbers stay exactly as they are, and paid or part-paid
-        installments are never touched.
+        Only the interest changes — principal, balances, due dates and installment numbers stay
+        exactly as they are. Installments already paid, part paid or already due are never touched.
       </p>
 
       {state && !state.ok && <p className="mt-3 text-sm text-red-600">{state.error}</p>}
@@ -266,9 +278,9 @@ export function RecomputeEmiPanel({
   const close = useCallback(() => setOpen(false), [])
 
   // Nothing left to re-price — the card would only be noise.
-  if (plan.error === 'no_unpaid_installments') return null
+  if (plan.error === 'no_repriceable_installments') return null
 
-  const emiDelta = plan.newEmi - plan.currentEmi
+  const interestDelta = plan.interestAfter - plan.interestBefore
 
   return (
     <div className="rounded-2xl border border-gray-200/80 bg-white p-5">
@@ -295,14 +307,13 @@ export function RecomputeEmiPanel({
               emiRecomputeErrorMessage(plan)
             ) : plan.hasChanges ? (
               <>
-                The rate is now {ratePct}% p.a. Re-pricing would move the EMI from{' '}
-                {formatRupees(plan.currentEmi)} to{' '}
-                <span className="font-medium text-gray-900">{formatRupees(plan.newEmi)}</span> (
-                <Signed delta={emiDelta} suffix="a month" />
-                ).
+                This loan is priced at {plan.oldRatePct}% p.a. and the rate is now {ratePct}%.
+                Re-pricing the {plan.changed.length} installment
+                {plan.changed.length === 1 ? '' : 's'} not yet due would change the interest still
+                to pay by <Signed delta={interestDelta} />.
               </>
             ) : (
-              <>Every unpaid installment is priced at the current rate of {ratePct}% p.a.</>
+              <>Every not-yet-due installment is priced at the current rate of {ratePct}% p.a.</>
             )}
           </p>
         </div>

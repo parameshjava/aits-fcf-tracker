@@ -372,22 +372,40 @@ export async function recalculateSchedule(formData: FormData): Promise<ActionRes
 const RECOMPUTE_COLUMNS =
   'id, installment_no, due_date, status, opening_balance, emi_amount, principal_due, interest_due, closing_balance, principal_paid, interest_paid'
 
+/** Today in IST — the already-due cutoff, resolved server-side. */
+function todayIst(): string {
+  return new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' })
+}
+
+/**
+ * Read everything `planEmiRecompute` needs. The rate is NOT defaulted: this
+ * feeds a write path, and committing a guessed rate to the ledger would be
+ * worse than refusing (AGENTS.md — never hardcode a reference value).
+ */
+async function loadRecomputeInputs(loanId: string) {
+  const supabase = await createClient()
+  const [scheduleRes, loanRes, newRatePct] = await Promise.all([
+    supabase.from('loan_emi_schedule').select(RECOMPUTE_COLUMNS).eq('loan_id', loanId),
+    supabase.from('loans').select('interest_rate_pct').eq('id', loanId).maybeSingle(),
+    getReference('loan_interest_rate_pct').then(Number),
+  ])
+  if (scheduleRes.error) throw new Error(scheduleRes.error.message)
+  return {
+    supabase,
+    rows: (scheduleRes.data ?? []) as RecomputeScheduleRow[],
+    oldRatePct: loanRes.data?.interest_rate_pct as number | null | undefined,
+    newRatePct,
+  }
+}
+
 /**
  * What re-pricing this loan at the current reference rate would do — read-only,
  * for the confirmation screen. Returns `hasChanges: false` when the schedule is
  * already priced correctly.
  */
 export async function getEmiRecomputePreview(loanId: string): Promise<EmiRecomputePlan> {
-  const supabase = await createClient()
-  const [{ data: rows, error }, ratePct] = await Promise.all([
-    supabase.from('loan_emi_schedule').select(RECOMPUTE_COLUMNS).eq('loan_id', loanId),
-    getReference('loan_interest_rate_pct').then(Number).catch(() => 8),
-  ])
-  if (error) throw new Error(error.message)
-  return planEmiRecompute({
-    rows: (rows ?? []) as RecomputeScheduleRow[],
-    annualRatePct: ratePct,
-  })
+  const { rows, oldRatePct, newRatePct } = await loadRecomputeInputs(loanId)
+  return planEmiRecompute({ rows, oldRatePct, newRatePct, todayIso: todayIst() })
 }
 
 /**
@@ -402,27 +420,20 @@ export async function recomputeEmiSchedule(formData: FormData): Promise<ActionRe
 
     const loanId = String(formData.get('loan_id') ?? '')
     if (!loanId) return actionError('Loan is required')
-    const reviewedFingerprint = (formData.get('plan_fingerprint') as string | null) ?? null
+    // Required, not optional: without it there is no concurrency guard at all,
+    // which is the one thing it exists to provide.
+    const reviewedFingerprint = (formData.get('plan_fingerprint') as string | null)?.trim()
+    if (!reviewedFingerprint) return actionError('Missing the reviewed plan; reload and try again')
 
-    const supabase = await createClient()
-    const ratePct = await getReference('loan_interest_rate_pct').then(Number).catch(() => 8)
-    const { data: rows, error } = await supabase
-      .from('loan_emi_schedule')
-      .select(RECOMPUTE_COLUMNS)
-      .eq('loan_id', loanId)
-    if (error) return actionError(error.message)
-
-    const plan = planEmiRecompute({
-      rows: (rows ?? []) as RecomputeScheduleRow[],
-      annualRatePct: ratePct,
-    })
+    const { supabase, rows, oldRatePct, newRatePct } = await loadRecomputeInputs(loanId)
+    const plan = planEmiRecompute({ rows, oldRatePct, newRatePct, todayIso: todayIst() })
     if (plan.error) return actionError(emiRecomputeErrorMessage(plan))
 
-    // Re-planned against a fresh read: refuse if the schedule moved while the
-    // admin was looking at the preview.
-    if (reviewedFingerprint && reviewedFingerprint !== plan.fingerprint) {
+    // Re-planned against a fresh read. The fingerprint carries both rates, so
+    // this also catches the rate itself moving under an open preview.
+    if (reviewedFingerprint !== plan.fingerprint) {
       return actionError(
-        'The schedule changed while you were reviewing this recompute. Reload the page and try again.',
+        'This changed while you were reviewing it — the schedule or the interest rate has moved. Reload the page and try again.',
       )
     }
     if (!plan.hasChanges) return actionOk(undefined, 'No changes to apply')
@@ -431,14 +442,14 @@ export async function recomputeEmiSchedule(formData: FormData): Promise<ActionRe
       p_loan_id: loanId,
       p_rows: plan.changed.map((r) => ({
         id: r.scheduleId,
-        opening_balance: r.after.openingBalance,
         emi_amount: r.after.emiAmount,
-        principal_due: r.after.principalDue,
         interest_due: r.after.interestDue,
-        closing_balance: r.after.closingBalance,
       })),
-      p_new_emi: plan.newEmi,
-      p_new_rate: ratePct,
+      // All-or-nothing: the function raises, and rolls back, if it matches fewer
+      // rows than this — otherwise a row paid in the meantime would be skipped
+      // silently and the schedule would mix old and new rates.
+      p_expect: plan.changed.length,
+      p_new_rate: newRatePct,
     })
     if (rpcErr) return actionError(rpcErr.message)
 
