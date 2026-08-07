@@ -6,6 +6,7 @@ import { toast } from 'sonner'
 import { recomputeEmiSchedule } from '@/lib/actions/emi'
 import type { ActionResult } from '@/lib/actions/action-result'
 import type { EmiRecomputePlan, RecomputedRow } from '@/lib/emi-recompute'
+import type { AnchorDrift } from '@/lib/emi-anchor'
 import { emiRecomputeErrorMessage } from '@/lib/emi-recompute'
 import { formatRupees } from '@/lib/format'
 import { PrDialog } from '@/components/ui/pr/dialog'
@@ -60,6 +61,29 @@ function Stat({ label, children }: { label: string; children: React.ReactNode })
   )
 }
 
+/**
+ * A schedule generated against the wrong anchor. Re-pricing cannot fix it —
+ * it never moves a due date — so say so rather than reporting "no changes"
+ * and leaving the admin to wonder.
+ */
+function AnchorWarning({ anchor }: { anchor: AnchorDrift }) {
+  const late = anchor.monthsOff > 0
+  const months = Math.abs(anchor.monthsOff)
+  return (
+    <div className="rounded-lg bg-amber-50 px-4 py-3 ring-1 ring-amber-200">
+      <p className="text-sm font-medium text-amber-800">
+        This schedule starts {months} month{months === 1 ? '' : 's'} {late ? 'late' : 'early'}
+      </p>
+      <p className="mt-1 text-sm text-amber-700">
+        The first installment is dated {formatDate(anchor.actualFirstDue!)}, but this loan should be
+        scheduled from {formatDate(anchor.expectedFirstDue)}. Re-pricing will not correct it —
+        it only changes interest, never a due date. Regenerating the schedule is what moves the
+        dates.
+      </p>
+    </div>
+  )
+}
+
 function NothingToDo({ message, onDone }: { message: string; onDone: () => void }) {
   return (
     <>
@@ -80,11 +104,13 @@ function RecomputeBody({
   loanId,
   plan,
   ratePct,
+  anchor,
   onDone,
 }: {
   loanId: string
   plan: EmiRecomputePlan
   ratePct: number
+  anchor: AnchorDrift | null
   onDone: () => void
 }) {
   const router = useRouter()
@@ -117,10 +143,17 @@ function RecomputeBody({
 
   if (!plan.hasChanges) {
     return (
-      <NothingToDo
-        message={`All ${plan.rows.length} not-yet-due installment${plan.rows.length === 1 ? ' is' : 's are'} already priced at ${ratePct}% p.a.`}
-        onDone={onDone}
-      />
+      <>
+        {anchor?.drifted && (
+          <div className="mb-3">
+            <AnchorWarning anchor={anchor} />
+          </div>
+        )}
+        <NothingToDo
+          message={`All ${plan.rows.length} not-yet-due installment${plan.rows.length === 1 ? ' is' : 's are'} already priced at ${ratePct}% p.a.`}
+          onDone={onDone}
+        />
+      </>
     )
   }
 
@@ -131,6 +164,11 @@ function RecomputeBody({
 
   return (
     <>
+      {anchor?.drifted && (
+        <div className="mb-3">
+          <AnchorWarning anchor={anchor} />
+        </div>
+      )}
       {/* Interest is what a rate change actually moves — principal does not. */}
       <div className="rounded-lg bg-gray-50 px-4 py-3">
         <p className="text-[11px] uppercase tracking-wider text-gray-400">
@@ -267,18 +305,21 @@ export function RecomputeEmiPanel({
   loanId,
   plan,
   ratePct,
+  anchor,
 }: {
   loanId: string
   plan: EmiRecomputePlan
   ratePct: number
+  anchor: AnchorDrift | null
 }) {
   const [open, setOpen] = useState(false)
   // Remount the body on each open so useActionState resets.
   const [openKey, setOpenKey] = useState(0)
   const close = useCallback(() => setOpen(false), [])
 
-  // Nothing left to re-price — the card would only be noise.
-  if (plan.error === 'no_repriceable_installments') return null
+  // Nothing left to re-price and nothing wrong with the dates — the card would
+  // only be noise.
+  if (plan.error === 'no_repriceable_installments' && !anchor?.drifted) return null
 
   const interestDelta = plan.interestAfter - plan.interestBefore
 
@@ -288,7 +329,13 @@ export function RecomputeEmiPanel({
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <h3 className="text-sm font-semibold text-gray-900">Interest rate</h3>
-            {plan.error ? (
+            {anchor?.drifted ? (
+              <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700 ring-1 ring-amber-200">
+                Schedule starts {Math.abs(anchor.monthsOff)} month
+                {Math.abs(anchor.monthsOff) === 1 ? '' : 's'}{' '}
+                {anchor.monthsOff > 0 ? 'late' : 'early'}
+              </span>
+            ) : plan.error ? (
               <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[11px] font-medium text-gray-600">
                 Cannot re-price
               </span>
@@ -303,7 +350,13 @@ export function RecomputeEmiPanel({
             )}
           </div>
           <p className="mt-1 text-sm text-gray-600">
-            {plan.error ? (
+            {anchor?.drifted ? (
+              <>
+                The first installment is dated {formatDate(anchor.actualFirstDue!)} but this loan
+                should be scheduled from {formatDate(anchor.expectedFirstDue)}. Re-pricing only
+                changes interest and will not move it.
+              </>
+            ) : plan.error ? (
               emiRecomputeErrorMessage(plan)
             ) : plan.hasChanges ? (
               <>
@@ -336,7 +389,14 @@ export function RecomputeEmiPanel({
         header="Recompute EMI at the current rate"
         widthClass="sm:!w-[32rem]"
       >
-        <RecomputeBody key={openKey} loanId={loanId} plan={plan} ratePct={ratePct} onDone={close} />
+        <RecomputeBody
+          key={openKey}
+          loanId={loanId}
+          plan={plan}
+          ratePct={ratePct}
+          anchor={anchor}
+          onDone={close}
+        />
       </PrDialog>
     </div>
   )

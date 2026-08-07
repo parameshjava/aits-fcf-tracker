@@ -11,7 +11,12 @@ import {
   prepayPlanErrorMessage,
   type PrepayScheduleRow,
 } from '@/lib/prepay-plan'
-import { cutoverYmdToIso, isCutoverFloored } from '@/lib/emi-anchor'
+import {
+  cutoverYmdToIso,
+  isCutoverFloored,
+  detectAnchorDrift,
+  type AnchorDrift,
+} from '@/lib/emi-anchor'
 import {
   planEmiRecompute,
   emiRecomputeErrorMessage,
@@ -384,17 +389,37 @@ function todayIst(): string {
  */
 async function loadRecomputeInputs(loanId: string) {
   const supabase = await createClient()
-  const [scheduleRes, loanRes, newRatePct] = await Promise.all([
+  const [scheduleRes, loanRes, newRatePct, cutoverYmd] = await Promise.all([
     supabase.from('loan_emi_schedule').select(RECOMPUTE_COLUMNS).eq('loan_id', loanId),
-    supabase.from('loans').select('interest_rate_pct').eq('id', loanId).maybeSingle(),
+    supabase
+      .from('loans')
+      .select('interest_rate_pct, start_date, interest_waiver_months')
+      .eq('id', loanId)
+      .maybeSingle(),
     getReference('loan_interest_rate_pct').then(Number),
+    getReference('emi_cutover_date').catch(() => 0),
   ])
   if (scheduleRes.error) throw new Error(scheduleRes.error.message)
+  const rows = (scheduleRes.data ?? []) as RecomputeScheduleRow[]
+  const loan = loanRes.data as
+    | { interest_rate_pct: number | null; start_date: string; interest_waiver_months: number | null }
+    | null
+  // Re-pricing never moves a due date, so a schedule built against the wrong
+  // anchor would otherwise report "no changes" forever. Surface it instead.
+  const anchor = loan
+    ? detectAnchorDrift({
+        dueDates: rows.map((r) => r.due_date),
+        startDateIso: loan.start_date,
+        waiverMonths: Number(loan.interest_waiver_months ?? 0),
+        cutoverIso: cutoverYmdToIso(Number(cutoverYmd)),
+      })
+    : null
   return {
     supabase,
-    rows: (scheduleRes.data ?? []) as RecomputeScheduleRow[],
-    oldRatePct: loanRes.data?.interest_rate_pct as number | null | undefined,
+    rows,
+    oldRatePct: loan?.interest_rate_pct,
     newRatePct,
+    anchor,
   }
 }
 
@@ -403,9 +428,14 @@ async function loadRecomputeInputs(loanId: string) {
  * for the confirmation screen. Returns `hasChanges: false` when the schedule is
  * already priced correctly.
  */
-export async function getEmiRecomputePreview(loanId: string): Promise<EmiRecomputePlan> {
-  const { rows, oldRatePct, newRatePct } = await loadRecomputeInputs(loanId)
-  return planEmiRecompute({ rows, oldRatePct, newRatePct, todayIso: todayIst() })
+export async function getEmiRecomputePreview(
+  loanId: string,
+): Promise<EmiRecomputePlan & { anchor: AnchorDrift | null }> {
+  const { rows, oldRatePct, newRatePct, anchor } = await loadRecomputeInputs(loanId)
+  return {
+    ...planEmiRecompute({ rows, oldRatePct, newRatePct, todayIso: todayIst() }),
+    anchor,
+  }
 }
 
 /**

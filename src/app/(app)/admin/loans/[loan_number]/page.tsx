@@ -183,7 +183,12 @@ export default async function AdminLoanManagePage({
       />
 
       {isEmi ? (
-        <RecomputeEmiPanel loanId={loan.id} plan={recomputePlan} ratePct={ratePct} />
+        <RecomputeEmiPanel
+          loanId={loan.id}
+          plan={recomputePlan}
+          ratePct={ratePct}
+          anchor={recomputePlan.anchor}
+        />
       ) : (
         /* Accrual-model loans keep their own repair tool. It is deliberately NOT
            offered on EMI loans — fn_recompute_loan_accruals has no

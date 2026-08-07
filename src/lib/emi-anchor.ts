@@ -42,3 +42,71 @@ export function isCutoverFloored(startDateIso: string, cutoverIso: string | null
   if (!cutoverIso) return false
   return startDateIso < cutoverIso
 }
+
+/**
+ * The due date a freshly generated schedule would put on its first installment.
+ *
+ * Mirrors `fn_generate_emi_schedule`: the start is floored at the cutover, a
+ * floored (i.e. converted) loan's waiver is dropped to 0 because it was spent
+ * long before the cutover, and installment #1 falls due on the 10th of the
+ * month after its accrual month — including the pro-rated stub a mid-month
+ * disbursement produces, which accrues in the disbursement month itself.
+ */
+export function expectedFirstDueDate({
+  startDateIso,
+  waiverMonths,
+  cutoverIso,
+}: {
+  startDateIso: string
+  waiverMonths: number
+  cutoverIso: string | null
+}): string {
+  const start = emiScheduleStart(startDateIso, cutoverIso)
+  // greatest() floored it → converted loan → the original waiver does not apply.
+  const waiver = isCutoverFloored(startDateIso, cutoverIso) ? 0 : Math.max(waiverMonths || 0, 0)
+  const [y, m] = start.split('-').map(Number)
+  const target = new Date(Date.UTC(y, m - 1 + waiver + 1, 1))
+  return `${target.getUTCFullYear()}-${String(target.getUTCMonth() + 1).padStart(2, '0')}-10`
+}
+
+export type AnchorDrift = {
+  expectedFirstDue: string
+  actualFirstDue: string | null
+  /** The schedule does not start where the generator would put it. */
+  drifted: boolean
+  /** Whole months the schedule sits after where it should (negative = before). */
+  monthsOff: number
+}
+
+/**
+ * Compare where a loan's schedule actually starts with where it should.
+ *
+ * Re-pricing deliberately never moves a due date, so a schedule generated
+ * against the wrong anchor stays wrong and reports "no changes" forever. This
+ * is what lets the UI say so instead of staying silent.
+ */
+export function detectAnchorDrift({
+  dueDates,
+  startDateIso,
+  waiverMonths,
+  cutoverIso,
+}: {
+  /** Every installment's due date, any order. */
+  dueDates: string[]
+  startDateIso: string
+  waiverMonths: number
+  cutoverIso: string | null
+}): AnchorDrift {
+  const expectedFirstDue = expectedFirstDueDate({ startDateIso, waiverMonths, cutoverIso })
+  const actualFirstDue = dueDates.reduce<string | null>(
+    (min, d) => (min === null || d < min ? d : min),
+    null,
+  )
+  if (actualFirstDue === null) {
+    return { expectedFirstDue, actualFirstDue, drifted: false, monthsOff: 0 }
+  }
+  const [ey, em] = expectedFirstDue.split('-').map(Number)
+  const [ay, am] = actualFirstDue.split('-').map(Number)
+  const monthsOff = (ay - ey) * 12 + (am - em)
+  return { expectedFirstDue, actualFirstDue, drifted: monthsOff !== 0, monthsOff }
+}
