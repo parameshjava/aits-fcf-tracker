@@ -13,7 +13,7 @@ import type { ActionResult } from '@/lib/actions/action-result'
 import { formatRupees, todayISO } from '@/lib/format'
 import { overdueParts, formatDueLabel } from '@/lib/due'
 import { recomputeAfterPrepayment, prepaymentAnchorDate } from '@/lib/emi-math'
-import { planPrepayment } from '@/lib/prepay-plan'
+import { planPrepayment, prepayPlanErrorMessage } from '@/lib/prepay-plan'
 import { PrAccordion, PrAccordionTab } from '@/components/ui/pr/accordion'
 import { PrDialog } from '@/components/ui/pr/dialog'
 import { PrDatePicker } from '@/components/ui/pr/date-picker'
@@ -261,22 +261,19 @@ function PrepayReview({
     <div className="space-y-4">
       <dl className="grid grid-cols-2 gap-x-4 gap-y-1.5 rounded-md bg-gray-50 px-3 py-2.5 text-sm">
         <SummaryRow label="Advance amount" value={formatRupees(amount)} />
-        {plan.arrearsApplied > 0 && (
+        {plan.retainedPrincipal > 0 && !plan.fullPayoff && (
           <SummaryRow
-            label="Settles unpaid installments"
+            label="Stays owed as it is"
             value={
               <span>
-                {formatRupees(plan.arrearsApplied)}
+                {formatRupees(plan.retainedPrincipal)}
                 <span className="ml-1 text-xs font-normal text-gray-500">
-                  ({plan.arrears.map((a) => `#${a.installmentNo}`).join(', ')})
+                  ({plan.retained.map((r) => `#${r.installmentNo}`).join(', ')})
                 </span>
               </span>
             }
             tone="amber"
           />
-        )}
-        {plan.arrearsApplied > 0 && (
-          <SummaryRow label="Reduces principal" value={formatRupees(plan.appliedToTail)} />
         )}
         <SummaryRow
           label="Outstanding principal"
@@ -293,12 +290,15 @@ function PrepayReview({
         />
       </dl>
 
-      {plan.arrearsApplied > 0 && (
+      {plan.retained.length > 0 && !plan.fullPayoff && (
         <p className="text-xs text-amber-700">
-          Installment{plan.arrears.length > 1 ? 's' : ''}{' '}
-          {plan.arrears.map((a) => `#${a.installmentNo}`).join(', ')} {plan.arrears.length > 1 ? 'are' : 'is'}{' '}
-          partly paid already, so the advance clears {plan.arrears.length > 1 ? 'those' : 'that'} balance
-          first. Only {formatRupees(plan.appliedToTail)} goes towards reducing the remaining schedule.
+          Installment{plan.retained.length > 1 ? 's' : ''}{' '}
+          {plan.retained.map((r) => `#${r.installmentNo}`).join(', ')}{' '}
+          {plan.retained.length > 1 ? 'are' : 'is'} already due
+          {plan.retained.some((r) => r.reason === 'partially_paid') ? ' or part paid' : ''}, so{' '}
+          {plan.retained.length > 1 ? 'they keep their own dates and balances' : 'it keeps its own date and balance'}.
+          The advance only reduces what is not yet due — record{' '}
+          {plan.retained.length > 1 ? 'those' : 'that'} with Pay EMI.
         </p>
       )}
 
@@ -319,10 +319,19 @@ function PrepayReview({
               }
             />
             <Stat
+              // Counts the installments that survive the rebuild too — they are
+              // still owed, so leaving them out understated what the member has left.
               label="Installments left"
-              value={`${rows.length} (was ${plan.remainingTerm})`}
+              value={`${rows.length + plan.retained.length} (was ${plan.remainingTerm + plan.retained.length})`}
             />
-            <Stat label="Final due date" value={formatDate(rows[rows.length - 1]?.dueDate ?? null)} />
+            <Stat
+              label="Final due date"
+              value={formatDate(
+                rows[rows.length - 1]?.dueDate ??
+                  plan.retained[plan.retained.length - 1]?.dueDate ??
+                  null,
+              )}
+            />
             <Stat
               label="Interest saved"
               value={formatRupees(Math.max(interestBefore - interestAfter, 0))}
@@ -419,12 +428,8 @@ function PrepayForm({
   const preview: PrepayPreview = useMemo(() => {
     const amt = amount ?? 0
     if (!(amt > 0) || !paidDate) return null
-    const plan = planPrepayment({ rows: schedule, amount: amt })
-    if (plan.error === 'exceeds_outstanding') {
-      return {
-        error: `Advance exceeds the outstanding principal of ${formatRupees(plan.pendingPrincipal)}.`,
-      }
-    }
+    const plan = planPrepayment({ rows: schedule, amount: amt, paidDate })
+    if (plan.error) return { error: prepayPlanErrorMessage(plan) }
     const rows = plan.fullPayoff
       ? []
       : recomputeAfterPrepayment({
@@ -435,20 +440,15 @@ function PrepayForm({
           firstDueDate: prepaymentAnchorDate(paidDate, plan.earliestUnpaidDueDate),
           mode,
         })
-    const unpaidInterest = (r: EmiScheduleRow) =>
-      Math.max(Number(r.interest_due) - Number(r.interest_paid), 0)
     const interestBefore = schedule
       .filter((r) => UNPAID.has(r.status))
-      .reduce((s, r) => s + unpaidInterest(r), 0)
-    // Interest owed on partially-paid rows is not rebuilt — those rows survive,
-    // so it stays payable and belongs in the "after" figure. A full payoff closes
-    // the loan outright, leaving nothing.
-    const arrearsInterest = schedule
-      .filter((r) => r.status === 'partially_paid')
-      .reduce((s, r) => s + unpaidInterest(r), 0)
+      .reduce((s, r) => s + Math.max(Number(r.interest_due) - Number(r.interest_paid), 0), 0)
+    // Interest on the installments that survive the rebuild is not recomputed —
+    // it stays payable and belongs in the "after" figure. A full payoff is only
+    // allowed once none is outstanding, so it leaves nothing.
     const interestAfter = plan.fullPayoff
       ? 0
-      : rows.reduce((s, r) => s + r.interestDue, 0) + arrearsInterest
+      : rows.reduce((s, r) => s + r.interestDue, 0) + plan.retainedInterest
     return { plan, rows, interestBefore, interestAfter }
   }, [amount, paidDate, mode, schedule, loan.interest_rate_pct, currentEmi])
 
@@ -464,6 +464,9 @@ function PrepayForm({
         <input type="hidden" name="paid_date" value={paidDate} />
         <input type="hidden" name="bank_transaction_id" value={bankTxnId} />
         {applyToBank && <input type="hidden" name="applyToBankBalance" value="1" />}
+        {/* The action re-plans against a fresh read and refuses to apply if the
+            schedule moved under the plan shown here. */}
+        <input type="hidden" name="plan_fingerprint" value={preview.plan.fingerprint} />
 
         <PrepayReview
           preview={preview}
@@ -512,8 +515,12 @@ function PrepayForm({
       <fieldset className="flex flex-col gap-2 text-xs">
         <span className="text-gray-500">Mode</span>
         <label className="flex items-center gap-2 text-gray-700">
+          {/* Both radios share a `name` so the browser treats them as one group
+              — without it arrow keys don't move between them. The value is
+              submitted from a hidden field on the confirmation step. */}
           <input
             type="radio"
+            name="prepay_mode"
             checked={mode === 'reduce_tenure'}
             onChange={() => setMode('reduce_tenure')}
             className="h-4 w-4 text-blue-600 focus:ring-blue-500"
@@ -523,6 +530,7 @@ function PrepayForm({
         <label className="flex items-center gap-2 text-gray-700">
           <input
             type="radio"
+            name="prepay_mode"
             checked={mode === 'reduce_emi'}
             onChange={() => setMode('reduce_emi')}
             className="h-4 w-4 text-blue-600 focus:ring-blue-500"
@@ -722,18 +730,20 @@ function PrepaymentWhatIf({
   )
 
   const amt = amount ?? 0
-  // Mirrors prepayLoan exactly — same planner, same amortization, same anchor.
-  const plan = useMemo(() => planPrepayment({ rows: schedule, amount: amt }), [schedule, amt])
+  const today = todayISO()
+  // Mirrors prepayLoan exactly — same planner, same amortization, same anchor,
+  // estimated as though the money arrived today.
+  const plan = useMemo(
+    () => planPrepayment({ rows: schedule, amount: amt, paidDate: today }),
+    [schedule, amt, today],
+  )
   const outstanding = plan.pendingPrincipal
   const remainingTerm = plan.remainingTerm
-  // Same anchor the server uses — an estimate for "if I paid today".
-  const firstDueDate = prepaymentAnchorDate(todayISO(), plan.earliestUnpaidDueDate)
+  const firstDueDate = prepaymentAnchorDate(today, plan.earliestUnpaidDueDate)
 
   const result = useMemo(() => {
     if (!nextDue || !(amt > 0) || !(interestRatePct >= 0)) return null
-    if (plan.error === 'exceeds_outstanding') {
-      return { error: 'Amount exceeds the outstanding principal.' as const }
-    }
+    if (plan.error) return { error: prepayPlanErrorMessage(plan) }
     if (plan.fullPayoff) return { rows: [] as ReturnType<typeof recomputeAfterPrepayment>, newInterest: 0, fullPayoff: true }
     const rows = recomputeAfterPrepayment({
       outstanding: plan.tailPrincipal,
@@ -743,17 +753,14 @@ function PrepaymentWhatIf({
       firstDueDate,
       mode,
     })
-    // Partially-paid installments survive the rebuild, so the interest still
-    // owed on them is part of the "after" figure.
-    const arrearsInterest = schedule
-      .filter((r) => r.status === 'partially_paid')
-      .reduce((s, r) => s + Math.max(Number(r.interest_due) - Number(r.interest_paid), 0), 0)
+    // Installments that survive the rebuild keep their interest, so it is part
+    // of the "after" figure.
     return {
       rows,
-      newInterest: rows.reduce((s, r) => s + r.interestDue, 0) + arrearsInterest,
+      newInterest: rows.reduce((s, r) => s + r.interestDue, 0) + plan.retainedInterest,
       fullPayoff: false,
     }
-  }, [nextDue, amt, plan, schedule, interestRatePct, remainingTerm, currentEmi, firstDueDate, mode])
+  }, [nextDue, amt, plan, interestRatePct, remainingTerm, currentEmi, firstDueDate, mode])
 
   if (!nextDue) return null
 

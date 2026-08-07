@@ -1,21 +1,35 @@
 /**
- * Works out what an advance principal payment actually does to a loan's EMI
- * schedule, before anything is written.
+ * Works out what an advance principal payment does to a loan's EMI schedule,
+ * before anything is written.
  *
- * The rebuild in `prepayLoan` replaces only the `scheduled` / `overdue`
- * installments — a `partially_paid` row survives it, because its payment
- * history is linked through `loan_emi_payments` (ON DELETE RESTRICT). So the
- * principal still owed on such a row must NOT be folded into the tail that gets
- * re-amortized: it is already owed on its own row, and counting it in both
- * places bills the member twice.
+ * The governing rule: **a prepayment reduces what is not yet due. It never
+ * rewrites what the member already owes.**
  *
- * The advance is therefore applied oldest-debt-first: it settles the arrears
- * sitting on partially-paid installments, and only what is left over reduces
- * the amortizing tail.
+ * Two kinds of installment therefore survive the rebuild untouched:
  *
- * Both `prepayLoan` and the pre-flight confirmation screen call this, so what
- * the admin approves is exactly what gets applied.
+ *   • *partially paid* — its payment history is linked through
+ *     `loan_emi_payments` (ON DELETE RESTRICT), so the row cannot be deleted at
+ *     all; and
+ *   • *already due* — due on or before the payment date. Folding these into the
+ *     rebuilt tail re-dated them into the future, which erased their overdue
+ *     status and past-due dates: a small advance against arrears bought the
+ *     borrower a multi-month extension and cleared the delinquency flags.
+ *
+ * Both are classified **by date and paid-amount, never by `status`**. The
+ * late-fee cron rewrites `status` (`partially_paid` → `overdue`) behind the
+ * app's back, so a status-based rule silently reclassified rows that owned
+ * junction rows and the rebuild's delete then tripped the foreign key.
+ *
+ * The principal still owed on surviving rows is excluded from the amortizing
+ * tail — it is already owed on its own row, and counting it in both places
+ * bills the member twice.
+ *
+ * Both `prepayLoan` and the pre-flight confirmation screen call this, and the
+ * `fingerprint` lets the action detect that the schedule moved under a plan the
+ * admin was still reviewing.
  */
+
+import { formatRupees } from '@/lib/format'
 
 export type PrepayScheduleRow = {
   id: string
@@ -24,111 +38,207 @@ export type PrepayScheduleRow = {
   status: 'scheduled' | 'paid' | 'partially_paid' | 'overdue' | 'waived'
   principal_due: number
   principal_paid: number
+  interest_due: number
+  interest_paid: number
+  late_fee_charged: number
+  late_fee_waived: boolean
 }
 
-export type ArrearAllocation = {
+export type RetainedInstallment = {
   scheduleId: string
   installmentNo: number
-  /** Principal from the advance applied to this installment. */
-  applied: number
-  /** Principal still owed on it afterwards. */
-  outstandingAfter: number
+  dueDate: string
+  principalOutstanding: number
+  interestOutstanding: number
+  /** Why the rebuild leaves it alone. */
+  reason: 'partially_paid' | 'already_due'
 }
 
 export type PrepayPlan = {
   /** Principal still owed across every non-waived installment. */
   pendingPrincipal: number
-  /** Of that, the part sitting on partially-paid rows the rebuild can't touch. */
-  arrearsPrincipal: number
-  /** Part of the advance that settles those arrears. */
-  arrearsApplied: number
-  arrears: ArrearAllocation[]
-  /** Part of the advance that reduces the amortizing tail. */
-  appliedToTail: number
+  /** Installments the rebuild leaves alone, earliest first. */
+  retained: RetainedInstallment[]
+  /** Principal still owed on those installments. */
+  retainedPrincipal: number
+  /** Interest still owed on them — a full payoff cannot close over this. */
+  retainedInterest: number
+  /** Principal on the not-yet-due installments the rebuild replaces. */
+  replacedPrincipal: number
+  /** ids of those installments — the rebuild deletes exactly these. */
+  replacedIds: string[]
   /** Principal the rebuilt tail amortizes. */
   tailPrincipal: number
-  /** Installments the rebuild replaces (scheduled + overdue). */
+  /** How many installments the rebuild replaces. */
   remainingTerm: number
-  /**
-   * Earliest due date among those replaced installments — feed it to
-   * `prepaymentAnchorDate` so the rebuilt tail keeps the current month's slot
-   * instead of skipping to the next one.
-   */
+  /** Earliest due date among them — feeds `prepaymentAnchorDate`. */
   earliestUnpaidDueDate: string | null
+  /** Unwaived late fees on the replaced rows, to carry onto the new first row. */
+  carriedLateFee: number
+  /** First installment number the rebuilt tail may use. */
+  nextInstallmentNo: number
   /** The advance clears every rupee of pending principal. */
   fullPayoff: boolean
-  /** Non-null when the plan can't be applied; callers must check this first. */
-  error: 'exceeds_outstanding' | null
+  /** Cheap equality check so the server can spot a schedule that moved. */
+  fingerprint: string
+  /** Non-null when the plan cannot be applied; callers must check this first. */
+  error: PrepayPlanError | null
 }
+
+export type PrepayPlanError =
+  /** More than the loan owes. */
+  | 'exceeds_outstanding'
+  /** More than the not-yet-due principal, but less than the whole loan. */
+  | 'exceeds_future_principal'
+  /** Would close the loan while interest is still owed. */
+  | 'interest_outstanding'
 
 /** Round to paise — schedule columns are numeric(12,2). */
 const r2 = (n: number) => Math.round(n * 100) / 100
 
-const owed = (r: PrepayScheduleRow) =>
-  Math.max(r2(Number(r.principal_due) - Number(r.principal_paid)), 0)
+/**
+ * Remaining principal on a row. Deliberately NOT clamped at zero: an
+ * over-applied installment offsets the rest, exactly as
+ * `loan_emi_balances.pending_principal` sums it, so the guards here agree with
+ * what the rest of the app reports as outstanding.
+ */
+const owedPrincipal = (r: PrepayScheduleRow) =>
+  r2(Number(r.principal_due) - Number(r.principal_paid))
+
+const owedInterest = (r: PrepayScheduleRow) =>
+  r2(Number(r.interest_due) - Number(r.interest_paid))
 
 export function planPrepayment({
   rows,
   amount,
+  paidDate,
 }: {
   rows: PrepayScheduleRow[]
   amount: number
+  /** When the advance was received (YYYY-MM-DD) — the already-due cutoff. */
+  paidDate: string
 }): PrepayPlan {
-  const pendingPrincipal = r2(
-    rows.filter((r) => r.status !== 'waived').reduce((s, r) => s + owed(r), 0),
-  )
-  const arrearRows = rows
-    .filter((r) => r.status === 'partially_paid' && owed(r) > 0)
+  const live = rows.filter((r) => r.status !== 'waived')
+  const pendingPrincipal = r2(live.reduce((s, r) => s + owedPrincipal(r), 0))
+
+  const isSettled = (r: PrepayScheduleRow) =>
+    owedPrincipal(r) === 0 && owedInterest(r) === 0
+  // Anything the member has already part-paid, or that has already fallen due,
+  // keeps its own row. Classified by paid amount and date — never by `status`.
+  const survives = (r: PrepayScheduleRow) =>
+    Number(r.principal_paid) > 0 ||
+    Number(r.interest_paid) > 0 ||
+    r.due_date <= paidDate
+
+  const retained: RetainedInstallment[] = live
+    .filter((r) => !isSettled(r) && survives(r))
     .sort((a, b) => a.installment_no - b.installment_no)
-  const arrearsPrincipal = r2(arrearRows.reduce((s, r) => s + owed(r), 0))
-  const replaced = rows.filter((r) => r.status === 'scheduled' || r.status === 'overdue')
-  const remainingTerm = replaced.length
+    .map((r) => ({
+      scheduleId: r.id,
+      installmentNo: r.installment_no,
+      dueDate: r.due_date,
+      principalOutstanding: owedPrincipal(r),
+      interestOutstanding: owedInterest(r),
+      reason: Number(r.principal_paid) > 0 || Number(r.interest_paid) > 0
+        ? ('partially_paid' as const)
+        : ('already_due' as const),
+    }))
+  const retainedPrincipal = r2(retained.reduce((s, r) => s + r.principalOutstanding, 0))
+  const retainedInterest = r2(retained.reduce((s, r) => s + r.interestOutstanding, 0))
+
+  const replaced = live
+    .filter((r) => !isSettled(r) && !survives(r))
+    .sort((a, b) => a.installment_no - b.installment_no)
+  const replacedPrincipal = r2(replaced.reduce((s, r) => s + owedPrincipal(r), 0))
   const earliestUnpaidDueDate = replaced.reduce<string | null>(
     (min, r) => (min === null || r.due_date < min ? r.due_date : min),
     null,
   )
+  // Late fees already charged on rows about to be dropped are real receivables,
+  // each with a matching penalty transaction; carry the unwaived total forward.
+  const carriedLateFee = r2(
+    replaced.reduce((s, r) => (r.late_fee_waived ? s : s + (Number(r.late_fee_charged) || 0)), 0),
+  )
+  const replacedIds = new Set(replaced.map((r) => r.id))
+  const nextInstallmentNo =
+    rows
+      .filter((r) => !replacedIds.has(r.id))
+      .reduce((max, r) => Math.max(max, r.installment_no), 0) + 1
 
-  const base = { pendingPrincipal, arrearsPrincipal, remainingTerm, earliestUnpaidDueDate }
+  const fullPayoff = r2(pendingPrincipal - amount) <= 0
+  const fingerprint = [
+    pendingPrincipal,
+    retained.length,
+    replaced.length,
+    earliestUnpaidDueDate ?? '-',
+  ].join('|')
 
-  if (r2(amount - pendingPrincipal) > 0) {
-    return {
-      ...base,
-      arrearsApplied: 0,
-      arrears: [],
-      appliedToTail: 0,
-      tailPrincipal: r2(pendingPrincipal - arrearsPrincipal),
-      fullPayoff: false,
-      error: 'exceeds_outstanding',
-    }
+  const base = {
+    pendingPrincipal,
+    retained,
+    retainedPrincipal,
+    retainedInterest,
+    replacedPrincipal,
+    replacedIds: replaced.map((r) => r.id),
+    remainingTerm: replaced.length,
+    earliestUnpaidDueDate,
+    carriedLateFee,
+    nextInstallmentNo,
+    fingerprint,
   }
 
-  // Oldest debt first: clear the arrears, then pay ahead.
-  let left = r2(Math.max(amount, 0))
-  const arrears: ArrearAllocation[] = []
-  for (const row of arrearRows) {
-    if (left <= 0) break
-    const applied = r2(Math.min(owed(row), left))
-    if (applied <= 0) continue
-    arrears.push({
-      scheduleId: row.id,
-      installmentNo: row.installment_no,
-      applied,
-      outstandingAfter: r2(owed(row) - applied),
-    })
-    left = r2(left - applied)
-  }
-  const arrearsApplied = r2(Math.max(amount, 0) - left)
+  const fail = (error: PrepayPlanError): PrepayPlan => ({
+    ...base,
+    tailPrincipal: replacedPrincipal,
+    fullPayoff: false,
+    error,
+  })
 
-  // Whatever arrears the advance did not reach stay on their own rows, so they
-  // are excluded from the tail here and not re-amortized.
-  const scheduledPrincipal = r2(pendingPrincipal - arrearsPrincipal)
+  if (r2(amount - pendingPrincipal) > 0) return fail('exceeds_outstanding')
+
+  if (fullPayoff) {
+    // Closing over unpaid interest silently forgives it — the balances view
+    // stops counting interest once a row is `paid`, and no transaction records
+    // the write-off. Make the admin settle or waive it first.
+    if (retainedInterest > 0) return fail('interest_outstanding')
+    return { ...base, tailPrincipal: 0, fullPayoff: true, error: null }
+  }
+
+  // Short of a full payoff the advance may only reduce not-yet-due principal;
+  // arrears are settled through Pay EMI, which records their interest too.
+  if (r2(amount - replacedPrincipal) > 0) return fail('exceeds_future_principal')
+
   return {
     ...base,
-    arrearsApplied,
-    arrears,
-    appliedToTail: left,
-    tailPrincipal: r2(scheduledPrincipal - left),
-    fullPayoff: r2(pendingPrincipal - amount) <= 0,
+    tailPrincipal: r2(replacedPrincipal - amount),
+    fullPayoff: false,
     error: null,
+  }
+}
+
+/**
+ * Admin-facing wording for each reason a plan is refused. Shared so the
+ * confirmation screen and the action say exactly the same thing.
+ */
+export function prepayPlanErrorMessage(plan: PrepayPlan): string {
+  const list = (rows: RetainedInstallment[]) => rows.map((r) => `#${r.installmentNo}`).join(', ')
+  switch (plan.error) {
+    case 'exceeds_outstanding':
+      return `Advance exceeds the outstanding principal of ${formatRupees(plan.pendingPrincipal)}.`
+    case 'exceeds_future_principal':
+      return (
+        `Only ${formatRupees(plan.replacedPrincipal)} of principal is not yet due. ` +
+        `${formatRupees(plan.retainedPrincipal)} is already owed on ${list(plan.retained)} — record ` +
+        `${plan.retained.length > 1 ? 'those installments' : 'that installment'} with Pay EMI first, ` +
+        `or pay the full ${formatRupees(plan.pendingPrincipal)} to close the loan.`
+      )
+    case 'interest_outstanding':
+      return (
+        `This advance clears the principal, but ${formatRupees(plan.retainedInterest)} of interest ` +
+        `is still due on ${list(plan.retained.filter((r) => r.interestOutstanding > 0))}. ` +
+        `Record or waive it with Pay EMI before closing the loan.`
+      )
+    default:
+      return 'Prepayment could not be applied.'
   }
 }

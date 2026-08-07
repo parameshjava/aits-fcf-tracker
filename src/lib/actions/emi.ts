@@ -6,7 +6,11 @@ import { getCurrentUser } from './auth'
 import { getReference, applyBalanceDelta } from './reference'
 import { actionError, actionOk, runAction, type ActionResult } from './action-result'
 import { recomputeAfterPrepayment, prepaymentAnchorDate } from '@/lib/emi-math'
-import { planPrepayment, type PrepayScheduleRow } from '@/lib/prepay-plan'
+import {
+  planPrepayment,
+  prepayPlanErrorMessage,
+  type PrepayScheduleRow,
+} from '@/lib/prepay-plan'
 import { cutoverYmdToIso, isCutoverFloored } from '@/lib/emi-anchor'
 
 export type EmiScheduleRow = {
@@ -164,11 +168,17 @@ export async function payEmi(formData: FormData): Promise<ActionResult> {
 }
 
 /**
- * Prepay extra principal; rebuild remaining schedule by tenure or EMI reduction.
+ * Prepay extra principal; rebuild the not-yet-due installments by tenure or EMI
+ * reduction.
  *
- * `planPrepayment` decides how the advance is split: oldest debt first, so it
- * settles the arrears on partially-paid installments (which survive the rebuild)
- * before reducing the amortizing tail. See `@/lib/prepay-plan`.
+ * `planPrepayment` decides what the advance may touch: it reduces future
+ * principal only, while partially-paid and already-due installments keep their
+ * own rows and are settled through `payEmi`. See `@/lib/prepay-plan`.
+ *
+ * Every write goes through `fn_apply_prepayment` (migration 052) so the
+ * transaction, the bank credit and the schedule rebuild land together or not at
+ * all — a part-applied prepayment used to leave booked money that a retry
+ * duplicated.
  */
 export async function prepayLoan(formData: FormData): Promise<ActionResult> {
   return runAction('prepayLoan', async () => {
@@ -182,7 +192,10 @@ export async function prepayLoan(formData: FormData): Promise<ActionResult> {
     const paidDate = String(formData.get('paid_date') ?? '')
     const bankTransactionId = (formData.get('bank_transaction_id') as string | null)?.trim() || null
     const applyToBankBalance = formData.get('applyToBankBalance') === '1'
-    if (!loanId || !(amount > 0) || !['reduce_tenure', 'reduce_emi'].includes(mode)) {
+    // Fingerprint of the plan the admin actually reviewed, if it came from the
+    // confirmation screen.
+    const reviewedFingerprint = (formData.get('plan_fingerprint') as string | null) ?? null
+    if (!loanId || !(amount > 0) || !paidDate || !['reduce_tenure', 'reduce_emi'].includes(mode)) {
       return actionError('Invalid prepayment input')
     }
 
@@ -194,174 +207,88 @@ export async function prepayLoan(formData: FormData): Promise<ActionResult> {
       .single()
     if (!bal) return actionError('Loan not on EMI model')
 
-    // The whole schedule drives the plan: how much of the advance settles the
-    // arrears on partially-paid installments (rows the rebuild below cannot
-    // touch) and how much principal is left to re-amortize. Deriving both from
-    // the same rows is what stops a partial remainder being owed twice — once
-    // on its own row and again inside the rebuilt tail.
     const { data: scheduleRows, error: schedErr } = await supabase
       .from('loan_emi_schedule')
-      .select('id, installment_no, due_date, status, principal_due, principal_paid')
+      .select(
+        'id, installment_no, due_date, status, principal_due, principal_paid, interest_due, interest_paid, late_fee_charged, late_fee_waived',
+      )
       .eq('loan_id', loanId)
     if (schedErr) return actionError(schedErr.message)
 
     const plan = planPrepayment({
       rows: (scheduleRows ?? []) as PrepayScheduleRow[],
       amount,
+      paidDate,
     })
-    if (plan.error === 'exceeds_outstanding') {
-      return actionError('Advance exceeds outstanding principal')
-    }
+    if (plan.error) return actionError(prepayPlanErrorMessage(plan))
 
-    // Record the advance as a principal repayment.
-    const { data: advanceTxn, error: txnErr } = await supabase
-      .from('transactions')
-      .insert({
-        member_id: memberId || null,
-        loan_id: loanId,
-        transaction_type: 'loan_repayment',
-        amount,
-        transaction_date: paidDate,
-        description: `Advance principal (${mode})`,
-        bank_transaction_id: bankTransactionId,
-        created_by: user.id,
-        verified_by: user.id,
-      })
-      .select('id')
-      .single()
-    if (txnErr || !advanceTxn) return actionError(txnErr?.message ?? 'Failed to record the advance')
-
-    // Cash received → increase the bank balance by the advance amount.
-    if (applyToBankBalance) {
-      const result = await applyBalanceDelta(amount)
-      if (!result.ok) console.error('applyBalanceDelta failed for prepayLoan:', result.error)
-    }
-
-    if (plan.fullPayoff) {
-      // Fully paid off. The advance covers the entire outstanding principal,
-      // which includes the unpaid remainder of any partially-paid installment —
-      // complete those rows so they stop reporting a dangling balance, then
-      // drop the never-paid rows entirely (cleaner than leaving "waived" rows
-      // for installments the member actually settled in cash).
-      const { data: partials, error: partialsErr } = await supabase
-        .from('loan_emi_schedule')
-        .select('id, principal_due')
-        .eq('loan_id', loanId)
-        .eq('status', 'partially_paid')
-      if (partialsErr) return actionError(partialsErr.message)
-      const settledAt = new Date().toISOString()
-      for (const row of partials ?? []) {
-        const { error } = await supabase
-          .from('loan_emi_schedule')
-          .update({ principal_paid: row.principal_due, status: 'paid', paid_at: settledAt })
-          .eq('id', row.id)
-        if (error) return actionError(error.message)
-      }
-
-      // Delete remaining scheduled/overdue rows. They have no payment junction
-      // rows, so the ON DELETE RESTRICT FK on loan_emi_payments won't block this.
-      const { error: delErr } = await supabase
-        .from('loan_emi_schedule')
-        .delete()
-        .eq('loan_id', loanId)
-        .in('status', ['scheduled', 'overdue'])
-      if (delErr) return actionError(delErr.message)
-
-      // Formally close the loan.
-      const { error: closeErr } = await supabase
-        .from('loans')
-        .update({ status: 'paid' })
-        .eq('id', loanId)
-      if (closeErr) return actionError(closeErr.message)
-    } else {
-      // Settle the arrears on partially-paid installments through the payments
-      // junction rather than writing principal_paid directly: the schedule row's
-      // paid columns are derived from that junction by
-      // fn_recompute_emi_paid_state, which would overwrite a hand-set value on
-      // the next payment. The trigger also promotes the row to `paid` on its
-      // own — but only once its interest is settled too, so nothing is forgiven.
-      for (const arrear of plan.arrears) {
-        const { error } = await supabase.from('loan_emi_payments').insert({
-          schedule_id: arrear.scheduleId,
-          transaction_id: advanceTxn.id,
-          principal_applied: arrear.applied,
-          interest_applied: 0,
-        })
-        if (error) return actionError(error.message)
-      }
-
-      // Resume at the earliest unpaid due date, but never at a date already
-      // gone by on the payment date — see `prepaymentAnchorDate`. Scheduled and
-      // overdue installments are dropped below and their principal re-amortizes
-      // across this new tail; it is already inside `plan.tailPrincipal`, so
-      // nothing is written off.
-      const firstDueDate = prepaymentAnchorDate(paidDate, plan.earliestUnpaidDueDate)
-
-      const rows = recomputeAfterPrepayment({
-        outstanding: plan.tailPrincipal,
-        annualRatePct: Number(bal.interest_rate_pct),
-        remainingTerm: Math.max(plan.remainingTerm, 1),
-        currentEmi: Number(bal.emi_amount),
-        firstDueDate,
-        mode,
-      })
-
-      // Late fees already charged on the rows we are about to drop are real
-      // receivables — each has a matching penalty transaction. Carry the
-      // unwaived total onto the first row of the new tail so it stays
-      // collectable; without this the delete below silently forgave it.
-      const { data: feeRows, error: feeErr } = await supabase
-        .from('loan_emi_schedule')
-        .select('late_fee_charged, late_fee_waived')
-        .eq('loan_id', loanId)
-        .in('status', ['scheduled', 'overdue'])
-      if (feeErr) return actionError(feeErr.message)
-      const carriedLateFee = (feeRows ?? []).reduce(
-        (sum, r) => (r.late_fee_waived ? sum : sum + (Number(r.late_fee_charged) || 0)),
-        0,
+    // The confirmation screen plans against the page-load snapshot; the cron or
+    // another admin can move the schedule before Confirm is pressed. Refuse
+    // rather than apply numbers nobody approved.
+    if (reviewedFingerprint && reviewedFingerprint !== plan.fingerprint) {
+      return actionError(
+        'The schedule changed while you were reviewing this prepayment. Reload the page and try again.',
       )
-
-      // Replace unpaid rows with the recomputed schedule (delete + reinsert).
-      const { error: delErr } = await supabase
-        .from('loan_emi_schedule')
-        .delete()
-        .eq('loan_id', loanId)
-        .in('status', ['scheduled', 'overdue'])
-      if (delErr) return actionError(delErr.message)
-      // Compute the max installment number AFTER deleting scheduled/overdue rows so
-      // that waived rows are included — avoids unique(loan_id, installment_no) collisions.
-      const { data: maxRow } = await supabase
-        .from('loan_emi_schedule')
-        .select('installment_no')
-        .eq('loan_id', loanId)
-        .order('installment_no', { ascending: false })
-        .limit(1)
-        .maybeSingle()
-      let n = maxRow?.installment_no ?? 0
-      const insertRows = rows.map((r, idx) => ({
-        loan_id: loanId,
-        installment_no: ++n,
-        due_date: r.dueDate,
-        opening_balance: r.openingBalance,
-        emi_amount: r.emiAmount,
-        principal_due: r.principalDue,
-        interest_due: r.interestDue,
-        closing_balance: r.closingBalance,
-        // Outstanding fees from the dropped rows ride on the first new
-        // installment. `late_fee_txn_id` stays null — it is a single FK and the
-        // carried total may span several penalty transactions, which remain in
-        // `transactions` as the audit trail.
-        late_fee_charged: idx === 0 ? carriedLateFee : 0,
-      }))
-      if (insertRows.length > 0) {
-        const { error } = await supabase.from('loan_emi_schedule').insert(insertRows)
-        if (error) return actionError(error.message)
-      }
     }
+
+    // Resume at the earliest not-yet-due date, but never at a date already gone
+    // by on the payment date — see `prepaymentAnchorDate`.
+    const tail = plan.fullPayoff
+      ? []
+      : recomputeAfterPrepayment({
+          outstanding: plan.tailPrincipal,
+          annualRatePct: Number(bal.interest_rate_pct),
+          remainingTerm: Math.max(plan.remainingTerm, 1),
+          currentEmi: Number(bal.emi_amount),
+          firstDueDate: prepaymentAnchorDate(paidDate, plan.earliestUnpaidDueDate),
+          mode,
+        })
+
+    const newRows = tail.map((r, idx) => ({
+      installment_no: plan.nextInstallmentNo + idx,
+      due_date: r.dueDate,
+      opening_balance: r.openingBalance,
+      emi_amount: r.emiAmount,
+      principal_due: r.principalDue,
+      interest_due: r.interestDue,
+      closing_balance: r.closingBalance,
+      // Unwaived fees from the dropped rows ride on the first new installment.
+      // `late_fee_txn_id` stays null — it is a single FK and the carried total
+      // may span several penalty transactions, which remain in `transactions`
+      // as the audit trail.
+      late_fee_charged: idx === 0 ? plan.carriedLateFee : 0,
+    }))
+
+    const { error: rpcErr } = await supabase.rpc('fn_apply_prepayment', {
+      p_loan_id: loanId,
+      p_member_id: memberId || null,
+      p_amount: amount,
+      p_paid_date: paidDate,
+      p_description: `Advance principal (${mode})`,
+      p_bank_txn_id: bankTransactionId,
+      p_created_by: user.id,
+      p_apply_balance: applyToBankBalance,
+      // A payoff completes the principal on every surviving installment; short
+      // of that they are left exactly as they are.
+      p_settle_ids: plan.fullPayoff ? plan.retained.map((r) => r.scheduleId) : [],
+      p_delete_ids: plan.replacedIds,
+      p_new_rows: newRows,
+      // Keep loans.emi_amount in step with the schedule, or a later prepayment
+      // re-amortizes at the stale original EMI and pushes the member's
+      // installment back up.
+      p_new_emi: newRows.length > 0 ? newRows[0].emi_amount : null,
+      p_close_loan: plan.fullPayoff,
+    })
+    if (rpcErr) return actionError(rpcErr.message)
+
     updateTag('dashboard')
     revalidatePath('/admin/loans')
     revalidatePath('/admin/reference')
-    return actionOk(undefined, 'Prepayment applied')
+    revalidatePath('/admin/transactions')
+    return actionOk(
+      undefined,
+      plan.fullPayoff ? 'Prepayment applied; loan closed' : 'Prepayment applied',
+    )
   })
 }
 
