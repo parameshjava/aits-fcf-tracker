@@ -12,6 +12,12 @@ import {
   type PrepayScheduleRow,
 } from '@/lib/prepay-plan'
 import { cutoverYmdToIso, isCutoverFloored } from '@/lib/emi-anchor'
+import {
+  planEmiRecompute,
+  emiRecomputeErrorMessage,
+  type EmiRecomputePlan,
+  type RecomputeScheduleRow,
+} from '@/lib/emi-recompute'
 
 export type EmiScheduleRow = {
   id: string
@@ -360,6 +366,88 @@ export async function recalculateSchedule(formData: FormData): Promise<ActionRes
     revalidatePath('/admin/loans')
     revalidatePath('/admin/reference')
     return actionOk(undefined, 'Schedule recalculated at current rate')
+  })
+}
+
+const RECOMPUTE_COLUMNS =
+  'id, installment_no, due_date, status, opening_balance, emi_amount, principal_due, interest_due, closing_balance, principal_paid, interest_paid'
+
+/**
+ * What re-pricing this loan at the current reference rate would do — read-only,
+ * for the confirmation screen. Returns `hasChanges: false` when the schedule is
+ * already priced correctly.
+ */
+export async function getEmiRecomputePreview(loanId: string): Promise<EmiRecomputePlan> {
+  const supabase = await createClient()
+  const [{ data: rows, error }, ratePct] = await Promise.all([
+    supabase.from('loan_emi_schedule').select(RECOMPUTE_COLUMNS).eq('loan_id', loanId),
+    getReference('loan_interest_rate_pct').then(Number).catch(() => 8),
+  ])
+  if (error) throw new Error(error.message)
+  return planEmiRecompute({
+    rows: (rows ?? []) as RecomputeScheduleRow[],
+    annualRatePct: ratePct,
+  })
+}
+
+/**
+ * Apply that re-pricing. Only unpaid installments are rewritten, in place, so a
+ * paid one can never be modified — `fn_reprice_emi_schedule` (migration 053)
+ * enforces that in SQL as well as here.
+ */
+export async function recomputeEmiSchedule(formData: FormData): Promise<ActionResult> {
+  return runAction('recomputeEmiSchedule', async () => {
+    const user = await getCurrentUser()
+    if (!user || user.profile?.role !== 'admin') return actionError('Unauthorized')
+
+    const loanId = String(formData.get('loan_id') ?? '')
+    if (!loanId) return actionError('Loan is required')
+    const reviewedFingerprint = (formData.get('plan_fingerprint') as string | null) ?? null
+
+    const supabase = await createClient()
+    const ratePct = await getReference('loan_interest_rate_pct').then(Number).catch(() => 8)
+    const { data: rows, error } = await supabase
+      .from('loan_emi_schedule')
+      .select(RECOMPUTE_COLUMNS)
+      .eq('loan_id', loanId)
+    if (error) return actionError(error.message)
+
+    const plan = planEmiRecompute({
+      rows: (rows ?? []) as RecomputeScheduleRow[],
+      annualRatePct: ratePct,
+    })
+    if (plan.error) return actionError(emiRecomputeErrorMessage(plan))
+
+    // Re-planned against a fresh read: refuse if the schedule moved while the
+    // admin was looking at the preview.
+    if (reviewedFingerprint && reviewedFingerprint !== plan.fingerprint) {
+      return actionError(
+        'The schedule changed while you were reviewing this recompute. Reload the page and try again.',
+      )
+    }
+    if (!plan.hasChanges) return actionOk(undefined, 'No changes to apply')
+
+    const { error: rpcErr } = await supabase.rpc('fn_reprice_emi_schedule', {
+      p_loan_id: loanId,
+      p_rows: plan.changed.map((r) => ({
+        id: r.scheduleId,
+        opening_balance: r.after.openingBalance,
+        emi_amount: r.after.emiAmount,
+        principal_due: r.after.principalDue,
+        interest_due: r.after.interestDue,
+        closing_balance: r.after.closingBalance,
+      })),
+      p_new_emi: plan.newEmi,
+      p_new_rate: ratePct,
+    })
+    if (rpcErr) return actionError(rpcErr.message)
+
+    updateTag('dashboard')
+    revalidatePath('/admin/loans')
+    return actionOk(
+      undefined,
+      `${plan.changed.length} installment${plan.changed.length === 1 ? '' : 's'} re-priced`,
+    )
   })
 }
 
