@@ -19,15 +19,6 @@ import { prepayLoan } from './emi'
 import { createClient } from '@/lib/supabase/server'
 import { getCurrentUser } from '@/lib/actions/auth'
 
-type Call = {
-  table: string
-  op: 'select' | 'insert' | 'update' | 'delete' | null
-  payload: unknown
-  filters: Record<string, unknown>
-  inFilters: Record<string, unknown>
-  limited: boolean
-}
-
 type ScheduleRow = {
   id: string
   installment_no: number
@@ -35,96 +26,50 @@ type ScheduleRow = {
   status: 'scheduled' | 'paid' | 'partially_paid' | 'overdue' | 'waived'
   principal_due: number
   principal_paid: number
+  interest_due: number
+  interest_paid: number
+  late_fee_charged: number
+  late_fee_waived: boolean
 }
 
+type RpcCall = { fn: string; args: Record<string, unknown> }
+
 /**
- * Minimal chainable Supabase query-builder mock. Each `.from(table)` records a
- * Call object that is mutated in place as the chain is built, so assertions can
- * read the final filters/payload after the action awaits the chain.
+ * Minimal Supabase mock. Reads go through the query builder; every write now
+ * goes through the single `fn_apply_prepayment` rpc, so the assertions read the
+ * arguments that one call was given.
  */
 function makeSupabase(opts: {
   balance: Record<string, unknown> | null
-  /** Every installment on the loan — what planPrepayment reads. */
   scheduleRows?: ScheduleRow[]
-  partialRows?: Array<{ id: string; principal_due: number }>
+  rpcError?: { message: string }
 }) {
-  const calls: Call[] = []
-  const resolve = (call: Call) => {
-    if (call.table === 'loan_emi_balances') return { data: opts.balance, error: null }
-    if (call.table === 'transactions' && call.op === 'insert') {
-      return { data: { id: 'txn-1' }, error: null }
-    }
-    if (call.table === 'loan_emi_schedule' && call.op === 'select') {
-      // `.limit(1).maybeSingle()` → the max-installment_no lookup.
-      if (call.limited) return { data: { installment_no: 3 }, error: null }
-      // `.eq('status', 'partially_paid')` → the full-payoff settle loop.
-      if (call.filters.status === 'partially_paid') return { data: opts.partialRows ?? [], error: null }
-      // `.in('status', [...])` → the late-fee carry lookup.
-      if (call.inFilters.status) return { data: [], error: null }
-      return { data: opts.scheduleRows ?? [], error: null }
-    }
-    return { data: null, error: null }
-  }
+  const rpcCalls: RpcCall[] = []
   const from = (table: string) => {
-    const call: Call = { table, op: null, payload: null, filters: {}, inFilters: {}, limited: false }
-    calls.push(call)
+    const resolve = () => {
+      if (table === 'loan_emi_balances') return { data: opts.balance, error: null }
+      if (table === 'loan_emi_schedule') return { data: opts.scheduleRows ?? [], error: null }
+      return { data: null, error: null }
+    }
     const b = {
-      select() {
-        call.op = call.op ?? 'select'
-        return b
-      },
-      insert(payload: unknown) {
-        call.op = 'insert'
-        call.payload = payload
-        return b
-      },
-      update(payload: unknown) {
-        call.op = 'update'
-        call.payload = payload
-        return b
-      },
-      delete() {
-        call.op = 'delete'
-        return b
-      },
-      eq(k: string, v: unknown) {
-        call.filters[k] = v
-        return b
-      },
-      in(k: string, v: unknown) {
-        call.inFilters[k] = v
-        return b
-      },
-      order() {
-        return b
-      },
-      limit() {
-        call.limited = true
-        return b
-      },
-      single() {
-        return Promise.resolve(resolve(call))
-      },
-      maybeSingle() {
-        return Promise.resolve(resolve(call))
-      },
-      then(onF: (v: unknown) => unknown, onR?: (e: unknown) => unknown) {
-        return Promise.resolve(resolve(call)).then(onF, onR)
-      },
+      select: () => b,
+      eq: () => b,
+      in: () => b,
+      order: () => b,
+      limit: () => b,
+      single: () => Promise.resolve(resolve()),
+      maybeSingle: () => Promise.resolve(resolve()),
+      then: (onF: (v: unknown) => unknown, onR?: (e: unknown) => unknown) =>
+        Promise.resolve(resolve()).then(onF, onR),
     }
     return b
   }
-  return { client: { from } as never, calls }
+  const rpc = (fn: string, args: Record<string, unknown>) => {
+    rpcCalls.push({ fn, args })
+    return Promise.resolve({ data: 'txn-1', error: opts.rpcError ?? null })
+  }
+  return { client: { from, rpc } as never, rpcCalls }
 }
-
-const scheduleRow = (o: Partial<ScheduleRow> & { installment_no: number }): ScheduleRow => ({
-  id: `s${o.installment_no}`,
-  due_date: `2026-${String(o.installment_no).padStart(2, '0')}-10`,
-  status: 'scheduled',
-  principal_due: 1000,
-  principal_paid: 0,
-  ...o,
-})
 
 const ADMIN = {
   id: 'admin-1',
@@ -132,192 +77,220 @@ const ADMIN = {
   profile: { role: 'admin', full_name: null },
 } as never
 
+const BALANCE = { interest_rate_pct: 12, emi_amount: 1000 }
+
+const scheduleRow = (o: Partial<ScheduleRow> & { installment_no: number }): ScheduleRow => ({
+  id: `s${o.installment_no}`,
+  due_date: `2026-${String(o.installment_no).padStart(2, '0')}-10`,
+  status: 'scheduled',
+  principal_due: 1000,
+  principal_paid: 0,
+  interest_due: 0,
+  interest_paid: 0,
+  late_fee_charged: 0,
+  late_fee_waived: false,
+  ...o,
+})
+
 function prepayForm(
   amount: number,
-  mode: 'reduce_tenure' | 'reduce_emi' = 'reduce_tenure',
-  paidDate = '2026-06-14',
+  extra: Partial<Record<'mode' | 'paid_date' | 'plan_fingerprint' | 'applyToBankBalance', string>> = {},
 ) {
   const fd = new FormData()
   fd.set('loan_id', 'loan-1')
   fd.set('member_id', 'member-1')
   fd.set('amount', String(amount))
-  fd.set('mode', mode)
-  fd.set('paid_date', paidDate)
+  fd.set('mode', extra.mode ?? 'reduce_tenure')
+  fd.set('paid_date', extra.paid_date ?? '2026-07-07')
+  if (extra.plan_fingerprint) fd.set('plan_fingerprint', extra.plan_fingerprint)
+  if (extra.applyToBankBalance) fd.set('applyToBankBalance', extra.applyToBankBalance)
   return fd
 }
 
-const BALANCE = { interest_rate_pct: 12, emi_amount: 1000 }
+/** #8, #9, #10 are not yet due on 2026-07-07; #5 and #6 already fell due. */
+const FUTURE = [8, 9, 10].map((n) => scheduleRow({ installment_no: n }))
 
-/** Five untouched installments of ₹1,000 principal → ₹5,000 pending. */
-const FIVE_SCHEDULED = [1, 2, 3, 4, 5].map((n) => scheduleRow({ installment_no: n }))
+beforeEach(() => {
+  vi.clearAllMocks()
+  vi.mocked(getCurrentUser).mockResolvedValue(ADMIN)
+})
 
-describe('prepayLoan — full prepayment', () => {
-  beforeEach(() => {
-    vi.clearAllMocks()
-    vi.mocked(getCurrentUser).mockResolvedValue(ADMIN)
-  })
-
-  it('records the advance as a loan_repayment transaction', async () => {
-    const { client, calls } = makeSupabase({ balance: BALANCE, scheduleRows: FIVE_SCHEDULED })
+describe('prepayLoan — the whole write is one rpc', () => {
+  it('sends the advance, the rebuilt rows and the bank flag in a single call', async () => {
+    const { client, rpcCalls } = makeSupabase({ balance: BALANCE, scheduleRows: FUTURE })
     vi.mocked(createClient).mockResolvedValue(client)
 
-    const r = await prepayLoan(prepayForm(5000))
+    const r = await prepayLoan(prepayForm(500, { applyToBankBalance: '1' }))
     expect(r.ok).toBe(true)
 
-    const txn = calls.find((c) => c.table === 'transactions' && c.op === 'insert')
-    expect(txn).toBeTruthy()
-    expect(txn?.payload).toMatchObject({ transaction_type: 'loan_repayment', amount: 5000, loan_id: 'loan-1' })
+    // Nothing writes outside the rpc — a part-applied prepayment used to leave
+    // booked money against an unchanged schedule that a retry duplicated.
+    expect(rpcCalls).toHaveLength(1)
+    expect(rpcCalls[0].fn).toBe('fn_apply_prepayment')
+    expect(rpcCalls[0].args).toMatchObject({
+      p_loan_id: 'loan-1',
+      p_member_id: 'member-1',
+      p_amount: 500,
+      p_paid_date: '2026-07-07',
+      p_apply_balance: true,
+      p_close_loan: false,
+    })
   })
 
-  it('deletes scheduled + overdue installments instead of waiving them', async () => {
-    const { client, calls } = makeSupabase({ balance: BALANCE, scheduleRows: FIVE_SCHEDULED })
-    vi.mocked(createClient).mockResolvedValue(client)
-
-    await prepayLoan(prepayForm(5000))
-
-    const del = calls.find((c) => c.table === 'loan_emi_schedule' && c.op === 'delete')
-    expect(del).toBeTruthy()
-    expect(del?.inFilters.status).toEqual(['scheduled', 'overdue'])
-
-    const waive = calls.find(
-      (c) => c.table === 'loan_emi_schedule' && c.op === 'update' && (c.payload as { status?: string })?.status === 'waived',
-    )
-    expect(waive).toBeUndefined()
-  })
-
-  it('marks the loan as paid', async () => {
-    const { client, calls } = makeSupabase({ balance: BALANCE, scheduleRows: FIVE_SCHEDULED })
-    vi.mocked(createClient).mockResolvedValue(client)
-
-    await prepayLoan(prepayForm(5000))
-
-    const loanUpdate = calls.find((c) => c.table === 'loans' && c.op === 'update')
-    expect(loanUpdate).toBeTruthy()
-    expect(loanUpdate?.payload).toMatchObject({ status: 'paid' })
-    expect(loanUpdate?.filters.id).toBe('loan-1')
-  })
-
-  it('completes partially-paid installments to paid', async () => {
-    const { client, calls } = makeSupabase({
+  it('reports the rpc error and applies nothing', async () => {
+    const { client } = makeSupabase({
       balance: BALANCE,
-      scheduleRows: FIVE_SCHEDULED,
-      partialRows: [{ id: 'p1', principal_due: 800 }],
+      scheduleRows: FUTURE,
+      rpcError: { message: 'boom' },
     })
     vi.mocked(createClient).mockResolvedValue(client)
 
-    await prepayLoan(prepayForm(5000))
+    const r = await prepayLoan(prepayForm(500))
+    expect(r.ok).toBe(false)
+    expect(r.ok === false && r.error).toBe('boom')
+  })
 
-    const settle = calls.find(
-      (c) =>
-        c.table === 'loan_emi_schedule' &&
-        c.op === 'update' &&
-        c.filters.id === 'p1' &&
-        (c.payload as { status?: string })?.status === 'paid',
-    )
-    expect(settle).toBeTruthy()
-    expect(settle?.payload).toMatchObject({ status: 'paid', principal_paid: 800 })
+  it('keeps loans.emi_amount in step with the rebuilt schedule', async () => {
+    const { client, rpcCalls } = makeSupabase({ balance: BALANCE, scheduleRows: FUTURE })
+    vi.mocked(createClient).mockResolvedValue(client)
+
+    await prepayLoan(prepayForm(500, { mode: 'reduce_emi' }))
+    const args = rpcCalls[0].args as { p_new_emi: number; p_new_rows: Array<{ emi_amount: number }> }
+    // Without this a later reduce_tenure prepayment re-amortized at the stale
+    // original EMI and pushed the member's installment back up.
+    expect(args.p_new_emi).toBe(args.p_new_rows[0].emi_amount)
   })
 })
 
-describe('prepayLoan — partial prepayment with an unpaid installment', () => {
-  // #1 is half paid (₹600 principal still owed), #2 and #3 untouched.
-  // Pending principal = 600 + 1000 + 1000 = 2600.
-  const ROWS = [
-    scheduleRow({ installment_no: 1, status: 'partially_paid', principal_paid: 400 }),
-    scheduleRow({ installment_no: 2 }),
-    scheduleRow({ installment_no: 3 }),
-  ]
+describe('prepayLoan — what the rebuild is allowed to touch', () => {
+  it('deletes not-yet-due installments by id, not by status', async () => {
+    const { client, rpcCalls } = makeSupabase({
+      balance: BALANCE,
+      scheduleRows: [
+        // Settled principal, unpaid interest, flipped to overdue by the late-fee
+        // cron — it owns loan_emi_payments rows, so deleting it raised 23503.
+        scheduleRow({ installment_no: 6, status: 'overdue', principal_paid: 1000, interest_due: 200 }),
+        ...FUTURE,
+      ],
+    })
+    vi.mocked(createClient).mockResolvedValue(client)
 
-  beforeEach(() => {
-    vi.clearAllMocks()
-    vi.mocked(getCurrentUser).mockResolvedValue(ADMIN)
+    const r = await prepayLoan(prepayForm(500))
+    expect(r.ok).toBe(true)
+    expect(rpcCalls[0].args.p_delete_ids).toEqual(['s8', 's9', 's10'])
   })
 
-  it('settles the arrear through the payments junction, not a direct column write', async () => {
-    const { client, calls } = makeSupabase({ balance: BALANCE, scheduleRows: ROWS })
+  it('leaves already-due installments in place instead of re-dating them', async () => {
+    const { client, rpcCalls } = makeSupabase({
+      balance: BALANCE,
+      scheduleRows: [scheduleRow({ installment_no: 5 }), scheduleRow({ installment_no: 6 }), ...FUTURE],
+    })
+    vi.mocked(createClient).mockResolvedValue(client)
+
+    await prepayLoan(prepayForm(500))
+    const args = rpcCalls[0].args as {
+      p_delete_ids: string[]
+      p_new_rows: Array<{ opening_balance: number; installment_no: number; due_date: string }>
+    }
+    expect(args.p_delete_ids).toEqual(['s8', 's9', 's10'])
+    // 3,000 not yet due − 500 = 2,500. The 2,000 in arrears stays on #5 and #6.
+    expect(args.p_new_rows[0].opening_balance).toBe(2500)
+    // #8–#10 are deleted, so #5 and #6 are the highest survivors and 7 onwards
+    // is free — no unique(loan_id, installment_no) collision.
+    expect(args.p_new_rows[0].installment_no).toBe(7)
+  })
+
+  it('keeps the current month when its installment is still ahead of the payment', async () => {
+    const { client, rpcCalls } = makeSupabase({
+      balance: BALANCE,
+      scheduleRows: [scheduleRow({ installment_no: 7, due_date: '2026-07-10' }), ...FUTURE],
+    })
+    vi.mocked(createClient).mockResolvedValue(client)
+
+    await prepayLoan(prepayForm(500, { paid_date: '2026-07-07' }))
+    const args = rpcCalls[0].args as { p_new_rows: Array<{ due_date: string }> }
+    expect(args.p_new_rows[0].due_date).toBe('2026-07-10')
+  })
+})
+
+describe('prepayLoan — refusals', () => {
+  it('rejects an advance larger than the outstanding principal', async () => {
+    const { client, rpcCalls } = makeSupabase({ balance: BALANCE, scheduleRows: FUTURE })
+    vi.mocked(createClient).mockResolvedValue(client)
+
+    const r = await prepayLoan(prepayForm(3001))
+    expect(r.ok).toBe(false)
+    expect(r.ok === false && r.error).toMatch(/exceeds the outstanding principal/i)
+    expect(rpcCalls).toHaveLength(0)
+  })
+
+  it('rejects an advance that overshoots the not-yet-due principal', async () => {
+    const { client, rpcCalls } = makeSupabase({
+      balance: BALANCE,
+      scheduleRows: [scheduleRow({ installment_no: 5 }), scheduleRow({ installment_no: 6 }), ...FUTURE],
+    })
+    vi.mocked(createClient).mockResolvedValue(client)
+
+    const r = await prepayLoan(prepayForm(3500))
+    expect(r.ok).toBe(false)
+    expect(r.ok === false && r.error).toMatch(/Pay EMI first/)
+    expect(rpcCalls).toHaveLength(0)
+  })
+
+  it('refuses to close the loan while interest is still owed', async () => {
+    const { client, rpcCalls } = makeSupabase({
+      balance: BALANCE,
+      scheduleRows: [
+        scheduleRow({ installment_no: 6, principal_paid: 1000, interest_due: 800 }),
+        scheduleRow({ installment_no: 8 }),
+      ],
+    })
     vi.mocked(createClient).mockResolvedValue(client)
 
     const r = await prepayLoan(prepayForm(1000))
-    expect(r.ok).toBe(true)
-
-    const junction = calls.find((c) => c.table === 'loan_emi_payments' && c.op === 'insert')
-    expect(junction?.payload).toEqual({
-      schedule_id: 's1',
-      transaction_id: 'txn-1',
-      principal_applied: 600,
-      interest_applied: 0,
-    })
-  })
-
-  it('keeps the arrear out of the rebuilt tail so it is not owed twice', async () => {
-    const { client, calls } = makeSupabase({ balance: BALANCE, scheduleRows: ROWS })
-    vi.mocked(createClient).mockResolvedValue(client)
-
-    await prepayLoan(prepayForm(1000))
-
-    // ₹600 of the advance cleared #1; only the remaining ₹400 reduces the tail,
-    // so it amortizes ₹2,000 − ₹400 = ₹1,600 — NOT the ₹1,600 + the ₹600 that
-    // pending_principal alone would have implied.
-    const insert = calls.find((c) => c.table === 'loan_emi_schedule' && c.op === 'insert')
-    const rows = insert?.payload as Array<{ opening_balance: number; installment_no: number }>
-    expect(rows[0].opening_balance).toBe(1600)
-    // Numbering continues past the highest surviving installment.
-    expect(rows[0].installment_no).toBe(4)
-  })
-
-  it('rejects an advance larger than the pending principal', async () => {
-    const { client } = makeSupabase({ balance: BALANCE, scheduleRows: ROWS })
-    vi.mocked(createClient).mockResolvedValue(client)
-
-    const r = await prepayLoan(prepayForm(2601))
     expect(r.ok).toBe(false)
-    expect(r.ok === false && r.error).toMatch(/exceeds outstanding principal/i)
+    expect(r.ok === false && r.error).toMatch(/interest is still due/i)
+    expect(rpcCalls).toHaveLength(0)
+  })
+
+  it('refuses to apply a plan the schedule has moved out from under', async () => {
+    const { client, rpcCalls } = makeSupabase({ balance: BALANCE, scheduleRows: FUTURE })
+    vi.mocked(createClient).mockResolvedValue(client)
+
+    const r = await prepayLoan(prepayForm(500, { plan_fingerprint: 'stale|0|3|2026-01-10' }))
+    expect(r.ok).toBe(false)
+    expect(r.ok === false && r.error).toMatch(/schedule changed while you were reviewing/i)
+    expect(rpcCalls).toHaveLength(0)
+  })
+
+  it('applies when the reviewed plan still matches', async () => {
+    const { client, rpcCalls } = makeSupabase({ balance: BALANCE, scheduleRows: FUTURE })
+    vi.mocked(createClient).mockResolvedValue(client)
+
+    const r = await prepayLoan(prepayForm(500, { plan_fingerprint: '3000|0|3|2026-08-10' }))
+    expect(r.ok).toBe(true)
+    expect(rpcCalls).toHaveLength(1)
   })
 })
 
-describe('prepayLoan — where the rebuilt schedule resumes', () => {
-  const AUG_ONWARDS = [
-    scheduleRow({ installment_no: 8, due_date: '2026-08-10' }),
-    scheduleRow({ installment_no: 9, due_date: '2026-09-10' }),
-    scheduleRow({ installment_no: 10, due_date: '2026-10-10' }),
-  ]
-
-  beforeEach(() => {
-    vi.clearAllMocks()
-    vi.mocked(getCurrentUser).mockResolvedValue(ADMIN)
-  })
-
-  const firstDueDate = (calls: Array<{ table: string; op: string | null; payload: unknown }>) => {
-    const insert = calls.find((c) => c.table === 'loan_emi_schedule' && c.op === 'insert')
-    return (insert?.payload as Array<{ due_date: string }>)[0].due_date
-  }
-
-  it('keeps the current month when its installment is still ahead of the payment', async () => {
-    const { client, calls } = makeSupabase({ balance: BALANCE, scheduleRows: AUG_ONWARDS })
-    vi.mocked(createClient).mockResolvedValue(client)
-
-    // Paid 7 Aug with the 10 Aug installment unpaid — August keeps an EMI
-    // instead of the schedule jumping to 10 Sep and leaving the month empty.
-    await prepayLoan(prepayForm(500, 'reduce_tenure', '2026-08-07'))
-    expect(firstDueDate(calls)).toBe('2026-08-10')
-  })
-
-  it('moves to the next month once the due date has gone by', async () => {
-    const { client, calls } = makeSupabase({ balance: BALANCE, scheduleRows: AUG_ONWARDS })
-    vi.mocked(createClient).mockResolvedValue(client)
-
-    await prepayLoan(prepayForm(500, 'reduce_tenure', '2026-08-20'))
-    expect(firstDueDate(calls)).toBe('2026-09-10')
-  })
-
-  it('never regenerates into the past when the schedule is back-dated', async () => {
-    const { client, calls } = makeSupabase({
+describe('prepayLoan — full payoff', () => {
+  it('settles the surviving installments, clears the rest and closes the loan', async () => {
+    const { client, rpcCalls } = makeSupabase({
       balance: BALANCE,
-      scheduleRows: [scheduleRow({ installment_no: 1, due_date: '2019-01-10' })],
+      scheduleRows: [
+        scheduleRow({ installment_no: 6, principal_paid: 400, interest_due: 800, interest_paid: 800 }),
+        ...FUTURE,
+      ],
     })
     vi.mocked(createClient).mockResolvedValue(client)
 
-    await prepayLoan(prepayForm(500, 'reduce_tenure', '2026-08-20'))
-    expect(firstDueDate(calls)).toBe('2026-09-10')
+    const r = await prepayLoan(prepayForm(3600))
+    expect(r.ok).toBe(true)
+    expect(rpcCalls[0].args).toMatchObject({
+      p_settle_ids: ['s6'],
+      p_delete_ids: ['s8', 's9', 's10'],
+      p_new_rows: [],
+      p_close_loan: true,
+    })
   })
 })
