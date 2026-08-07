@@ -23,6 +23,12 @@ import {
   type EmiRecomputePlan,
   type RecomputeScheduleRow,
 } from '@/lib/emi-recompute'
+import {
+  planScheduleShift,
+  scheduleShiftErrorMessage,
+  type ScheduleShiftPlan,
+  type ShiftScheduleRow,
+} from '@/lib/emi-schedule-shift'
 
 export type EmiScheduleRow = {
   id: string
@@ -430,11 +436,21 @@ async function loadRecomputeInputs(loanId: string) {
  */
 export async function getEmiRecomputePreview(
   loanId: string,
-): Promise<EmiRecomputePlan & { anchor: AnchorDrift | null }> {
+): Promise<EmiRecomputePlan & { anchor: AnchorDrift | null; shift: ScheduleShiftPlan | null }> {
   const { rows, oldRatePct, newRatePct, anchor } = await loadRecomputeInputs(loanId)
+  const today = todayIst()
   return {
-    ...planEmiRecompute({ rows, oldRatePct, newRatePct, todayIso: todayIst() }),
+    ...planEmiRecompute({ rows, oldRatePct, newRatePct, todayIso: today }),
     anchor,
+    // What it would take to put the schedule back in the right month. Null when
+    // there is no drift to correct.
+    shift: anchor?.drifted
+      ? planScheduleShift({
+          rows: rows as unknown as ShiftScheduleRow[],
+          monthsOff: anchor.monthsOff,
+          todayIso: today,
+        })
+      : null,
   }
 }
 
@@ -488,6 +504,56 @@ export async function recomputeEmiSchedule(formData: FormData): Promise<ActionRe
     return actionOk(
       undefined,
       `${plan.changed.length} installment${plan.changed.length === 1 ? '' : 's'} re-priced`,
+    )
+  })
+}
+
+/**
+ * Move a mis-anchored schedule to the month it should start in.
+ *
+ * Only `due_date` changes, by the same whole number of months for every
+ * installment — amounts and installment numbers are untouched. Refused once
+ * anything has been paid; `fn_shift_emi_schedule` (migration 054) re-checks
+ * that in SQL and is all-or-nothing.
+ */
+export async function shiftEmiSchedule(formData: FormData): Promise<ActionResult> {
+  return runAction('shiftEmiSchedule', async () => {
+    const user = await getCurrentUser()
+    if (!user || user.profile?.role !== 'admin') return actionError('Unauthorized')
+
+    const loanId = String(formData.get('loan_id') ?? '')
+    if (!loanId) return actionError('Loan is required')
+    const reviewedFingerprint = (formData.get('plan_fingerprint') as string | null)?.trim()
+    if (!reviewedFingerprint) return actionError('Missing the reviewed plan; reload and try again')
+
+    const { supabase, rows, anchor } = await loadRecomputeInputs(loanId)
+    if (!anchor?.drifted) return actionError('This schedule already starts in the right month.')
+
+    const plan = planScheduleShift({
+      rows: rows as unknown as ShiftScheduleRow[],
+      monthsOff: anchor.monthsOff,
+      todayIso: todayIst(),
+    })
+    if (plan.error) return actionError(scheduleShiftErrorMessage(plan))
+
+    if (reviewedFingerprint !== plan.fingerprint) {
+      return actionError(
+        'The schedule changed while you were reviewing this. Reload the page and try again.',
+      )
+    }
+
+    const { error: rpcErr } = await supabase.rpc('fn_shift_emi_schedule', {
+      p_loan_id: loanId,
+      p_rows: plan.rows.map((r) => ({ id: r.scheduleId, due_date: r.to })),
+      p_expect: plan.rows.length,
+    })
+    if (rpcErr) return actionError(rpcErr.message)
+
+    updateTag('dashboard')
+    revalidatePath('/admin/loans')
+    return actionOk(
+      undefined,
+      `Schedule moved to start ${plan.firstDueAfter} — ${plan.rows.length} installments re-dated`,
     )
   })
 }
