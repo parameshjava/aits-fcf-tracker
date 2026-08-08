@@ -21,11 +21,14 @@ import type { DashboardMemberMonthRow } from '@/lib/actions/dashboard'
  *    a `minWidth` keeps it readable.
  *  - It's rendered at SPREADSHEET density (`pr-table-dense` + gridlines +
  *    striping) so all 15 columns fit a laptop viewport instead of pushing the
- *    late months out of view. Three things buy that width back: halved cell
- *    padding (the CSS class), month amounts printed WITHOUT the ₹ prefix —
- *    the header carries the unit once, like a spreadsheet — and a fixed-width
- *    member column that ellipsises the long names (full name on hover/tap via
- *    `title`). Horizontal scroll is still there as the fallback on phones.
+ *    late months out of view. Two things buy that width back: halved cell
+ *    padding (the CSS class) and month amounts printed WITHOUT the ₹ prefix —
+ *    the caption carries the unit once, like a spreadsheet.
+ *  - Widths follow the spreadsheet convention: the numeric columns are sized
+ *    to their digits (a `minWidth` floor only) and the Member column takes
+ *    every pixel left over (`width: 100%`), so names show in full and the
+ *    slack never turns into gaps between the months. Horizontal scroll is
+ *    still there as the fallback when the sum genuinely exceeds the window.
  * Sortable on Member (alphabetical) and Total (numeric); month columns are
  * display-only because sorting by a single month is rarely useful.
  *
@@ -126,15 +129,14 @@ export function MemberMonthMatrix({
       header: 'Member',
       sortable: true,
       frozen: true,
-      bodyClassName: 'font-medium text-gray-900',
-      // Fixed, not min: the longest roster names are ~35 characters and would
-      // otherwise eat the width the month columns need.
-      style: { width: '9.5rem', minWidth: '9.5rem', maxWidth: '9.5rem' },
-      body: (r) => (
-        <span className="block truncate" title={r.member_name}>
-          {r.member_name}
-        </span>
-      ),
+      // `nowrap` means the column can never be narrower than the longest name,
+      // so names always render in full — no ellipsis, no hover to read them.
+      bodyClassName: 'whitespace-nowrap font-medium text-gray-900',
+      // `width: 100%` is the slack sink. Under `table-layout: auto` the other
+      // columns are satisfied at their content width first and everything left
+      // over lands here — so the months hug their digits instead of being
+      // padded out with dead space when the grid is narrower than the window.
+      style: { width: '100%', minWidth: '11rem' },
       footer: <span className="font-medium text-gray-700">Total</span>,
     },
     // One column per month, generated dynamically.
@@ -142,7 +144,9 @@ export function MemberMonthMatrix({
       field: k,
       header: MONTH_LABELS[i],
       align: 'right',
-      style: { minWidth: '3.5rem' },
+      // A floor, not a target — these size to their widest amount. Anything
+      // larger just becomes empty space, since the slack goes to Member.
+      style: { minWidth: '2.75rem' },
       headerClassName: 'text-right',
       bodyClassName: 'whitespace-nowrap text-right tabular-nums',
       body: (r) => {
@@ -165,7 +169,7 @@ export function MemberMonthMatrix({
       sortable: true,
       align: 'right',
       dataType: 'numeric',
-      style: { minWidth: '4.5rem' },
+      style: { minWidth: '4rem' },
       headerClassName: 'text-right',
       bodyClassName: 'whitespace-nowrap text-right font-semibold tabular-nums',
       body: (r) => (
