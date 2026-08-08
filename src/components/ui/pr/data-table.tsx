@@ -107,6 +107,11 @@ type PrDataTableProps<T extends Record<string, unknown>> = {
   paginatorLeft?: ReactNode
   /** Content pinned to the RIGHT end of the paginator bar (e.g. a total). */
   paginatorRight?: ReactNode
+  /** Draw cell borders (spreadsheet look). Useful for dense pivots where a
+   *  reader has to track a value back to its row AND its column. */
+  gridlines?: boolean
+  /** Alternating row backgrounds — same reason as `gridlines`. */
+  striped?: boolean
 }
 
 /**
@@ -200,6 +205,8 @@ export function PrDataTable<T extends Record<string, unknown>>({
   rows = 10,
   paginatorLeft,
   paginatorRight,
+  gridlines,
+  striped,
 }: PrDataTableProps<T>) {
   const hasGlobal = !!globalFilterFields && globalFilterFields.length > 0
   const hasColumnFilters = columns.some((c) => c.filter)
@@ -292,6 +299,8 @@ export function PrDataTable<T extends Record<string, unknown>>({
         rowExpansion ? (row) => rowExpansion(row as unknown as T) : undefined
       }
       footerColumnGroup={footerColumnGroup as never}
+      showGridlines={gridlines}
+      stripedRows={striped}
       scrollable={scrollable}
       scrollHeight={scrollHeight}
       // Pagination — 10 rows/page by default; the rows-per-page dropdown lets a

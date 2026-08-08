@@ -1,7 +1,7 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { formatRupees } from '@/lib/format'
+import { formatIndianGroups } from '@/lib/format'
 import { TableExportMenu } from '@/components/table-export'
 import { PrDataTable, type PrColumn } from '@/components/ui/pr/data-table'
 import type { Cell } from '@/lib/table-export'
@@ -19,6 +19,13 @@ import type { DashboardMemberMonthRow } from '@/lib/actions/dashboard'
  *    poorly. The shared wrapper doesn't expose PrimeReact's `frozen` column
  *    prop, so the member column scrolls with the rest (plain scrollable);
  *    a `minWidth` keeps it readable.
+ *  - It's rendered at SPREADSHEET density (`pr-table-dense` + gridlines +
+ *    striping) so all 15 columns fit a laptop viewport instead of pushing the
+ *    late months out of view. Three things buy that width back: halved cell
+ *    padding (the CSS class), month amounts printed WITHOUT the ₹ prefix —
+ *    the header carries the unit once, like a spreadsheet — and a fixed-width
+ *    member column that ellipsises the long names (full name on hover/tap via
+ *    `title`). Horizontal scroll is still there as the fallback on phones.
  * Sortable on Member (alphabetical) and Total (numeric); month columns are
  * display-only because sorting by a single month is rarely useful.
  *
@@ -30,6 +37,16 @@ import type { DashboardMemberMonthRow } from '@/lib/actions/dashboard'
 const MONTHS = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'] as const
 type MonthKey = (typeof MONTHS)[number]
 const MONTH_LABELS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+
+/**
+ * Grid amount: the same en-IN grouping `formatRupees` produces (whole rupees,
+ * lakh grouping) MINUS the ₹ prefix, which the table states once in its header
+ * instead of repeating in 300+ cells. Twelve of those prefixes per row is the
+ * difference between the grid fitting a laptop screen and not.
+ */
+function gridAmount(n: number): string {
+  return formatIndianGroups(String(Math.round(n)))
+}
 
 export function MemberMonthMatrix({
   rows,
@@ -95,7 +112,7 @@ export function MemberMonthMatrix({
       // Display-only serial number; follows the current sort/filter order.
       field: '_key',
       header: '#',
-      style: { width: '3rem', minWidth: '3rem' },
+      style: { width: '2.25rem', minWidth: '2.25rem' },
       bodyClassName: 'whitespace-nowrap text-right tabular-nums text-gray-400',
       headerClassName: 'text-right',
       body: (_r, { rowIndex }) => rowIndex + 1,
@@ -105,8 +122,15 @@ export function MemberMonthMatrix({
       field: 'member_name',
       header: 'Member',
       sortable: true,
-      bodyClassName: 'whitespace-nowrap text-sm font-medium text-gray-900',
-      style: { minWidth: '11rem' },
+      bodyClassName: 'font-medium text-gray-900',
+      // Fixed, not min: the longest roster names are ~35 characters and would
+      // otherwise eat the width the month columns need.
+      style: { width: '9.5rem', minWidth: '9.5rem', maxWidth: '9.5rem' },
+      body: (r) => (
+        <span className="block truncate" title={r.member_name}>
+          {r.member_name}
+        </span>
+      ),
       footer: <span className="font-medium text-gray-700">Total</span>,
     },
     // One column per month, generated dynamically.
@@ -114,20 +138,20 @@ export function MemberMonthMatrix({
       field: k,
       header: MONTH_LABELS[i],
       align: 'right',
-      style: { minWidth: '5.5rem' },
+      style: { minWidth: '3.5rem' },
       headerClassName: 'text-right',
       bodyClassName: 'whitespace-nowrap text-right tabular-nums',
       body: (r) => {
         const v = r[k] ?? 0
         return (
           <span className={v > 0 ? 'text-gray-700' : 'text-gray-300'}>
-            {v > 0 ? formatRupees(v) : '—'}
+            {v > 0 ? gridAmount(v) : '—'}
           </span>
         )
       },
       footer: (
         <span className="font-medium tabular-nums text-gray-900">
-          {colTotals[k] > 0 ? formatRupees(colTotals[k]) : '—'}
+          {colTotals[k] > 0 ? gridAmount(colTotals[k]) : '—'}
         </span>
       ),
     })),
@@ -137,35 +161,41 @@ export function MemberMonthMatrix({
       sortable: true,
       align: 'right',
       dataType: 'numeric',
-      style: { minWidth: '6.5rem' },
+      style: { minWidth: '4.5rem' },
       headerClassName: 'text-right',
       bodyClassName: 'whitespace-nowrap text-right font-semibold tabular-nums',
       body: (r) => (
         <span className={r.total > 0 ? 'text-gray-900' : 'text-gray-300'}>
-          {r.total > 0 ? formatRupees(r.total) : '—'}
+          {r.total > 0 ? gridAmount(r.total) : '—'}
         </span>
       ),
       footer: (
         <span className="font-semibold tabular-nums text-gray-900">
-          {formatRupees(grandTotal)}
+          {gridAmount(grandTotal)}
         </span>
       ),
     },
   ]
 
-  const exportMenu = (
-    <TableExportMenu
-      filename={year ? `member-month-${year}` : 'member-month-matrix'}
-      title={year ? `Member × Month contributions — ${year}` : 'Member × Month contributions'}
-      columns={exportColumns}
-      rows={exportRows}
-      footer={exportFooter}
-      criteria={exportCriteria}
-    />
+  // The ₹ the cells no longer carry, stated once beside the export menu.
+  const toolbarExtras = (
+    <div className="flex items-center gap-3">
+      <span className="hidden text-[0.6875rem] text-gray-400 sm:inline">
+        Amounts in ₹
+      </span>
+      <TableExportMenu
+        filename={year ? `member-month-${year}` : 'member-month-matrix'}
+        title={year ? `Member × Month contributions — ${year}` : 'Member × Month contributions'}
+        columns={exportColumns}
+        rows={exportRows}
+        footer={exportFooter}
+        criteria={exportCriteria}
+      />
+    </div>
   )
 
   return (
-    <div className="overflow-clip rounded-2xl border border-gray-200 bg-white">
+    <div className="pr-table-dense overflow-clip rounded-2xl border border-gray-200 bg-white">
       <PrDataTable<Row>
         value={augmented}
         columns={columns}
@@ -179,9 +209,13 @@ export function MemberMonthMatrix({
         // sense as free-text search targets.
         globalFilterFields={['member_name']}
         globalSearchPlaceholder="Search by member name…"
-        header={exportMenu}
+        header={toolbarExtras}
         onValueChange={setProcessed}
         onGlobalFilterChange={setSearchQuery}
+        // Spreadsheet reading: gridlines + zebra rows make it possible to track
+        // a cell back to its member and its month across 12 narrow columns.
+        gridlines
+        striped
         // Wide 12-month grid → horizontal scroll instead of card stacking.
         scrollable
         // It's a bounded pivot (all members at once, with a footer totals row);

@@ -53,6 +53,49 @@
     height: 1.75rem;
   }
 
+  /* Spreadsheet density — opt-in wrapper class for WIDE pivots (member × 12
+     months) where the standard `sm` padding pushes columns off-screen. Halves
+     the horizontal padding and drops a notch of type size on every cell so all
+     15 columns fit a laptop viewport without horizontal scrolling. Applied on
+     a wrapper div, so it only affects the table that asks for it. */
+  .pr-table-dense .p-datatable-sm .p-datatable-thead > tr > th,
+  .pr-table-dense .p-datatable-sm .p-datatable-tfoot > tr > td {
+    padding: 0.35rem 0.4rem;
+    font-size: 0.625rem;
+  }
+  .pr-table-dense .p-datatable-sm .p-datatable-tbody > tr > td {
+    padding: 0.3rem 0.4rem;
+    font-size: 0.75rem;
+    line-height: 1.15rem;
+  }
+  /* The sort chevrons carry their own left margin, which is dead space in a
+     column whose header is three characters wide. */
+  .pr-table-dense .p-datatable-sm .p-sortable-column-icon {
+    margin-left: 0.25rem;
+  }
+
+  /* `showGridlines` draws the spreadsheet rules between cells, but it also
+     draws an outer left/right edge — and the dense tables sit inside a rounded
+     card that already has one, so those edges read as a doubled line at the
+     corners. Keep the interior rules, drop the outer frame. (These live in the
+     `components` layer, so they beat the equally-specific theme rules.) */
+  .pr-table-dense .p-datatable-gridlines .p-datatable-header,
+  .pr-table-dense .p-datatable-gridlines .p-paginator-top,
+  .pr-table-dense .p-datatable-gridlines .p-paginator-bottom {
+    border-left-width: 0;
+    border-right-width: 0;
+  }
+  .pr-table-dense .p-datatable-gridlines .p-datatable-thead > tr > th:first-child,
+  .pr-table-dense .p-datatable-gridlines .p-datatable-tbody > tr > td:first-child,
+  .pr-table-dense .p-datatable-gridlines .p-datatable-tfoot > tr > td:first-child {
+    border-left-width: 0;
+  }
+  .pr-table-dense .p-datatable-gridlines .p-datatable-thead > tr > th:last-child,
+  .pr-table-dense .p-datatable-gridlines .p-datatable-tbody > tr > td:last-child,
+  .pr-table-dense .p-datatable-gridlines .p-datatable-tfoot > tr > td:last-child {
+    border-right-width: 0;
+  }
+
   /* Compact paginator — Lara's page-link buttons and rows-per-page dropdown
      are ~3rem tall, making the footer pager bar very tall. Shrink the bar
      padding and every control to match the small table density. */
