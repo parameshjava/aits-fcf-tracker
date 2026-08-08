@@ -28,7 +28,9 @@ import type { DashboardMemberMonthRow } from '@/lib/actions/dashboard'
  *    to their digits (a `minWidth` floor only) and the Member column takes
  *    every pixel left over (`width: 100%`), so names show in full and the
  *    slack never turns into gaps between the months. Horizontal scroll is
- *    still there as the fallback when the sum genuinely exceeds the window.
+ *    still there as the fallback when the sum genuinely exceeds the window —
+ *    which is always the case on a phone, so the name column is capped below
+ *    `sm` to keep the frozen pair from eating the viewport.
  * Sortable on Member (alphabetical) and Total (numeric); month columns are
  * display-only because sorting by a single month is rarely useful.
  *
@@ -130,13 +132,29 @@ export function MemberMonthMatrix({
       sortable: true,
       frozen: true,
       // `nowrap` means the column can never be narrower than the longest name,
-      // so names always render in full — no ellipsis, no hover to read them.
+      // so from `sm` up names always render in full — no ellipsis, no hover.
       bodyClassName: 'whitespace-nowrap font-medium text-gray-900',
       // `width: 100%` is the slack sink. Under `table-layout: auto` the other
       // columns are satisfied at their content width first and everything left
       // over lands here — so the months hug their digits instead of being
       // padded out with dead space when the grid is narrower than the window.
-      style: { width: '100%', minWidth: '11rem' },
+      // The floor matches the phone cap below; on wider screens the names
+      // themselves push the column past it.
+      style: { width: '100%', minWidth: '9.5rem' },
+      // On a phone there is no slack to absorb, so an uncapped name column
+      // would take ~233px of a ~358px viewport — and being frozen, it would
+      // hold that width permanently, leaving barely two months on screen.
+      // Below `sm` only, cap it and ellipsise; `sm:max-w-none` hands the full
+      // name back everywhere else. `truncate`'s overflow rules stay harmless
+      // once uncapped, since the span still measures at its full text width.
+      body: (r) => (
+        <span
+          className="block max-w-[9.5rem] truncate sm:max-w-none"
+          title={r.member_name}
+        >
+          {r.member_name}
+        </span>
+      ),
       footer: <span className="font-medium text-gray-700">Total</span>,
     },
     // One column per month, generated dynamically.
