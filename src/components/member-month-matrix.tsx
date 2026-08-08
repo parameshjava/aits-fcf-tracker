@@ -112,6 +112,9 @@ export function MemberMonthMatrix({
       // Display-only serial number; follows the current sort/filter order.
       field: '_key',
       header: '#',
+      // Frozen with Member below: the two label columns stay put while the
+      // months scroll under them, so a number is never orphaned from its row.
+      frozen: true,
       style: { width: '2.25rem', minWidth: '2.25rem' },
       bodyClassName: 'whitespace-nowrap text-right tabular-nums text-gray-400',
       headerClassName: 'text-right',
@@ -122,6 +125,7 @@ export function MemberMonthMatrix({
       field: 'member_name',
       header: 'Member',
       sortable: true,
+      frozen: true,
       bodyClassName: 'font-medium text-gray-900',
       // Fixed, not min: the longest roster names are ~35 characters and would
       // otherwise eat the width the month columns need.
@@ -177,21 +181,15 @@ export function MemberMonthMatrix({
     },
   ]
 
-  // The ₹ the cells no longer carry, stated once beside the export menu.
-  const toolbarExtras = (
-    <div className="flex items-center gap-3">
-      <span className="hidden text-[0.6875rem] text-gray-400 sm:inline">
-        Amounts in ₹
-      </span>
-      <TableExportMenu
-        filename={year ? `member-month-${year}` : 'member-month-matrix'}
-        title={year ? `Member × Month contributions — ${year}` : 'Member × Month contributions'}
-        columns={exportColumns}
-        rows={exportRows}
-        footer={exportFooter}
-        criteria={exportCriteria}
-      />
-    </div>
+  const exportMenu = (
+    <TableExportMenu
+      filename={year ? `member-month-${year}` : 'member-month-matrix'}
+      title={year ? `Member × Month contributions — ${year}` : 'Member × Month contributions'}
+      columns={exportColumns}
+      rows={exportRows}
+      footer={exportFooter}
+      criteria={exportCriteria}
+    />
   )
 
   return (
@@ -209,7 +207,7 @@ export function MemberMonthMatrix({
         // sense as free-text search targets.
         globalFilterFields={['member_name']}
         globalSearchPlaceholder="Search by member name…"
-        header={toolbarExtras}
+        header={exportMenu}
         onValueChange={setProcessed}
         onGlobalFilterChange={setSearchQuery}
         // Spreadsheet reading: gridlines + zebra rows make it possible to track
@@ -222,6 +220,13 @@ export function MemberMonthMatrix({
         // paginating it would hide rows and break the column totals reading.
         paginated={false}
       />
+      {/* The unit the cells no longer repeat. A caption, not a toolbar chip:
+          the toolbar is already tight on a phone, and that's exactly where a
+          reader is most likely to need telling. */}
+      <p className="border-t border-gray-200 px-3 py-2 text-[0.6875rem] text-gray-400">
+        All amounts in ₹.
+        <span className="sm:hidden"> Scroll the grid sideways for later months.</span>
+      </p>
     </div>
   )
 }

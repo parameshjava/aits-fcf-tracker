@@ -51,6 +51,13 @@ export type PrColumn<T> = {
   footer?: ReactNode
   /** Marks this as the expander toggle column for row expansion. */
   expander?: boolean
+  /** Pin this column while the rest scrolls horizontally. Requires the table's
+   *  `scrollable` prop — PrimeReact only applies the sticky positioning inside
+   *  a scroll container. Left offsets are computed from the preceding frozen
+   *  columns, so freezing several adjacent ones works without manual widths. */
+  frozen?: boolean
+  /** Which edge a frozen column pins to. Defaults to 'left'. */
+  alignFrozen?: 'left' | 'right'
   style?: CSSProperties
   bodyClassName?: string
   headerClassName?: string
@@ -360,6 +367,8 @@ export function PrDataTable<T extends Record<string, unknown>>({
           showFilterMatchModes={c.filterElement ? false : undefined}
           footer={c.footer as never}
           expander={c.expander}
+          frozen={c.frozen}
+          alignFrozen={c.alignFrozen}
           style={c.style}
           bodyClassName={c.bodyClassName}
           headerClassName={c.headerClassName}

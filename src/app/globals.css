@@ -96,6 +96,15 @@
     border-right-width: 0;
   }
 
+  /* Freeze seam. The sticky columns paint OVER the scrolled content, so the
+     divider has to sit on the last frozen cell's own right edge — a border on
+     the first scrolling cell's left edge would slide underneath it and vanish.
+     Width only: the theme already set `border: 1px solid` on all four sides
+     before narrowing the widths, so the color comes along for free. */
+  .pr-table-dense .p-frozen-column:has(+ :not(.p-frozen-column)) {
+    border-right-width: 1px;
+  }
+
   /* Compact paginator — Lara's page-link buttons and rows-per-page dropdown
      are ~3rem tall, making the footer pager bar very tall. Shrink the bar
      padding and every control to match the small table density. */
