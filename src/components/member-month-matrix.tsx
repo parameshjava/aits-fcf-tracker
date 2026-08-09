@@ -134,13 +134,22 @@ export function MemberMonthMatrix({
       // `nowrap` means the column can never be narrower than the longest name,
       // so from `sm` up names always render in full — no ellipsis, no hover.
       bodyClassName: 'whitespace-nowrap font-medium text-gray-900',
-      // `width: 100%` is the slack sink. Under `table-layout: auto` the other
-      // columns are satisfied at their content width first and everything left
-      // over lands here — so the months hug their digits instead of being
-      // padded out with dead space when the grid is narrower than the window.
-      // The floor matches the phone cap below; on wider screens the names
-      // themselves push the column past it.
-      style: { width: '100%', minWidth: '9.5rem' },
+      // `width: 1px` under `table-layout: auto` is the shrink-to-fit idiom: a
+      // declared width below the content width collapses the column onto its
+      // longest label, and the slack goes to the auto-width columns (the twelve
+      // months and Total), which spread it evenly.
+      //
+      // This column used to carry `width: 100%` and act as the slack sink,
+      // which read fine while every label was a full name. Aliases cut the
+      // content to a few characters but the 100% kept soaking up every spare
+      // pixel, so the names sat against a vast empty gap with the months
+      // huddled off to the right.
+      //
+      // Sizing to content instead is self-correcting: short aliases give a
+      // narrow column, a member still on their full name widens it, and the
+      // months take whatever is left either way. The floor matches the phone
+      // cap below so a two-letter alias can't collapse the column.
+      style: { width: '1px', minWidth: '9.5rem' },
       // On a phone there is no slack to absorb, so an uncapped name column
       // would take ~233px of a ~358px viewport — and being frozen, it would
       // hold that width permanently, leaving barely two months on screen.
@@ -165,8 +174,10 @@ export function MemberMonthMatrix({
       field: k,
       header: MONTH_LABELS[i],
       align: 'right',
-      // A floor, not a target — these size to their widest amount. Anything
-      // larger just becomes empty space, since the slack goes to Member.
+      // A floor, not a target. These are the auto-width columns now, so they
+      // share whatever Member doesn't take and end up evenly spread — the
+      // twelve months read as one grid rather than a huddle. The floor only
+      // bites on a phone, where there is no slack and the table scrolls.
       style: { minWidth: '2.75rem' },
       headerClassName: 'text-right',
       bodyClassName: 'whitespace-nowrap text-right tabular-nums',
