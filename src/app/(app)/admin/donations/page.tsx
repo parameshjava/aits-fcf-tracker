@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { formatRupees } from '@/lib/format'
+import { memberDisplayName } from '@/lib/member-alias'
 import { PollModal } from '@/components/poll-modal'
 import { TableExportMenu } from '@/components/table-export'
 import type { Cell } from '@/lib/table-export'
@@ -13,7 +14,7 @@ type RawDonationRow = {
   amount: number | string
   description: string | null
   beneficiary_name: string | null
-  member: { name: string } | { name: string }[] | null
+  member: { name: string; alias: string | null } | { name: string; alias: string | null }[] | null
   poll: { id: string; question: string } | { id: string; question: string }[] | null
 }
 
@@ -43,7 +44,7 @@ export default async function AdminDonationsPage() {
   const { data, error } = await supabase
     .from('transactions')
     .select(
-      'id, transaction_id, transaction_date, amount, description, beneficiary_name, member:member_id (name), poll:poll_id (id, question)',
+      'id, transaction_id, transaction_date, amount, description, beneficiary_name, member:member_id (name, alias), poll:poll_id (id, question)',
     )
     .eq('transaction_type', 'donation')
     .order('transaction_date', { ascending: false })
@@ -60,7 +61,7 @@ export default async function AdminDonationsPage() {
       amount: Number(r.amount),
       description: r.description,
       beneficiary_name: r.beneficiary_name,
-      referrer_name: member?.name ?? null,
+      referrer_name: member ? memberDisplayName(member) : null,
       poll: poll ?? null,
     }
   })

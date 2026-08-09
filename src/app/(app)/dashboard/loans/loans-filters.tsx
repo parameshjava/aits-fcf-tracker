@@ -6,8 +6,9 @@ import { PrMultiSelect } from '@/components/ui/pr/multiselect'
 import type { SelectOption } from '@/components/ui/pr/dropdown'
 import { Field } from '@/components/ui/pr/field'
 import { Button } from '@/components/ui/pr/button'
+import { MEMBER_FILTER_BY, memberSelectOptions } from '@/lib/member-alias'
 
-export type MemberOption = { id: string; name: string }
+export type MemberOption = { id: string; name: string; alias?: string | null }
 
 type Props = {
   members: MemberOption[]
@@ -21,10 +22,7 @@ export function LoansFilters({ members, defaultMemberIds }: Props) {
 
   const [memberIds, setMemberIds] = useState<string[]>(defaultMemberIds)
 
-  const memberOptions: SelectOption[] = members.map((m) => ({
-    value: m.id,
-    label: m.name,
-  }))
+  const memberOptions: SelectOption[] = memberSelectOptions(members)
 
   function push(nextMembers: string[]) {
     const sp = new URLSearchParams(searchParams?.toString() ?? '')
@@ -53,6 +51,7 @@ export function LoansFilters({ members, defaultMemberIds }: Props) {
             id="loans-filter-members"
             values={memberIds}
             options={memberOptions}
+            filterBy={MEMBER_FILTER_BY}
             placeholder="All members"
             onChange={(next) => {
               setMemberIds(next)

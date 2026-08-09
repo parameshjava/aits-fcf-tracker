@@ -2,6 +2,7 @@
 
 import { useActionState, useEffect, useRef } from 'react'
 import { saveBankAccount, type MemberOption } from '@/lib/actions/bank-accounts'
+import { memberPickerLabel } from '@/lib/member-alias'
 import { IfscField } from '@/components/ifsc-field'
 
 /**
@@ -112,7 +113,7 @@ export function BankAccountForm({
               <option value="">Select member</option>
               {(members ?? []).map((m) => (
                 <option key={m.id} value={m.id}>
-                  {m.name}
+                  {memberPickerLabel(m)}
                 </option>
               ))}
             </select>

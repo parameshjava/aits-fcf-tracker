@@ -1,5 +1,6 @@
 import { cacheLife, cacheTag } from 'next/cache'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { memberDisplayName } from '@/lib/member-alias'
 
 /**
  * Dashboard data accessors. All of these read from the dashboard_* views
@@ -56,20 +57,26 @@ export type DashboardMonthly = {
 }
 
 export type DashboardMemberTotal = {
+  /** Display name — the member's alias when they have one (see member-alias.ts). */
   member_name: string
   count: number
   total: number
+  /** Canonical members.name, for tooltips and anywhere the record matters. */
+  member_full_name: string
 }
 
 /** One row per (year, member) with each calendar month's contribution sum. */
 export type DashboardMemberMonthRow = {
   year: number
   member_id: string | null
+  /** Display name — the member's alias when they have one. */
   member_name: string
   jan: number; feb: number; mar: number; apr: number
   may: number; jun: number; jul: number; aug: number
   sep: number; oct: number; nov: number; dec: number
   total: number
+  /** Canonical members.name, for tooltips and anywhere the record matters. */
+  member_full_name: string
 }
 
 export type DashboardTxn = {
@@ -83,9 +90,12 @@ export type DashboardTxn = {
   member_id: string | null
   loan_id: string | null
   created_at: string
+  /** Display name — the member's alias when they have one. */
   member_name: string | null
   member_slug: string | null
   bank_transaction_id: string | null
+  /** Canonical members.name, for tooltips and anywhere the record matters. */
+  member_full_name: string | null
 }
 
 /** One-row dashboard tile data sourced from `donation_eligibility_summary`. */
@@ -199,11 +209,13 @@ export async function getDashboardMemberMonthMatrix(
     .order('member_name', { ascending: true })
   if (error) throw new Error(error.message)
   return (data ?? []).map((r) => {
-    const row = r as Partial<DashboardMemberMonthRow>
+    const row = r as Partial<DashboardMemberMonthRow> & { member_alias?: string | null }
+    const fullName = String(row.member_name ?? '—')
     return {
       year:        asNum(row.year),
       member_id:   (row.member_id as string | null) ?? null,
-      member_name: String(row.member_name ?? '—'),
+      member_name: memberDisplayName(fullName, row.member_alias),
+      member_full_name: fullName,
       jan: asNum(row.jan), feb: asNum(row.feb), mar: asNum(row.mar), apr: asNum(row.apr),
       may: asNum(row.may), jun: asNum(row.jun), jul: asNum(row.jul), aug: asNum(row.aug),
       sep: asNum(row.sep), oct: asNum(row.oct), nov: asNum(row.nov), dec: asNum(row.dec),
@@ -223,11 +235,13 @@ export async function getDashboardMemberTotals(): Promise<DashboardMemberTotal[]
     .select('*')
   if (error) throw new Error(error.message)
   return (data ?? []).map((r) => {
-    const row = r as Partial<DashboardMemberTotal>
+    const row = r as Partial<DashboardMemberTotal> & { member_alias?: string | null }
+    const fullName = String(row.member_name ?? '—')
     return {
-      member_name: String(row.member_name ?? '—'),
+      member_name: memberDisplayName(fullName, row.member_alias),
       count:       asNum(row.count),
       total:       asNum(row.total),
+      member_full_name: fullName,
     }
   })
 }
@@ -280,7 +294,23 @@ export async function getDashboardTransactions(opts?: {
 
   const { data, error } = await query
   if (error) throw new Error(error.message)
-  return (data ?? []) as DashboardTxn[]
+  return (data ?? []).map(toDashboardTxn)
+}
+
+/**
+ * The view hands back `member_name` (canonical) + `member_alias`. Every
+ * consumer wants the display name under `member_name`, so the swap happens
+ * once here rather than at each render site; the canonical name stays
+ * available as `member_full_name`.
+ */
+function toDashboardTxn(r: unknown): DashboardTxn {
+  const row = r as DashboardTxn & { member_alias?: string | null }
+  const fullName = row.member_name ?? null
+  return {
+    ...row,
+    member_name: fullName === null ? null : memberDisplayName(fullName, row.member_alias),
+    member_full_name: fullName,
+  }
 }
 
 /** One row per active member with their summed contributions for a month. */
@@ -326,11 +356,11 @@ export async function getCurrentMonthContributions(
   // still get a row.
   const { data: members, error: memErr } = await supabase
     .from('members')
-    .select('id, name')
+    .select('id, name, alias')
     .eq('status', 'active')
     .order('name', { ascending: true })
   if (memErr) throw new Error(memErr.message)
-  const activeMembers = (members ?? []) as { id: string; name: string }[]
+  const activeMembers = (members ?? []) as { id: string; name: string; alias: string | null }[]
   const activeIds = new Set(activeMembers.map((m) => m.id))
 
   const [yStr, mStr] = monthIso.split('-')
@@ -357,7 +387,7 @@ export async function getCurrentMonthContributions(
   for (const mem of activeMembers) {
     byMember.set(mem.id, {
       member_id: mem.id,
-      member_name: mem.name,
+      member_name: memberDisplayName(mem),
       total: 0,
       count: 0,
       latest_date: null,

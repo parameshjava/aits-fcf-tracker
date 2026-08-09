@@ -9,6 +9,7 @@ import {
   type BalanceDirection,
 } from '@/lib/balance-direction'
 import { computeLoanFinancials, type LoanFinancials } from '@/lib/loan-math'
+import { memberDisplayName } from '@/lib/member-alias'
 import { cutoverYmdToIso, isCutoverFloored } from '@/lib/emi-anchor'
 import {
   actionError,
@@ -76,7 +77,7 @@ export type LoanRow = {
    *  Historical loans pre-date the polls feature and will be null. */
   poll_id: string | null
   created_at: string
-  member: { id: string; name: string; slug: string } | null
+  member: { id: string; name: string; alias: string | null; slug: string } | null
   /** Embedded poll summary for display next to the loan. Null when
    *  `poll_id` is null OR the referenced poll was deleted. */
   poll: { id: string; question: string } | null
@@ -158,7 +159,7 @@ export async function getWriteOffDonationRows(): Promise<WriteOffDonationRow[]> 
   const { data, error } = await supabase
     .from('loans')
     .select(
-      'id, loan_number, bad_debt, end_date, member:member_id (name), poll:poll_id (id, question)',
+      'id, loan_number, bad_debt, end_date, member:member_id (name, alias), poll:poll_id (id, question)',
     )
     .gt('bad_debt', 0)
     .not('end_date', 'is', null)
@@ -169,7 +170,7 @@ export async function getWriteOffDonationRows(): Promise<WriteOffDonationRow[]> 
     loan_number: string
     bad_debt: number | string | null
     end_date: string
-    member: { name: string } | null
+    member: { name: string; alias: string | null } | null
     poll: { id: string; question: string } | null
   }
   return ((data ?? []) as unknown as Row[]).map((l) => ({
@@ -180,7 +181,7 @@ export async function getWriteOffDonationRows(): Promise<WriteOffDonationRow[]> 
     transaction_date: l.end_date,
     description: `Loan ${l.loan_number} written off as bad debt`,
     member_name: null,
-    beneficiary_name: l.member?.name ?? null,
+    beneficiary_name: l.member ? memberDisplayName(l.member) : null,
     poll: l.poll,
   }))
 }
@@ -224,7 +225,7 @@ export async function getTotalPendingPrincipal(): Promise<number> {
 }
 
 const LOAN_ROW_SELECT =
-  '*, member:member_id (id, name, slug), poll:poll_id (id, question)'
+  '*, member:member_id (id, name, alias, slug), poll:poll_id (id, question)'
 
 /** True when the supplied Supabase/Postgres error is the unique-violation
  *  raised by the `loans_poll_id_unique` partial index (one loan per poll).
@@ -370,7 +371,7 @@ export async function getLoanTransactions(loanId: string) {
   const supabase = await createClient()
   const { data, error } = await supabase
     .from('transactions')
-    .select('*, member:member_id (name, slug)')
+    .select('*, member:member_id (name, alias, slug)')
     .eq('loan_id', loanId)
     .order('transaction_date', { ascending: true })
   if (error) throw new Error(error.message)
@@ -390,7 +391,7 @@ export async function getActiveLoansWithBalance(): Promise<ActiveLoanOption[]> {
   const supabase = await createClient()
   const { data: loans, error: loansErr } = await supabase
     .from('loans')
-    .select('id, loan_number, member_id, member:member_id (id, name), principal_amount, bad_debt')
+    .select('id, loan_number, member_id, member:member_id (id, name, alias), principal_amount, bad_debt')
     .eq('status', 'active')
     .order('start_date', { ascending: false })
   if (loansErr) throw new Error(loansErr.message)
@@ -399,7 +400,7 @@ export async function getActiveLoansWithBalance(): Promise<ActiveLoanOption[]> {
     id: string
     loan_number: string
     member_id: string | null
-    member: { id: string; name: string } | null
+    member: { id: string; name: string; alias: string | null } | null
     principal_amount: number | string
     bad_debt: number | string | null
   }
@@ -430,7 +431,7 @@ export async function getActiveLoansWithBalance(): Promise<ActiveLoanOption[]> {
     id: l.id,
     loan_number: l.loan_number,
     member_id: l.member_id,
-    member_name: l.member?.name ?? null,
+    member_name: l.member ? memberDisplayName(l.member) : null,
     balance: Math.max(
       Number(l.principal_amount) - (paidByLoan.get(l.id) ?? 0) - (Number(l.bad_debt) || 0),
       0,

@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { formatRupees } from '@/lib/format'
+import { memberDisplayName } from '@/lib/member-alias'
 import { KpiTile } from '@/components/kpi-tile'
 import { getLoanByNumber, getLoanDetail } from '@/lib/actions/loans'
 import { getEmiSchedule } from '@/lib/actions/emi'
@@ -71,7 +72,7 @@ export default async function LoanDetailPage({
           <h1 className="mt-1 text-lg font-semibold text-gray-900">
             <span className="font-mono">{loan.loan_number}</span>{' '}
             <span className="ml-2 text-base text-gray-500">
-              · {loan.member?.name ?? 'No member'}
+              · {loan.member ? memberDisplayName(loan.member) : 'No member'}
             </span>
           </h1>
         </div>

@@ -112,6 +112,19 @@ export default async function AdminPage() {
         </Link>
 
         <Link
+          href="/admin/aliases"
+          className="flex items-center justify-between rounded-lg border bg-white p-5 transition hover:border-indigo-300"
+        >
+          <div>
+            <h3 className="font-semibold text-gray-900">Aliases</h3>
+            <p className="text-sm text-gray-500">
+              Set the short names used across charts and polls
+            </p>
+          </div>
+          <span className="text-2xl text-indigo-600">🏷️</span>
+        </Link>
+
+        <Link
           href="/admin/polls/new"
           className="flex items-center justify-between rounded-lg border bg-white p-5 transition hover:border-purple-300"
         >

@@ -87,7 +87,7 @@ export async function getPendingPayments() {
   // Also embed the auto-matched member so the admin can see / override it.
   const { data, error } = await supabase
     .from('pending_payments')
-    .select('*, submitter:profiles!submitted_by(full_name), member:member_id(id, name)')
+    .select('*, submitter:profiles!submitted_by(full_name), member:member_id(id, name, alias)')
     .eq('status', 'pending')
     .order('created_at', { ascending: false })
 

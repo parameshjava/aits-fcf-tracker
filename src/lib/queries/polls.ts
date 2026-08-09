@@ -1,6 +1,7 @@
 import { cacheLife, cacheTag } from 'next/cache'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { shapePollResults, type RawOptionVoter, type RawOtherResponse } from '@/lib/poll-results'
+import { memberDisplayName } from '@/lib/member-alias'
 import type {
   PollDetail,
   PollKind,
@@ -159,11 +160,11 @@ export async function getPollResults(pollId: string): Promise<PollResults | null
         .eq('poll_id', pollId),
       supabase
         .from('poll_vote_options')
-        .select('option_id, poll_votes!inner(poll_id, voter_id, other_text, member:voter_id(name))')
+        .select('option_id, poll_votes!inner(poll_id, voter_id, other_text, member:voter_id(name, alias))')
         .eq('poll_votes.poll_id', pollId),
       supabase
         .from('poll_votes')
-        .select('voter_id, other_text, member:voter_id(name)')
+        .select('voter_id, other_text, member:voter_id(name, alias)')
         .eq('poll_id', pollId)
         .not('other_text', 'is', null),
       supabase
@@ -187,22 +188,22 @@ export async function getPollResults(pollId: string): Promise<PollResults | null
 
   type VoteJoin = {
     option_id: string
-    poll_votes: { voter_id: string; member: { name: string } | null } | null
+    poll_votes: { voter_id: string; member: { name: string; alias: string | null } | null } | null
   }
   const voterRows = (votersRes.data ?? []) as unknown as VoteJoin[]
   const optionVoters: RawOptionVoter[] = voterRows.map((r) => ({
     option_id: String(r.option_id),
     member_id: r.poll_votes?.voter_id ?? '',
-    member_name: r.poll_votes?.member?.name ?? '—',
+    member_name: r.poll_votes?.member ? memberDisplayName(r.poll_votes.member) : '—',
   }))
 
-  type OtherJoin = { voter_id: string; other_text: string | null; member: { name: string } | null }
+  type OtherJoin = { voter_id: string; other_text: string | null; member: { name: string; alias: string | null } | null }
   const otherRows = (votesRes.data ?? []) as unknown as OtherJoin[]
   const otherResponses: RawOtherResponse[] = otherRows
     .filter((r) => r.other_text && r.other_text.trim() !== '')
     .map((r) => ({
       member_id: r.voter_id,
-      member_name: r.member?.name ?? '—',
+      member_name: r.member ? memberDisplayName(r.member) : '—',
       text: String(r.other_text),
     }))
 

@@ -3,6 +3,7 @@
 import { useActionState, useState } from 'react'
 import { approvePayment, rejectPayment } from '@/lib/actions/payments'
 import { formatRupees, todayISO } from '@/lib/format'
+import { memberDisplayName, memberPickerLabel } from '@/lib/member-alias'
 import { BankBalanceUpdater } from '@/components/bank-balance-updater'
 import { PrAmountInput } from '@/components/ui/pr/amount-input'
 import { PrDatePicker } from '@/components/ui/pr/date-picker'
@@ -20,10 +21,10 @@ interface PendingPayment {
   description: string | null
   member_id: string | null
   submitter: { full_name: string | null } | null
-  member: { id: string; name: string } | null
+  member: { id: string; name: string; alias: string | null } | null
 }
 
-type MemberOption = { id: string; name: string }
+type MemberOption = { id: string; name: string; alias: string | null }
 
 export function PendingPaymentRow({
   payment,
@@ -91,7 +92,7 @@ export function PendingPaymentRow({
               <div className="text-xs text-gray-500">
                 Member:{' '}
                 {payment.member ? (
-                  <span className="font-medium text-gray-700">{payment.member.name}</span>
+                  <span className="font-medium text-gray-700">{memberDisplayName(payment.member)}</span>
                 ) : (
                   <span className="text-amber-700">not linked — set during approval</span>
                 )}
@@ -179,7 +180,7 @@ export function PendingPaymentRow({
                   <option value="">— No member —</option>
                   {members.map((m) => (
                     <option key={m.id} value={m.id}>
-                      {m.name}
+                      {memberPickerLabel(m)}
                     </option>
                   ))}
                 </select>

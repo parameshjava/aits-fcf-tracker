@@ -148,9 +148,12 @@ export function MemberMonthMatrix({
       // name back everywhere else. `truncate`'s overflow rules stay harmless
       // once uncapped, since the span still measures at its full text width.
       body: (r) => (
+        // The cell shows the alias when the member has one; the tooltip always
+        // carries the full name so an unfamiliar alias is one hover from an
+        // answer.
         <span
           className="block max-w-[9.5rem] truncate sm:max-w-none"
-          title={r.member_name}
+          title={r.member_full_name}
         >
           {r.member_name}
         </span>
@@ -226,9 +229,10 @@ export function MemberMonthMatrix({
             : 'No contributions recorded for this year yet.'
         }
         // Global search filters by member name ONLY — month amounts make no
-        // sense as free-text search targets.
-        globalFilterFields={['member_name']}
-        globalSearchPlaceholder="Search by member name…"
+        // sense as free-text search targets. Both the alias and the full name
+        // are searchable, so either one finds the row.
+        globalFilterFields={['member_name', 'member_full_name']}
+        globalSearchPlaceholder="Search by member name or alias…"
         header={exportMenu}
         onValueChange={setProcessed}
         onGlobalFilterChange={setSearchQuery}

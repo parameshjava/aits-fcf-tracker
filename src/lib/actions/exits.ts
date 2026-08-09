@@ -296,7 +296,7 @@ export async function getActiveMembersForExit(): Promise<{ id: string; name: str
   const supabase = await createClient()
   const { data: members, error } = await supabase
     .from('members')
-    .select('id, name')
+    .select('id, name, alias')
     .eq('status', 'active')
     .order('name')
   if (error) {

@@ -16,6 +16,7 @@ import { cacheLife, cacheTag } from 'next/cache'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 import { getCurrentUser } from './auth'
+import { memberDisplayName } from '@/lib/member-alias'
 
 export type MeetingRow = {
   id: string
@@ -89,7 +90,7 @@ export async function getMeeting(id: string): Promise<MeetingDetail | null> {
   // members table uses `name` (not `full_name`) — see 001_init_schema.sql
   const { data: attendees, error: aErr } = await supabase
     .from('meeting_attendees')
-    .select('meeting_id, member_id, position, attended, notes_md, notes_updated_at, notes_updated_by, members:member_id (name, slug)')
+    .select('meeting_id, member_id, position, attended, notes_md, notes_updated_at, notes_updated_by, members:member_id (name, alias, slug)')
     .eq('meeting_id', id)
     .order('position', { ascending: true })
   if (aErr) throw new Error(aErr.message)
@@ -111,10 +112,13 @@ export async function getMeeting(id: string): Promise<MeetingDetail | null> {
   if (memberLookupIds.length > 0) {
     const { data: memberRows } = await supabase
       .from('members')
-      .select('id, name')
+      .select('id, name, alias')
       .in('id', memberLookupIds)
     memberNameById = Object.fromEntries(
-      (memberRows ?? []).map((m) => [m.id as string, m.name as string]),
+      (memberRows ?? []).map((m) => [
+        m.id as string,
+        memberDisplayName(m.name as string, m.alias as string | null),
+      ]),
     )
   }
 
@@ -128,7 +132,7 @@ export async function getMeeting(id: string): Promise<MeetingDetail | null> {
   return {
     ...(meeting as MeetingRow),
     attendees: (attendees ?? []).map((row) => {
-      const m = (row as unknown as { members: { name: string; slug: string } | null }).members
+      const m = (row as unknown as { members: { name: string; alias: string | null; slug: string } | null }).members
       return {
         meeting_id: row.meeting_id as string,
         member_id: row.member_id as string,
@@ -137,7 +141,7 @@ export async function getMeeting(id: string): Promise<MeetingDetail | null> {
         notes_md: (row.notes_md as string | null) ?? null,
         notes_updated_at: (row.notes_updated_at as string | null) ?? null,
         notes_updated_by: (row.notes_updated_by as string | null) ?? null,
-        member_name: m?.name ?? '(unknown)',
+        member_name: m ? memberDisplayName(m) : '(unknown)',
         member_slug: m?.slug ?? '',
       }
     }),

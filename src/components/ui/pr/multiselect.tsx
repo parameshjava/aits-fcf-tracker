@@ -24,11 +24,16 @@ type PrMultiSelectProps = {
   /** Beyond this many selections the control shows the count label instead of
    * listing every item (prevents the field ballooning). Default 2. */
   maxSelectedLabels?: number
+  /**
+   * Which option fields the filter searches. Defaults to the visible label;
+   * pass 'label,search' to also match SelectOption.search.
+   */
+  filterBy?: string
 }
 
 export function PrMultiSelect({
   values, options, onChange, placeholder, disabled, className, id, name, required,
-  display = 'comma', maxSelectedLabels = 2,
+  display = 'comma', maxSelectedLabels = 2, filterBy = 'label',
 }: PrMultiSelectProps) {
   return (
     <>
@@ -53,6 +58,7 @@ export function PrMultiSelect({
         placeholder={placeholder}
         disabled={disabled}
         filter
+        filterBy={filterBy}
         display={display}
         maxSelectedLabels={maxSelectedLabels}
         selectedItemsLabel="{0} selected"

@@ -3,7 +3,16 @@
 import { Dropdown } from 'primereact/dropdown'
 import { cn } from '@/lib/utils'
 
-export type SelectOption = { value: string; label: string }
+export type SelectOption = {
+  value: string
+  label: string
+  /**
+   * Extra text the filter should match on, beyond the visible label — a
+   * member's full name when the label shows their alias, for instance. Pass
+   * `filterBy="label,search"` to switch it on (see memberSelectOptions).
+   */
+  search?: string
+}
 
 type PrDropdownProps = {
   value: string | null
@@ -12,6 +21,11 @@ type PrDropdownProps = {
   placeholder?: string
   disabled?: boolean
   filter?: boolean
+  /**
+   * Which option fields the filter searches. Defaults to the visible label;
+   * pass 'label,search' to also match SelectOption.search.
+   */
+  filterBy?: string
   className?: string
   id?: string
   /** Form field name — emits a hidden input so `<form action>`/FormData works. */
@@ -26,7 +40,7 @@ type PrDropdownProps = {
 // type-to-search behavior of the old searchable-select.
 export function PrDropdown({
   value, options, onChange, placeholder, disabled,
-  filter = true, className, id, name, required, showClear,
+  filter = true, filterBy = 'label', className, id, name, required, showClear,
 }: PrDropdownProps) {
   return (
     <>
@@ -48,6 +62,7 @@ export function PrDropdown({
         placeholder={placeholder}
         disabled={disabled}
         filter={filter}
+        filterBy={filterBy}
         showClear={showClear}
         className={cn('w-full', className)}
       />

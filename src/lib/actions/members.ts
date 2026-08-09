@@ -33,6 +33,8 @@ export type MemberRow = {
   email: string | null
   notes: string | null
   created_at: string
+  /** Short display handle (migration 055). Null until someone sets one. */
+  alias: string | null
 }
 
 export type MemberBankAccount = {
@@ -95,7 +97,7 @@ export async function getMembersWithContacts(): Promise<MemberWithContacts[]> {
     await Promise.all([
       supabase
         .from('members')
-        .select('id, name, slug, status, email, notes, created_at')
+        .select('id, name, slug, status, email, notes, created_at, alias')
         .order('name', { ascending: true }),
       supabase.from('member_contacts').select('*'),
     ])
@@ -120,7 +122,7 @@ export async function getMemberBySlug(slug: string): Promise<MemberWithContacts 
   const supabase = await createClient()
   const { data: memberData, error: memberErr } = await supabase
     .from('members')
-    .select('id, name, slug, status, email, notes, created_at')
+    .select('id, name, slug, status, email, notes, created_at, alias')
     .eq('slug', slug)
     .maybeSingle()
   if (memberErr) throw new Error(memberErr.message)

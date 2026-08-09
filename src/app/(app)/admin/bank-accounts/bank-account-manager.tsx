@@ -2,6 +2,7 @@
 
 import { useActionState, useState } from 'react'
 import { deleteBankAccount, type MemberOption } from '@/lib/actions/bank-accounts'
+import { memberDisplayName } from '@/lib/member-alias'
 import { BankAccountForm } from '@/components/bank-account-form'
 import { DeleteIconButton } from '@/components/ui/delete-icon-button'
 
@@ -16,7 +17,7 @@ interface BankAccount {
   branch: string | null
   upi_id: string | null
   is_primary: boolean
-  member: { name: string | null } | null
+  member: { name: string | null; alias: string | null } | null
 }
 
 export function BankAccountManager({
@@ -87,7 +88,7 @@ export function BankAccountManager({
             <tbody className="divide-y divide-gray-200">
               {accounts.map((acc) => (
                 <tr key={acc.id} className="hover:bg-gray-50">
-                  <td className="px-3 py-3 text-gray-900">{acc.member?.name || '—'}</td>
+                  <td className="px-3 py-3 text-gray-900">{acc.member ? memberDisplayName({ name: acc.member.name ?? '', alias: acc.member.alias }) || '—' : '—'}</td>
                   <td className="px-3 py-3 font-medium text-gray-900">{acc.full_name}</td>
                   <td className="px-3 py-3 text-gray-700">{acc.bank_name}</td>
                   <td className="px-3 py-3 font-mono text-xs text-gray-700">

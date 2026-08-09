@@ -1,5 +1,6 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
+import { memberDisplayName } from '@/lib/member-alias'
 import { getPollsForDonationPicker } from '@/lib/actions/transactions'
 import { TRANSACTION_TYPES, type TransactionType } from '@/lib/constants'
 import { NewTransactionForm } from './new-transaction-form'
@@ -24,7 +25,7 @@ export default async function NewTransactionPage({
   // so keep them out of the picker.
   const { data: members } = await supabase
     .from('members')
-    .select('id, name')
+    .select('id, name, alias')
     .eq('status', 'active')
     .order('name', { ascending: true })
 
@@ -32,7 +33,7 @@ export default async function NewTransactionPage({
   // loan from its detail page if they really need to log against it.
   const { data: loansRaw } = await supabase
     .from('loans')
-    .select('id, loan_number, principal_amount, status, member_id, member:member_id (name)')
+    .select('id, loan_number, principal_amount, status, member_id, member:member_id (name, alias)')
     .eq('status', 'active')
     .order('loan_number', { ascending: false })
 
@@ -42,7 +43,7 @@ export default async function NewTransactionPage({
     principal_amount: number
     status: string
     member_id: string | null
-    member: { name: string } | { name: string }[] | null
+    member: { name: string; alias: string | null } | { name: string; alias: string | null }[] | null
   }
   const loans = ((loansRaw ?? []) as unknown as RawLoanRow[]).map((l) => {
     const member = Array.isArray(l.member) ? l.member[0] : l.member
@@ -52,7 +53,7 @@ export default async function NewTransactionPage({
       principal_amount: Number(l.principal_amount),
       status: l.status,
       member_id: l.member_id,
-      member_name: member?.name ?? '—',
+      member_name: member ? memberDisplayName(member) : '—',
     }
   })
 

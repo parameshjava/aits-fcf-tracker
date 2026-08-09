@@ -5,6 +5,7 @@ import { getMemberBySlug, type MemberContact } from '@/lib/actions/members'
 import { MemberContactsList } from '@/components/member-contacts'
 import { AddContactForm } from '@/components/add-contact-form'
 import { ManageContactsList } from '@/components/manage-contacts-list'
+import { MemberAliasForm } from '@/components/member-alias-form'
 
 const STATUS_PILL: Record<string, string> = {
   active:   'bg-emerald-50 text-emerald-700 ring-emerald-200',
@@ -49,7 +50,14 @@ export default async function MemberDetailPage({
           ← Members directory
         </Link>
         <div className="mt-1 flex flex-wrap items-center justify-between gap-3">
-          <h1 className="text-lg font-semibold text-gray-900">{member.name}</h1>
+          <h1 className="text-lg font-semibold text-gray-900">
+            {member.name}
+            {member.alias && (
+              <span className="ml-2 rounded-full bg-indigo-50 px-2 py-0.5 text-xs font-medium text-indigo-700 ring-1 ring-indigo-200">
+                {member.alias}
+              </span>
+            )}
+          </h1>
           <span
             className={
               'rounded-full px-2.5 py-0.5 text-xs font-medium ring-1 ' +
@@ -120,6 +128,25 @@ export default async function MemberDetailPage({
           <MemberContactsList contacts={emails} emptyLabel="No contact emails yet." />
         )}
       </section>
+
+      {canEdit && (
+        <section className="rounded-2xl border border-gray-200/80 bg-white p-5">
+          <div className="mb-3">
+            <h2 className="text-sm font-semibold text-gray-900">Alias</h2>
+            <p className="text-[11px] text-gray-500">
+              {isSelf
+                ? 'The short name shown instead of your full name in charts, tables and polls. Change it whenever you like — clearing it brings your full name back.'
+                : 'The short name shown instead of the full name in charts, tables and polls.'}
+            </p>
+          </div>
+          <MemberAliasForm
+            memberId={member.id}
+            memberName={member.name}
+            currentAlias={member.alias}
+            isSelf={isSelf}
+          />
+        </section>
+      )}
 
       {canEdit && (
         <section className="rounded-2xl border border-gray-200/80 bg-white p-5">

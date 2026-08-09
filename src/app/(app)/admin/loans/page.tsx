@@ -7,6 +7,7 @@ import { LoansTabs, type LoansTabKey } from '@/components/loans-tabs'
 import { computeLoanFinancials, type LoanTxnInput } from '@/lib/loan-math'
 import { endOfMonth } from '@/lib/due'
 import { tallyEmiSchedule, pctPending, type EmiScheduleRow } from '@/lib/emi-due'
+import { memberDisplayName } from '@/lib/member-alias'
 
 export default async function AdminLoansListPage({
   searchParams,
@@ -99,7 +100,7 @@ export default async function AdminLoansListPage({
     return {
       id: l.id,
       loan_number: l.loan_number,
-      member_name: l.member?.name ?? null,
+      member_name: l.member ? memberDisplayName(l.member) : null,
       principal_amount: f.principal,
       start_date: l.start_date,
       end_date: l.end_date,

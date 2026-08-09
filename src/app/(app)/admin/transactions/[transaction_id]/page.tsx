@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { notFound, redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
+import { memberDisplayName } from '@/lib/member-alias'
 import {
   getTransactionByTxnId,
   getPollsForDonationPicker,
@@ -30,10 +31,10 @@ export default async function AdminTransactionManagePage({
   if (!txn) notFound()
 
   const [{ data: members }, { data: loansRaw }] = await Promise.all([
-    supabase.from('members').select('id, name').order('name', { ascending: true }),
+    supabase.from('members').select('id, name, alias').order('name', { ascending: true }),
     supabase
       .from('loans')
-      .select('id, loan_number, principal_amount, status, member_id, member:member_id (name)')
+      .select('id, loan_number, principal_amount, status, member_id, member:member_id (name, alias)')
       .order('loan_number', { ascending: false }),
   ])
 
@@ -43,7 +44,7 @@ export default async function AdminTransactionManagePage({
     principal_amount: number
     status: string
     member_id: string | null
-    member: { name: string } | { name: string }[] | null
+    member: { name: string; alias: string | null } | { name: string; alias: string | null }[] | null
   }
   const loans = ((loansRaw ?? []) as unknown as RawLoanRow[]).map((l) => {
     const member = Array.isArray(l.member) ? l.member[0] : l.member
@@ -53,7 +54,7 @@ export default async function AdminTransactionManagePage({
       principal_amount: Number(l.principal_amount),
       status: l.status,
       member_id: l.member_id,
-      member_name: member?.name ?? '—',
+      member_name: member ? memberDisplayName(member) : '—',
     }
   })
 

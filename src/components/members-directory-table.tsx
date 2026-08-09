@@ -89,6 +89,7 @@ function augment(
       _primary_email_value: primaryEmailValue,
       _search_blob: [
         m.name,
+        m.alias ?? '',
         statusLabel,
         primaryPhoneValue,
         primaryEmailValue,
@@ -144,9 +145,10 @@ export function MembersDirectoryTable({
   const activeMembers = augmented.filter((m) => m.status === 'active')
   const inactiveMembers = augmented.filter((m) => m.status !== 'active')
 
-  const exportColumns = ['Name', 'Status', 'Primary phone', 'Primary email', 'Login email', 'Member since']
+  const exportColumns = ['Name', 'Alias', 'Status', 'Primary phone', 'Primary email', 'Login email', 'Member since']
   const toExportRow = (m: MemberRowAug): Cell[] => [
     m.name,
+    m.alias ?? '',
     m._status_label,
     m._primary_phone_value,
     m._primary_email_value,
@@ -239,12 +241,22 @@ function MemberSection({
       header: 'Name',
       sortable: true,
       filter: true,
-      filterPlaceholder: 'Search by name',
+      // Filter on the blob (which carries the alias) while sorting stays on
+      // `name` — so typing either half finds the member.
+      filterField: '_search_blob',
+      filterPlaceholder: 'Search by name or alias',
       bodyClassName: 'whitespace-nowrap',
+      // The directory is the one screen where the full name IS the record, so
+      // the alias rides alongside as a chip rather than replacing it.
       body: (m) => (
         <span className="flex items-center gap-2">
           <Avatar src={m.avatar_url} name={m.name} size={28} />
           <span className="font-medium text-gray-900">{m.name}</span>
+          {m.alias && (
+            <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-[11px] font-medium text-indigo-700 ring-1 ring-indigo-200">
+              {m.alias}
+            </span>
+          )}
         </span>
       ),
     },

@@ -10,8 +10,9 @@ import { PrDropdown, type SelectOption } from '@/components/ui/pr/dropdown'
 import { Field } from '@/components/ui/pr/field'
 import { Button } from '@/components/ui/pr/button'
 import type { ExitMathResult } from '@/lib/exit-math'
+import { MEMBER_FILTER_BY, memberSelectOptions } from '@/lib/member-alias'
 
-type Member = { id: string; name: string }
+type Member = { id: string; name: string; alias?: string | null }
 type Estimate = (ExitMathResult & { basis: { contributions: number; loanBalance: number } }) | null
 
 export function AdminExitMemberForm({ members }: { members: Member[] }) {
@@ -54,10 +55,7 @@ export function AdminExitMemberForm({ members }: { members: Member[] }) {
   const ineligible = estimate !== null && !estimate.eligible
   const canSubmit = memberId !== '' && !estimating && !ineligible && !pending
 
-  const memberOptions: SelectOption[] = members.map((m) => ({
-    value: m.id,
-    label: m.name,
-  }))
+  const memberOptions: SelectOption[] = memberSelectOptions(members)
 
   return (
     <section className="rounded-xl border border-gray-200 bg-white p-5">
@@ -83,6 +81,7 @@ export function AdminExitMemberForm({ members }: { members: Member[] }) {
               id="member_id"
               name="member_id"
               options={memberOptions}
+              filterBy={MEMBER_FILTER_BY}
               value={memberId || null}
               onChange={(v) => onSelectMember(v ?? '')}
               showClear
