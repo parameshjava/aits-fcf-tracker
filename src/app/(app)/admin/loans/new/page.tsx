@@ -27,7 +27,7 @@ export default async function NewLoanPage() {
     // kept out of the borrower picker (mirrors the Add transaction form).
     supabase
       .from('members')
-      .select('id, name')
+      .select('id, name, alias')
       .eq('status', 'active')
       .order('name', { ascending: true }),
     getPollsForLoanPicker(),

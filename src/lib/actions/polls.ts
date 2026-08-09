@@ -10,6 +10,7 @@ import {
   type ActionResult,
 } from './action-result'
 import { validatePollCreate, validatePollUpdateLight, validateVote } from '@/lib/polls-validation'
+import { memberDisplayName } from '@/lib/member-alias'
 import type {
   AdminLivePoll,
   MyVote,
@@ -345,15 +346,15 @@ export async function getAdminLivePoll(pollId: string): Promise<AdminLivePoll> {
       .order('position', { ascending: true }),
     supabase
       .from('poll_votes')
-      .select('id, voter_id, other_text, updated_at, member:voter_id(name)')
+      .select('id, voter_id, other_text, updated_at, member:voter_id(name, alias)')
       .eq('poll_id', pollId),
     supabase
       .from('poll_vote_options')
-      .select('vote_id, option_id, poll_votes!inner(poll_id, voter_id, member:voter_id(name))')
+      .select('vote_id, option_id, poll_votes!inner(poll_id, voter_id, member:voter_id(name, alias))')
       .eq('poll_votes.poll_id', pollId),
     supabase
       .from('members')
-      .select('id, name')
+      .select('id, name, alias')
       .eq('status', 'active')
       .order('name', { ascending: true }),
   ])
@@ -363,43 +364,48 @@ export async function getAdminLivePoll(pollId: string): Promise<AdminLivePoll> {
   if (voteOptsRes.error) throw new Error(voteOptsRes.error.message)
   if (membersRes.error) throw new Error(membersRes.error.message)
 
+  type MemberRef = { name: string; alias: string | null }
   type VoteRow = {
     id: string
     voter_id: string
     other_text: string | null
     updated_at: string
-    member: { name: string } | null
+    member: MemberRef | null
   }
   type VoteOptRow = {
     vote_id: string
     option_id: string
-    poll_votes: { voter_id: string; member: { name: string } | null } | null
+    poll_votes: { voter_id: string; member: MemberRef | null } | null
   }
 
   const votes = (votesRes.data ?? []) as unknown as VoteRow[]
   const voteOpts = (voteOptsRes.data ?? []) as unknown as VoteOptRow[]
   const options = (optionsRes.data ?? []) as { id: string; label: string; position: number }[]
-  const members = (membersRes.data ?? []) as { id: string; name: string }[]
+  const members = (membersRes.data ?? []) as { id: string; name: string; alias: string | null }[]
 
   const voterIds = new Set(votes.map((v) => v.voter_id))
   const voterById = new Map(votes.map((v) => [v.voter_id, v]))
 
+  // `member_name` carries the DISPLAY name — the alias when the member has one,
+  // their full name otherwise. Poll results are the most informal screen in the
+  // app, so this is where aliases matter most.
   const voted = members
     .filter((m) => voterIds.has(m.id))
     .map((m) => ({
       member_id: m.id,
-      member_name: m.name,
+      member_name: memberDisplayName(m),
       voted_at: voterById.get(m.id)?.updated_at ?? '',
     }))
   const notVoted = members
     .filter((m) => !voterIds.has(m.id))
-    .map((m) => ({ member_id: m.id, member_name: m.name }))
+    .map((m) => ({ member_id: m.id, member_name: memberDisplayName(m) }))
 
   const breakdown = options.map((o) => {
     const links = voteOpts.filter((vo) => vo.option_id === o.id)
     const voters = links.map((vo) => {
       const voterId = vo.poll_votes?.voter_id ?? ''
-      const name = vo.poll_votes?.member?.name ?? '—'
+      const ref = vo.poll_votes?.member
+      const name = ref ? memberDisplayName(ref) : '—'
       return { member_id: voterId, member_name: name }
     })
     voters.sort((a, b) => a.member_name.localeCompare(b.member_name))
@@ -416,7 +422,7 @@ export async function getAdminLivePoll(pollId: string): Promise<AdminLivePoll> {
     .filter((v) => v.other_text && v.other_text.trim() !== '')
     .map((v) => ({
       member_id: v.voter_id,
-      member_name: v.member?.name ?? '—',
+      member_name: v.member ? memberDisplayName(v.member) : '—',
       text: String(v.other_text),
     }))
     .sort((a, b) => a.member_name.localeCompare(b.member_name))

@@ -8,8 +8,9 @@ import type { SelectOption } from '@/components/ui/pr/dropdown'
 import { PrDatePicker } from '@/components/ui/pr/date-picker'
 import { Field } from '@/components/ui/pr/field'
 import { Button } from '@/components/ui/pr/button'
+import { MEMBER_FILTER_BY, memberSelectOptions } from '@/lib/member-alias'
 
-export type MemberOption = { id: string; name: string }
+export type MemberOption = { id: string; name: string; alias?: string | null }
 
 type TypeKey = 'contribution' | 'interest_loans' | 'interest_bank'
 
@@ -42,10 +43,7 @@ export function ContributionsFilters({
   const [from, setFrom] = useState(defaultFrom)
   const [to, setTo] = useState(defaultTo)
 
-  const memberOptions: SelectOption[] = members.map((m) => ({
-    value: m.id,
-    label: m.name,
-  }))
+  const memberOptions: SelectOption[] = memberSelectOptions(members)
 
   // The props ARE the applied (URL-backed) state. Selections stay local until
   // the user clicks Apply, so we don't fire an API request on every keystroke.
@@ -85,6 +83,7 @@ export function ContributionsFilters({
             id="contrib-filter-members"
             values={memberIds}
             options={memberOptions}
+            filterBy={MEMBER_FILTER_BY}
             placeholder="All members"
             onChange={setMemberIds}
           />

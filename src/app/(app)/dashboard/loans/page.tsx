@@ -8,6 +8,7 @@ import { endOfMonth } from '@/lib/due'
 import { tallyEmiSchedule, pctPending, type EmiScheduleRow } from '@/lib/emi-due'
 import { RefreshButton } from '@/components/ui/refresh-button'
 import { LoansFilters } from './loans-filters'
+import { memberDisplayName } from '@/lib/member-alias'
 
 type EmiBalRow = {
   loan_id: string
@@ -41,7 +42,7 @@ export default async function LoansListPage({
 
   const { data: membersData } = await supabase
     .from('members')
-    .select('id, name')
+    .select('id, name, alias')
     .order('name', { ascending: true })
   const members = membersData ?? []
 
@@ -107,7 +108,7 @@ export default async function LoansListPage({
     return {
       id: l.id,
       loan_number: l.loan_number,
-      member_name: l.member?.name ?? null,
+      member_name: l.member ? memberDisplayName(l.member) : null,
       principal_amount: f.principal,
       start_date: l.start_date,
       end_date: l.end_date,

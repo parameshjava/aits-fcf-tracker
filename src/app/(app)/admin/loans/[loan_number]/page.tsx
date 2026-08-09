@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { notFound, redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { formatRupees } from '@/lib/format'
+import { memberDisplayName } from '@/lib/member-alias'
 import { getLoanByNumber, getLoanDetail, getPollsForLoanPicker } from '@/lib/actions/loans'
 import { EditLoanForm } from './edit-loan-form'
 import { LoanTimelineSection } from '@/components/loan-timeline-section'
@@ -112,7 +113,7 @@ export default async function AdminLoanManagePage({
           <h1 className="mt-1 text-lg font-semibold text-gray-900">
             <span className="font-mono">{loan.loan_number}</span>
             <span className="ml-2 text-base text-gray-500">
-              · {loan.member?.name ?? 'No member'}
+              · {loan.member ? memberDisplayName(loan.member) : 'No member'}
             </span>
           </h1>
         </div>

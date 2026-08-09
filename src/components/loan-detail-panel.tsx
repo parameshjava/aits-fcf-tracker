@@ -1,4 +1,5 @@
 import { formatRupees } from '@/lib/format'
+import { memberDisplayName } from '@/lib/member-alias'
 import type { LoanDetailData } from '@/lib/actions/loans'
 import { LoanTimelineSection } from '@/components/loan-timeline-section'
 import { PollModal } from '@/components/poll-modal'
@@ -164,7 +165,7 @@ export function LoanDetailPanel({ data, todayIso }: { data: LoanDetailData; toda
         <h3 className="flex flex-wrap items-center gap-2 text-sm font-semibold text-gray-900">
           <span className="font-mono">{loan.loan_number}</span>
           <span className="text-xs font-normal text-gray-500">
-            · {loan.member?.name ?? 'No member'}
+            · {loan.member ? memberDisplayName(loan.member) : 'No member'}
           </span>
           <span
             className={

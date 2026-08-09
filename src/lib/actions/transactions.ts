@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase/server'
 import { getCurrentUser } from './auth'
 import type { TransactionType } from '../constants'
 import { applyBalanceDelta } from './reference'
+import { memberDisplayName } from '@/lib/member-alias'
 import {
   actionError,
   actionOk,
@@ -162,7 +163,7 @@ export async function getTransactions(filters?: TransactionFilters) {
     let query = supabase
       .from('transactions')
       .select(
-        '*, beneficiary_name, poll_id, member:member_id (name, slug), poll:poll_id (id, question)',
+        '*, beneficiary_name, poll_id, member:member_id (name, alias, slug), poll:poll_id (id, question)',
       )
       .order('transaction_date', { ascending: false })
       .order('transaction_id', { ascending: false })
@@ -207,7 +208,7 @@ export async function getTransactions(filters?: TransactionFilters) {
   // explicitly.
   return ((data ?? []) as DBRow[]).map((r) => ({
     ...r,
-    member_name: r.member?.name ?? null,
+    member_name: r.member ? memberDisplayName(r.member) : null,
     poll: r.poll ?? null,
   }))
 }
@@ -235,7 +236,7 @@ export async function getDbTransactions() {
   const supabase = await createClient()
   const { data, error } = await supabase
     .from('transactions')
-    .select('*, member:member_id (name, slug)')
+    .select('*, member:member_id (name, alias, slug)')
     .order('transaction_date', { ascending: false })
 
   if (error) throw new Error(error.message)
@@ -247,7 +248,7 @@ export async function getDbTransactions() {
   }
   return ((data ?? []) as Row[]).map((r) => ({
     ...r,
-    member_name: r.member?.name ?? null,
+    member_name: r.member ? memberDisplayName(r.member) : null,
   }))
 }
 
@@ -255,7 +256,7 @@ export async function getTransactionByTxnId(transactionId: string) {
   const supabase = await createClient()
   const { data, error } = await supabase
     .from('transactions')
-    .select('*, member:member_id (id, name)')
+    .select('*, member:member_id (id, name, alias)')
     .eq('transaction_id', transactionId)
     .maybeSingle()
   if (error) throw new Error(error.message)

@@ -20,7 +20,7 @@ export default async function PendingPaymentsPage() {
 
   const [payments, membersData] = await Promise.all([
     getPendingPayments(),
-    supabase.from('members').select('id, name').order('name', { ascending: true }),
+    supabase.from('members').select('id, name, alias').order('name', { ascending: true }),
   ])
   const members = membersData.data ?? []
 

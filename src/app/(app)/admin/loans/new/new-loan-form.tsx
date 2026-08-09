@@ -10,6 +10,7 @@ import {
   type LoanType,
 } from '@/lib/loan-type'
 import { formatRupees, todayISO } from '@/lib/format'
+import { MEMBER_FILTER_BY, memberSelectOptions } from '@/lib/member-alias'
 import { numberToIndianWords } from '@/lib/number-to-words'
 import { buildSchedule, computeEmiAmount } from '@/lib/emi-math'
 import { BankBalanceUpdater } from '@/components/bank-balance-updater'
@@ -22,7 +23,7 @@ import { Field } from '@/components/ui/pr/field'
 import { Button } from '@/components/ui/pr/button'
 import { buildPollPickerOptions } from '@/lib/loan-poll-picker'
 
-type Member = { id: string; name: string }
+type Member = { id: string; name: string; alias?: string | null }
 
 export function NewLoanForm({
   members,
@@ -48,10 +49,7 @@ export function NewLoanForm({
   const [principal, setPrincipal] = useState<number | null>(null)
   const [startDate, setStartDate] = useState<string>('')
 
-  const memberOptions: SelectOption[] = members.map((m) => ({
-    value: m.id,
-    label: m.name,
-  }))
+  const memberOptions: SelectOption[] = memberSelectOptions(members)
   const pollOptions: SelectOption[] = buildPollPickerOptions(polls).map((p) => ({
     value: p.id,
     label: p.name,
@@ -119,6 +117,7 @@ export function NewLoanForm({
             id="member_id"
             name="member_id"
             options={memberOptions}
+            filterBy={MEMBER_FILTER_BY}
             value={memberId || null}
             onChange={(v) => setMemberId(v ?? '')}
             required

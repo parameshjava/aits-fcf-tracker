@@ -9,6 +9,7 @@ import {
 import { TRANSACTION_TYPES } from '@/lib/constants'
 import type { TransactionType } from '@/lib/constants'
 import { todayISO } from '@/lib/format'
+import { MEMBER_FILTER_BY, memberSelectOptions } from '@/lib/member-alias'
 import { numberToIndianWords } from '@/lib/number-to-words'
 import { PrDropdown, type SelectOption } from '@/components/ui/pr/dropdown'
 import { PrAmountInput } from '@/components/ui/pr/amount-input'
@@ -19,7 +20,7 @@ import { BankBalanceUpdater } from '@/components/bank-balance-updater'
 import { defaultDirectionForContribution } from '@/lib/balance-direction'
 import { buildPollPickerOptions } from '@/lib/loan-poll-picker'
 
-type Member = { id: string; name: string }
+type Member = { id: string; name: string; alias?: string | null }
 type LoanOption = {
   id: string
   loan_number: string
@@ -71,10 +72,7 @@ export function NewTransactionForm({
     label: p.name,
   }))
 
-  const memberOptions: SelectOption[] = members.map((m) => ({
-    value: m.id,
-    label: m.name,
-  }))
+  const memberOptions: SelectOption[] = memberSelectOptions(members)
 
   // On success, fire a toast and reset the form in place so the admin can
   // record another transaction without re-navigating. (The previous behaviour
@@ -149,6 +147,7 @@ export function NewTransactionForm({
             id="member_id"
             name="member_id"
             options={memberOptions}
+            filterBy={MEMBER_FILTER_BY}
             value={memberId || null}
             onChange={(v) => {
               setMemberId(v ?? '')

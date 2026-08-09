@@ -14,6 +14,7 @@ export type MemberOption = {
   id: string
   name: string
   email: string | null
+  alias: string | null
 }
 
 /**
@@ -30,7 +31,7 @@ export async function getMembersForBankAccountForm(): Promise<MemberOption[]> {
   if (user.profile?.role === 'admin') {
     const { data, error } = await supabase
       .from('members')
-      .select('id, name, email')
+      .select('id, name, email, alias')
       .order('name', { ascending: true })
     if (error) throw new Error(error.message)
     return data ?? []
@@ -39,7 +40,7 @@ export async function getMembersForBankAccountForm(): Promise<MemberOption[]> {
   if (!user.email) return []
   const { data, error } = await supabase
     .from('members')
-    .select('id, name, email')
+    .select('id, name, email, alias')
     .ilike('email', user.email)
   if (error) throw new Error(error.message)
   return data ?? []
@@ -78,7 +79,7 @@ export async function getAllBankAccounts() {
 
   const { data, error } = await supabase
     .from('bank_accounts')
-    .select('*, member:member_id (name)')
+    .select('*, member:member_id (name, alias)')
     .order('full_name', { ascending: true })
 
   if (error) throw new Error(error.message)

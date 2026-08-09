@@ -68,6 +68,10 @@ const ROUTES: Record<string, RouteMeta> = {
     title: 'Bank accounts',
     crumbs: [{ label: 'Admin', href: '/admin' }, { label: 'Bank accounts' }],
   },
+  '/admin/aliases': {
+    title: 'Aliases',
+    crumbs: [{ label: 'Admin', href: '/admin' }, { label: 'Aliases' }],
+  },
   '/polls': {
     title: 'Polls',
     crumbs: [{ label: 'Polls' }],

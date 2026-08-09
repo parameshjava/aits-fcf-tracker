@@ -39,7 +39,7 @@ export default async function ContributionsPage({
   // Fetch the canonical 22 members for the filter dropdown.
   const { data: membersData } = await supabase
     .from('members')
-    .select('id, name')
+    .select('id, name, alias')
     .order('name', { ascending: true })
   const members = membersData ?? []
 
