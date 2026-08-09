@@ -26,10 +26,16 @@ export function AliasesTable({
   /** member id → proposed alias, computed server-side. */
   suggestions: Record<string, string>
 }) {
-  // Draft state is the saved alias, not the suggestion: nothing is written
-  // until the admin either types or clicks "Fill empty with suggestions".
+  // Boxes open pre-filled: the saved alias where there is one, the suggestion
+  // otherwise. The admin corrects what they don't like and saves the lot in one
+  // submit — which is the point of a bulk screen, rather than typing 23 names.
+  //
+  // Pre-filled is NOT saved. These are form values only; nothing reaches the
+  // database until Save, and Reset drops every unsaved suggestion.
   const [drafts, setDrafts] = useState<Record<string, string>>(() =>
-    Object.fromEntries(members.map((m) => [m.id, m.alias ?? ''])),
+    Object.fromEntries(
+      members.map((m) => [m.id, m.alias ?? suggestions[m.id] ?? '']),
+    ),
   )
 
   const [state, action, pending] = useActionState(
@@ -69,6 +75,7 @@ export function AliasesTable({
 
   const errorCount = Object.keys(errors).length
   const filledCount = members.filter((m) => normalizeAlias(drafts[m.id]) !== null).length
+  const savedCount = members.filter((m) => normalizeAlias(m.alias) !== null).length
   const dirty = members.some((m) => (drafts[m.id] ?? '') !== (m.alias ?? ''))
 
   /** Only touches rows the admin has left blank — never overwrites their typing. */
@@ -100,8 +107,13 @@ export function AliasesTable({
     <form action={action} className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm text-gray-500">
-          <span className="font-medium text-gray-900">{filledCount}</span> of{' '}
-          {members.length} members have an alias
+          <span className="font-medium text-gray-900">{savedCount}</span> of{' '}
+          {members.length} members have a saved alias
+          {dirty && (
+            <span className="text-amber-700">
+              {' '}· {filledCount} filled in below, not saved yet
+            </span>
+          )}
         </p>
         <div className="flex flex-wrap gap-2">
           <Button
@@ -214,8 +226,10 @@ export function AliasesTable({
       </div>
 
       <p className="text-xs text-gray-400">
-        2–20 characters. Letters, digits and spaces only — no dots, underscores or
-        hyphens. Clearing the box removes that member&apos;s alias and their full
+        Empty boxes are pre-filled with a suggestion drawn from the member&apos;s
+        name — a proposal only, saved to nobody until you press the button.
+        2–20 characters, letters, digits and spaces only (no dots, underscores or
+        hyphens). Clearing a box removes that member&apos;s alias and their full
         name comes back everywhere.
       </p>
     </form>
